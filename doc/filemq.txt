@@ -1,0 +1,23 @@
+filemq(1)
+=========
+
+
+NAME
+----
+filemq - a publish-subscribe file service based on 0MQ
+
+
+SYNOPSIS
+--------
+----
+'filemq' [-h] [-c configuration]
+
+----
+
+
+DESCRIPTION
+-----------
+
+'filemq' is a publish-subscribe file service based on 0MQ, originally written by Pieter Hintjens for the 0MQ Guide.
+
+See https://github.com/hintjens/filemq.
