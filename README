@@ -1,3 +1,20 @@
 FileMQ implementation in C
 
+Work in progress
+
+To build:
+
+   ./autogen.sh
+   ./configure
+   make
+
+To try:
+
+   cd src
+   ./filemq
+
+To test
+
+   cd src
+   ./fmq_selftest
 
