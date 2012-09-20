@@ -1,0 +1,134 @@
+<class name = "fmq_server" script = "server_c" codec = "fmq_msg">
+    
+FileMQ protocol server
+<license>
+    Copyright (c) 1991-2012 iMatix Corporation -- http://www.imatix.com
+    Copyright other contributors as noted in the AUTHORS file.
+
+    This file is part of FILEMQ, see http://filemq.org.
+
+    This is free software; you can redistribute it and/or modify it under
+    the terms of the GNU Lesser General Public License as published by the
+    Free Software Foundation; either version 3 of the License, or (at your
+    option) any later version.
+
+    This software is distributed in the hope that it will be useful, but
+    WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTA-
+    BILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General
+    Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with this program. If not, see http://www.gnu.org/licenses/.
+</license>
+    
+<state name = "start">
+    <event name = "OHAI" next = "checking client">
+        <action name = "try anonymous access" />
+    </event>
+</state>
+
+<state name = "checking client">
+    <event name = "friend" next = "ready">
+        <action name = "send" message ="OHAI-OK" />
+    </event>
+    <event name = "foe" next = "start">
+        <action name = "send" message = "SRSLY" />
+    </event>
+    <event name = "maybe" next = "challenging client">
+        <action name = "list security mechanisms" />
+        <action name = "send" message = "ORLY" />
+    </event>
+</state>
+
+<state name = "challenging client">
+    <event name = "YARLY" next = "checking client">
+        <action name = "try security mechanism" />
+    </event>
+</state>
+
+<state name = "ready">
+    <event name = "ICANHAZ">
+        <action name = "send" message = "ICANHAZ-OK" />
+    </event>
+    <event name = "NOM">
+        <action name = "send" message = "CHEEZBURGER" />
+    </event>
+    <event name = "HUGZ">
+        <action name = "send" message = "HUGZ-OK" />
+    </event>
+    <event name = "KTHXBAI" next = "start">
+    </event>
+    <event name = "heartbeat">
+        <action name = "send" message = "HUGZ" />
+    </event>
+</state>
+
+<state name = "defaults">
+    <event name = "other">
+        <action name = "send" message = "RTFM" />
+    </event>
+</state>
+
+<!-- Action bodies -->
+<action name = "try anonymous access">
+    if (atoi (fmq_config_resolve (self->config, "security/anonymous", "0")) == 1)
+        self->next_event = friend_event;
+    else
+    if (atoi (fmq_config_resolve (self->config, "security/plain", "0")) == 1)
+        self->next_event = maybe_event;
+    else
+        self->next_event = foe_event;
+</action>
+    
+<action name = "list security mechanisms">
+    if (atoi (fmq_config_resolve (self->config, "security/anonymous", "0")) == 1)
+        fmq_msg_mechanisms_append (self->reply, "ANONYMOUS");
+    if (atoi (fmq_config_resolve (self->config, "security/plain", "0")) == 1)
+        fmq_msg_mechanisms_append (self->reply, "PLAIN");
+</action>
+
+<action name = "try security mechanism">
+    self->next_event = foe_event;
+    char *login, *password;
+    if (streq (fmq_msg_mechanism (self->request), "PLAIN")
+    &&  fmq_sasl_plain_decode (fmq_msg_response (self->request), &login, &password) == 0) {
+        fmq_config_t *account = fmq_config_locate (self->config, "security/plain/account");
+        while (account) {
+            if (streq (fmq_config_resolve (account, "login", ""), login)
+            &&  streq (fmq_config_resolve (account, "password", ""), password)) {
+                self->next_event = friend_event;
+                break;
+            }
+            account = fmq_config_next (account);
+        }
+    }
+    free (login);
+    free (password);
+</action>
+
+<selftest config = "">
+    <step send = "OHAI" recv = "SRSLY" />
+    <step send = "ICANHAZ" recv = "RTFM" />
+    <step send = "NOM" recv = "RTFM" />
+    <step send = "HUGZ" recv = "RTFM" />
+</selftest>
+<selftest config = "anonymous.cfg">
+    <step send = "OHAI" recv = "OHAI-OK" />
+    <step send = "ICANHAZ" recv = "ICANHAZ-OK" />
+    <step send = "NOM" recv = "CHEEZBURGER" />
+    <step send = "HUGZ" recv = "HUGZ-OK" />
+    <step send = "YARLY" recv = "RTFM" />
+</selftest>
+<selftest config = "plain.cfg">
+    <step send = "OHAI" recv = "ORLY" />
+    <step send = "YARLY" recv = "OHAI-OK">
+    fmq_msg_mechanism_set (request, "PLAIN");
+    fmq_msg_response_set (request, fmq_sasl_plain_encode ("guest", "guest"));
+    </step>
+    <step send = "ICANHAZ" recv = "ICANHAZ-OK" />
+    <step send = "NOM" recv = "CHEEZBURGER" />
+    <step send = "HUGZ" recv = "HUGZ-OK" />
+    <step recv = "HUGZ" />
+</selftest>
+
+</class>

@@ -1,0 +1,21 @@
+.echo "Generating ../doc/$(class.name).txt..."
+.output "../doc/$(class.name).txt"
+.for class.state
+/-------------------\\
+| $(Name)           |
+\\-------------------/
+.   for event
+.       if !defined (next)
+.           event.next = state.name
+.       endif
+.       bar = last ()?? ''? '|'
+  |
+  +-------------+                    /-------------------\\
+  | $(name:)    |------------------->| $(Next)           |
+  +-------------+                    \\-------------------/
+.       for action
+  $(bar)           $(Name) $(message?'':)
+.       endfor
+.   endfor
+
+.endfor

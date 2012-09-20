@@ -19,3 +19,9 @@ src/platform.h
 src/platform.h.in
 src/platform.h.in~
 src/stamp-h1
+.libs/
+*.o
+*.lo
+*.la
+filemq
+fmq_selftest

@@ -6,10 +6,15 @@ pkgconfig_DATA = libfmq.pc
 include_HEADERS = \
     ../include/fmq.h
 
-libfmq_la_SOURCES = 
+libfmq_la_SOURCES = \
+    fmq_msg.c \
+    fmq_server.c \
+    fmq_config.c \
+    fmq_sasl.c
 
 INCLUDES = -I$(top_srcdir)/include
-bin_PROGRAMS = filemq
+bin_PROGRAMS = filemq fmq_selftest
+fmq_selftest_LDADD = libfmq.la
 filemq_LDADD = libfmq.la
 
 if ON_MINGW

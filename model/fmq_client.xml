@@ -1,0 +1,85 @@
+<class name = "fmq_client" script = "client_c">
+    This is the FILEMQ/1.0 client protocol handler
+<license>
+    Copyright (c) 1991-2012 iMatix Corporation -- http://www.imatix.com
+    Copyright other contributors as noted in the AUTHORS file.
+
+    This file is part of FILEMQ, see http://filemq.org.
+
+    This is free software; you can redistribute it and/or modify it under
+    the terms of the GNU Lesser General Public License as published by the
+    Free Software Foundation; either version 3 of the License, or (at your
+    option) any later version.
+
+    This software is distributed in the hope that it will be useful, but
+    WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTA-
+    BILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General
+    Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with this program. If not, see http://www.gnu.org/licenses/.
+</license>
+
+<state name = "start">
+    <event name = "ok" next = "requesting access">
+        <action name = "send OHAI" />
+    </event>
+</state>
+
+<state name = "requesting access">
+    <event name = "ORLY" next = "requesting access">
+        <action name = "try security mechanism" />
+        <action name = "send YARLY" />
+    </event>
+    <event name = "OHAI-OK" next = "subscribing">
+        <action name = "get next subscription" />
+    </event>
+</state>
+
+<state name = "subscribing">
+    <event name = "ok" next = "subscribing">
+        <action name = "send ICANHAZ" />
+        <action name = "get next subscription" />
+    </event>
+    <event name = "finished" next = "ready">
+        <action name = "refill pipeline" />
+        <action name = "send NOM" />
+    </event>
+</state>
+
+<state name = "ready">
+    <event name = "CHEEZBURGER">
+        <action name = "store file data" />
+        <action name = "refill pipeline" />
+        <action name = "send NOM" />
+    </event>
+    <event name = "HUGZ">
+        <action name = "send HUGZ-OK" />
+    </event>
+    <event name = "heartbeat">
+        <action name = "send HUGZ" />
+    </event>
+    <event name = "ICANHAZ-OK" />
+    <event name = "HUGZ-OK" />
+</state>
+
+<state name = "default">
+    <event name = "SRSLY">
+        <action name = "log access denied" />
+        <action name = "close the connection" />
+    </event>
+    <event name = "RTFM">
+        <action name = "log invalid message" />
+        <action name = "close the connection" />
+    </event>
+    <event name = "ROTFL">
+        <action name = "log protocol error" />
+        <action name = "close the connection" />
+    </event>
+    <event name = "PWNED">
+        <action name = "log server overloaded" />
+        <action name = "close the connection" />
+    </event>
+</state>
+
+</class>

@@ -1,5 +1,5 @@
 /*  =========================================================================
-    fmq.h - FileMQ library
+    fmq_selftest - run self tests
 
     -------------------------------------------------------------------------
     Copyright (c) 1991-2012 iMatix Corporation -- http://www.imatix.com
@@ -22,25 +22,25 @@
     =========================================================================
 */
 
-#ifndef __FMQ_H_INCLUDED__
-#define __FMQ_H_INCLUDED__
+#include "czmq.h"
+#include "../include/fmq_msg.h"
+#include "../include/fmq_sasl.h"
+#include "../include/fmq_config.h"
+#include "../include/fmq_server.h"
 
-//  FMQ version macros for compile-time API detection
+int main (int argc, char *argv [])
+{
+    Bool verbose;
+    if (argc == 2 && streq (argv [1], "-v"))
+        verbose = TRUE;
+    else
+        verbose = FALSE;
 
-#define FMQ_VERSION_MAJOR 1
-#define FMQ_VERSION_MINOR 0
-#define FMQ_VERSION_PATCH 0
-
-#define FMQ_MAKE_VERSION(major, minor, patch) \
-    ((major) * 10000 + (minor) * 100 + (patch))
-#define FMQ_VERSION \
-    FMQ_MAKE_VERSION(FMQ_VERSION_MAJOR, FMQ_VERSION_MINOR, FMQ_VERSION_PATCH)
-
-//  Classes listed in alphabetical order
-
-#include "fmq_msg.h"
-#include "fmq_sasl.h"
-#include "fmq_config.h"
-#include "fmq_server.h"
-
-#endif
+    printf ("Running self tests...\n");
+    fmq_msg_test (verbose);
+    fmq_sasl_test (verbose);
+    fmq_config_test (verbose);
+    fmq_server_test (verbose);
+    printf ("Tests passed OK\n");
+    return 0;
+}
