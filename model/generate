@@ -1,5 +1,5 @@
 gsl -q fmq_msg.xml
-gsl -q -trace:0 fmq_server.xml
+gsl -q -trace:1 fmq_server.xml
 gsl -q -script:graphs fmq_server.xml
 #gsl -q -trace:1 fmq_client.xml
 

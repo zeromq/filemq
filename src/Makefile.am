@@ -7,6 +7,8 @@ include_HEADERS = \
     ../include/fmq.h
 
 libfmq_la_SOURCES = \
+    fmq_dir.c \
+    fmq_file.c \
     fmq_msg.c \
     fmq_server.c \
     fmq_config.c \

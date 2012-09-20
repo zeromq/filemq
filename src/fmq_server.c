@@ -120,6 +120,30 @@ typedef enum {
     heartbeat_event = 11
 } event_t;
 
+//  Names for animation
+char *s_state_name [] = {
+    "stopped",
+    "start",
+    "checking client",
+    "challenging client",
+    "ready"
+};
+
+char *s_event_name [] = {
+    "",
+    "OHAI",
+    "other",
+    "friend",
+    "foe",
+    "maybe",
+    "YARLY",
+    "ICANHAZ",
+    "NOM",
+    "HUGZ",
+    "KTHXBAI",
+    "heartbeat"
+};
+
 
 //  ---------------------------------------------------------------------
 //  Simple class for one client we talk to
@@ -220,6 +244,8 @@ client_execute (client_t *self, fmq_config_t *config, int event)
     while (self->next_event) {
         self->event = self->next_event;
         self->next_event = 0;
+        printf ("State=%s, event=%s\n",
+            s_state_name [self->state], s_event_name [self->event]);
         switch (self->state) {
             case start_state:
                 if (self->event == ohai_event) {
@@ -292,6 +318,8 @@ client_execute (client_t *self, fmq_config_t *config, int event)
                 break;
         }
         if (fmq_msg_id (self->reply)) {
+            puts ("Send message to client");
+            fmq_msg_dump (self->reply);
             fmq_msg_send (&self->reply, self->router);
             self->reply = fmq_msg_new (0);
             fmq_msg_address_set (self->reply, self->address);
@@ -421,6 +449,8 @@ server_client_message (server_t *self)
     if (!request)
         return;         //  Interrupted; do nothing
 
+    puts ("Received message from client");
+    fmq_msg_dump (request);
     char *hashkey = zframe_strhex (fmq_msg_address (request));
     client_t *client = zhash_lookup (self->clients, hashkey);
     if (client == NULL) {
@@ -494,7 +524,7 @@ int
 fmq_server_test (bool verbose)
 {
     printf (" * fmq_server: ");
-    fflush (stdout);
+    printf ("\n");
     zctx_t *ctx = zctx_new ();
     
     fmq_server_t *self;

@@ -23,10 +23,7 @@
 */
 
 #include "czmq.h"
-#include "../include/fmq_msg.h"
-#include "../include/fmq_sasl.h"
-#include "../include/fmq_config.h"
-#include "../include/fmq_server.h"
+#include "../include/fmq.h"
 
 int main (int argc, char *argv [])
 {
@@ -37,6 +34,8 @@ int main (int argc, char *argv [])
         verbose = FALSE;
 
     printf ("Running self tests...\n");
+    fmq_file_test (verbose);
+    fmq_dir_test (verbose);
     fmq_msg_test (verbose);
     fmq_sasl_test (verbose);
     fmq_config_test (verbose);
