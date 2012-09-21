@@ -34,11 +34,35 @@ typedef struct _fmq_dir_t fmq_dir_t;
 
 //  Create new directory item
 fmq_dir_t *
-    fmq_dir_new (const char *name, const char *parent);
+    fmq_dir_new (const char *path, const char *parent);
 
 //  Destroy a directory item
 void
     fmq_dir_destroy (fmq_dir_t **self_p);
+
+//  Return directory path
+char *
+    fmq_dir_path (fmq_dir_t *self);
+
+//  Return last modified time
+time_t
+    fmq_dir_time (fmq_dir_t *self);
+
+//  Return total hierarchy size
+off_t
+    fmq_dir_size (fmq_dir_t *self);
+
+//  Calculate differences between two versions of a directory tree
+zlist_t *
+    fmq_dir_diff (fmq_dir_t *older, fmq_dir_t *newer);
+
+//  Return total hierarchy count
+size_t
+    fmq_dir_count (fmq_dir_t *self);
+
+//  Return sorted array of file references
+fmq_file_t **
+    fmq_dir_flatten (fmq_dir_t *self);
 
 //  Print contents of directory
 void

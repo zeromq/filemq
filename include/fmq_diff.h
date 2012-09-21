@@ -1,5 +1,5 @@
 /*  =========================================================================
-    fmq_file - work with files
+    fmq_diff - work with directory diffs
 
     -------------------------------------------------------------------------
     Copyright (c) 1991-2012 iMatix Corporation -- http://www.imatix.com
@@ -22,55 +22,45 @@
     =========================================================================
 */
 
-#ifndef __FMQ_FILE_H_INCLUDED__
-#define __FMQ_FILE_H_INCLUDED__
+#ifndef __FMQ_DIFF_H_INCLUDED__
+#define __FMQ_DIFF_H_INCLUDED__
+
+typedef enum {
+    diff_create = 1,
+    diff_delete = 2,
+    diff_resize = 3,
+    diff_retime = 4
+} fmq_diff_op_t;
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 //  Opaque class structure
-typedef struct _fmq_file_t fmq_file_t;
+typedef struct _fmq_diff_t fmq_diff_t;
 
-//  Create new file item
-fmq_file_t *
-    fmq_file_new (const char *path, const char *name, time_t time, off_t size, mode_t mode);
+//  Create new diff item
+fmq_diff_t *
+    fmq_diff_new (fmq_file_t *file, fmq_diff_op_t op);
 
-//  Destroy a file item
+//  Destroy a diff item
 void
-    fmq_file_destroy (fmq_file_t **self_p);
+    fmq_diff_destroy (fmq_diff_t **self_p);
 
-//  Duplicate a file item
+//  Return diff file item
 fmq_file_t *
-    fmq_file_dup (fmq_file_t *self);
+    fmq_diff_file (fmq_diff_t *self);
 
-//  Return file path
-char *
-    fmq_file_path (fmq_file_t *self);
-
-//  Return file name
-char *
-    fmq_file_name (fmq_file_t *self);
-
-//  Return file time
-time_t
-    fmq_file_time (fmq_file_t *self);
-
-//  Return file size
-off_t
-    fmq_file_size (fmq_file_t *self);
-    
-//  Return file mode
-mode_t
-    fmq_file_mode (fmq_file_t *self);
+//  Return diff operation
+fmq_diff_op_t
+    fmq_diff_op (fmq_diff_t *self);
     
 //  Self test of this class
 int
-    fmq_file_test (bool verbose);
+    fmq_diff_test (bool verbose);
 
 #ifdef __cplusplus
 }
 #endif
 
 #endif
-

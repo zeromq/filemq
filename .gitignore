@@ -25,3 +25,4 @@ src/stamp-h1
 *.la
 filemq
 fmq_selftest
+src/fmqroot

@@ -28,11 +28,10 @@
 
 /*  These are the fmq_msg messages
 
-    OHAI - Client opens peering and requests access to a channel
+    OHAI - Client opens peering
         protocol      string 
         version       octet 
-        nodeid        octets [16]
-        channel       string 
+        identity      octets [16]
 
     ORLY - Server challenges the client to authenticate itself
         mechanisms    strings 
@@ -42,9 +41,9 @@
         mechanism     string 
         response      frame 
 
-    OHAI_OK - Server grants the client access to the channel
+    OHAI_OK - Server grants the client access
 
-    ICANHAZ - Client subscribes to a path in its current channel
+    ICANHAZ - Client subscribes to a path
         path          string 
         options       dictionary 
 
@@ -71,19 +70,20 @@
         reason        string 
 */
 
-#define FMQ_MSG_OHAI                    1
-#define FMQ_MSG_ORLY                    2
-#define FMQ_MSG_YARLY                   3
-#define FMQ_MSG_OHAI_OK                 4
-#define FMQ_MSG_ICANHAZ                 5
-#define FMQ_MSG_ICANHAZ_OK              6
-#define FMQ_MSG_NOM                     7
-#define FMQ_MSG_CHEEZBURGER             8
-#define FMQ_MSG_HUGZ                    9
-#define FMQ_MSG_HUGZ_OK                 10
-#define FMQ_MSG_KTHXBAI                 11
-#define FMQ_MSG_SRSLY                   128
-#define FMQ_MSG_RTFM                    129
+#define FMQ_MSG_OHAI                        1
+#define FMQ_MSG_ORLY                        2
+#define FMQ_MSG_YARLY                       3
+#define FMQ_MSG_OHAI_OK                     4
+#define FMQ_MSG_ICANHAZ                     5
+#define FMQ_MSG_ICANHAZ_OK                  6
+#define FMQ_MSG_NOM                         7
+#define FMQ_MSG_CHEEZBURGER                 8
+#define FMQ_MSG_HUGZ                        9
+#define FMQ_MSG_HUGZ_OK                     10
+#define FMQ_MSG_KTHXBAI                     11
+#define FMQ_MSG_SRSLY                       128
+#define FMQ_MSG_RTFM                        129
+#define FMQ_MSG_IDENTITY_SIZE               16
 
 #ifdef __cplusplus
 extern "C" {
@@ -124,17 +124,11 @@ int
 void
     fmq_msg_id_set (fmq_msg_t *self, int id);
 
-//  Get/set the nodeid field
+//  Get/set the identity field
 byte *
-    fmq_msg_nodeid (fmq_msg_t *self);
+    fmq_msg_identity (fmq_msg_t *self);
 void
-    fmq_msg_nodeid_set (fmq_msg_t *self, byte *nodeid);
-
-//  Get/set the channel field
-char *
-    fmq_msg_channel (fmq_msg_t *self);
-void
-    fmq_msg_channel_set (fmq_msg_t *self, char *format, ...);
+    fmq_msg_identity_set (fmq_msg_t *self, byte *identity);
 
 //  Iterate through the mechanisms field, and append a mechanisms value
 char *

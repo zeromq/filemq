@@ -1,0 +1,89 @@
+<declare>
+//  Mount point in memory
+typedef struct {
+    char *local;            //  Local path
+    char *virtual;          //  Virtual path
+    fmq_dir_t *dir;         //  Directory tree
+
+    //  Directory signature
+    time_t time;            //  Modification time
+    off_t  size;            //  Total file size
+    size_t count;           //  Total file count
+
+    //  List of diffs to directory
+    zlist_t *diffs;         //  fmq_diff_t items
+} mount_t;
+
+//  Constructor
+//  Loads directory tree if possible
+
+static mount_t *
+mount_new (char *local, char *virtual) {
+    mount_t *self = (mount_t *) zmalloc (sizeof (mount_t));
+    self->local = strdup (local);
+    self->virtual = strdup (virtual);
+    self->dir = fmq_dir_new (self->local, NULL);
+    if (self->dir)
+        fmq_dir_dump (self->dir, 0);
+    return self;
+}
+
+//  Destructor
+
+static void
+mount_destroy (mount_t **self_p) {
+    assert (self_p);
+    if (*self_p) {
+        mount_t *self = *self_p;
+        free (self->local);
+        free (self->virtual);
+        fmq_dir_destroy (&self->dir);
+        free (self);
+        *self_p = NULL;
+    }
+}
+
+//  Reloads directory tree and returns true if changed, false if the same.
+
+static bool
+mount_refresh (mount_t *self) {
+    //  Get latest snapshot and if it's different, build a diffs list
+    fmq_dir_t *latest = fmq_dir_new (self->local, NULL);
+    zlist_t *diffs = fmq_dir_diff (self->dir, latest);
+    fmq_dir_destroy (&self->dir);
+    self->dir = latest;
+
+    fmq_diff_t *diff = (fmq_diff_t *) zlist_first (diffs);
+    while (diff) {
+        fmq_file_t *file = fmq_diff_file (diff);
+        fmq_diff_op_t op = fmq_diff_op (diff);
+        switch (op) {
+            case diff_create:
+                printf ("CREATE %s/%s\n", fmq_file_path (file), fmq_file_name (file));
+                break;
+            case diff_delete:
+                printf ("DELETE %s/%s\n", fmq_file_path (file), fmq_file_name (file));
+                break;
+            case diff_resize:
+                printf ("RESIZE %s/%s\n", fmq_file_path (file), fmq_file_name (file));
+                break;
+            case diff_retime:
+                printf ("RETIME %s/%s\n", fmq_file_path (file), fmq_file_name (file));
+                break;
+        }
+        diff = (fmq_diff_t *) zlist_next (diffs);
+    }
+
+    //  Append to previous list, don't delete
+    //  Newest at list head, oldest at list tail
+    //  Remove any duplicates already there (use hash table on path/name)
+    //  
+
+    while (zlist_size (diffs)) {
+        diff = (fmq_diff_t *) zlist_pop (diffs);
+        fmq_diff_destroy (&diff);
+    }
+    zlist_destroy (&diffs);
+    return false;
+}
+</declare>

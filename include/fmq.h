@@ -36,13 +36,15 @@
 #define FMQ_VERSION \
     FMQ_MAKE_VERSION(FMQ_VERSION_MAJOR, FMQ_VERSION_MINOR, FMQ_VERSION_PATCH)
 
-//  Classes listed in alphabetical order
-
-#include "fmq_msg.h"
-#include "fmq_dir.h"
+//  These are reusable utility classes
 #include "fmq_file.h"
+#include "fmq_dir.h"
+#include "fmq_diff.h"
 #include "fmq_sasl.h"
 #include "fmq_config.h"
+
+//  These are specific to the FileMQ implementation
+#include "fmq_msg.h"
 #include "fmq_server.h"
 
 #endif

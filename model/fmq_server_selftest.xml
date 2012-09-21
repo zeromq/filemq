@@ -1,0 +1,28 @@
+<selftest>
+    <init>
+    //  We don't use a config file so we have to do this ourselves
+    fmq_server_bind (self, "tcp://*:6000");
+    </init>
+    <step send = "OHAI" recv = "SRSLY" />
+    <step send = "ICANHAZ" recv = "RTFM" />
+    <step send = "NOM" recv = "RTFM" />
+    <step send = "HUGZ" recv = "RTFM" />
+</selftest>
+<selftest config = "anonymous.cfg">
+    <step send = "OHAI" recv = "OHAI-OK" />
+    <step send = "ICANHAZ" recv = "ICANHAZ-OK" />
+    <step send = "NOM" recv = "CHEEZBURGER" />
+    <step send = "HUGZ" recv = "HUGZ-OK" />
+    <step send = "YARLY" recv = "RTFM" />
+</selftest>
+<selftest config = "example.cfg">
+    <step send = "OHAI" recv = "ORLY" />
+    <step send = "YARLY" recv = "OHAI-OK">
+    fmq_msg_mechanism_set (request, "PLAIN");
+    fmq_msg_response_set (request, fmq_sasl_plain_encode ("guest", "guest"));
+    </step>
+    <step send = "ICANHAZ" recv = "ICANHAZ-OK" />
+    <step send = "NOM" recv = "CHEEZBURGER" />
+    <step send = "HUGZ" recv = "HUGZ-OK" />
+    <step recv = "HUGZ" />
+</selftest>

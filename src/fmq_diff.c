@@ -1,5 +1,5 @@
 /*  =========================================================================
-    fmq_file - work with files
+    fmq_diff - work with directory diffs
 
     -------------------------------------------------------------------------
     Copyright (c) 1991-2012 iMatix Corporation -- http://www.imatix.com
@@ -24,48 +24,41 @@
 
 #include <czmq.h>
 #include "../include/fmq_file.h"
+#include "../include/fmq_diff.h"
 
 //  Structure of our class
 
-struct _fmq_file_t {
-    char  *path;            //  File path
-    char  *name;            //  File name without path
-    time_t time;            //  Modification time
-    off_t  size;            //  Size of the file
-    mode_t mode;            //  POSIX permission bits
+struct _fmq_diff_t {
+    fmq_file_t *file;           //  File we refer to
+    fmq_diff_op_t op;           //  Operation
 };
 
 
 //  --------------------------------------------------------------------------
 //  Constructor
 
-fmq_file_t *
-fmq_file_new (const char *path, const char *name, time_t time, off_t size, mode_t mode)
+fmq_diff_t *
+fmq_diff_new (fmq_file_t *file, fmq_diff_op_t op)
 {
-    fmq_file_t
+    fmq_diff_t
         *self;
 
-    self = (fmq_file_t *) zmalloc (sizeof (fmq_file_t));
-    self->path = strdup (path);
-    self->name = strdup (name);
-    self->time = time;
-    self->size = size;
-    self->mode = mode;
+    self = (fmq_diff_t *) zmalloc (sizeof (fmq_diff_t));
+    self->file = fmq_file_dup (file);
+    self->op = op;
     return self;
 }
 
-
 //  --------------------------------------------------------------------------
-//  Destroy a file item
+//  Destroy a diff item
 
 void
-fmq_file_destroy (fmq_file_t **self_p)
+fmq_diff_destroy (fmq_diff_t **self_p)
 {
     assert (self_p);
     if (*self_p) {
-        fmq_file_t *self = *self_p;
-        free (self->path);
-        free (self->name);
+        fmq_diff_t *self = *self_p;
+        fmq_file_destroy (&self->file);
         free (self);
         *self_p = NULL;
     }
@@ -73,84 +66,45 @@ fmq_file_destroy (fmq_file_t **self_p)
 
 
 //  --------------------------------------------------------------------------
-//  Duplicate a file item
+//  Return diff file item
 
 fmq_file_t *
-fmq_file_dup (fmq_file_t *self)
+fmq_diff_file (fmq_diff_t *self)
 {
-    return fmq_file_new (self->path, self->name, self->time,
-                         self->size, self->mode);
+    assert (self);
+    return self->file;
 }
 
 
 //  --------------------------------------------------------------------------
-//  Return file path
+//  Return diff operation
 
-char *
-fmq_file_path (fmq_file_t *self)
+fmq_diff_op_t
+fmq_diff_op (fmq_diff_t *self)
 {
     assert (self);
-    return self->path;
-}
-
-
-//  --------------------------------------------------------------------------
-//  Return file name
-
-char *
-fmq_file_name (fmq_file_t *self)
-{
-    assert (self);
-    return self->name;
-}
-
-
-//  --------------------------------------------------------------------------
-//  Return file time
-
-time_t
-fmq_file_time (fmq_file_t *self)
-{
-    assert (self);
-    return self->time;
-}
-
-
-//  --------------------------------------------------------------------------
-//  Return file size
-
-off_t
-fmq_file_size (fmq_file_t *self)
-{
-    assert (self);
-    return self->size;
-}
-
-
-//  --------------------------------------------------------------------------
-//  Return file mode
-
-mode_t
-fmq_file_mode (fmq_file_t *self)
-{
-    assert (self);
-    return self->mode;
+    return self->op;
 }
 
 
 //  --------------------------------------------------------------------------
 //  Self test of this class
 int
-fmq_file_test (bool verbose)
+fmq_diff_test (bool verbose)
 {
-    printf (" * fmq_file: ");
+    printf (" * fmq_diff: ");
 
     fmq_file_t *file = fmq_file_new (".", "bilbo", 123456, 100, 0);
+    fmq_diff_t *diff = fmq_diff_new (file, diff_create);
+    fmq_file_destroy (&file);
+    
+    file = fmq_diff_file (diff);
     assert (streq (fmq_file_name (file), "bilbo"));
     assert (fmq_file_time (file) == 123456);
     assert (fmq_file_size (file) == 100);
     assert (fmq_file_mode (file) == 0);
-    fmq_file_destroy (&file);
+    
+    fmq_diff_destroy (&diff);
 
     printf ("OK\n");
     return 0;

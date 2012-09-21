@@ -1,90 +1,72 @@
 <class name = "fmq_msg" script = "codec_c.gsl">
 This is the FILEMQ protocol version 1.0
-    <license>
-    Copyright (c) 1991-2012 iMatix Corporation -- http://www.imatix.com
-    Copyright other contributors as noted in the AUTHORS file.
+<include filename = "license.xml" />
 
-    This file is part of FILEMQ, see http://filemq.org.
+<message name = "OHAI" id = "1">
+Client opens peering
+    <field name = "protocol" type = "string" value = "FILEMQ" />
+    <field name = "version" type = "octet" value = "1" />
+    <field name = "identity" type = "octets" size = "16" />
+</message>
 
-    This is free software; you can redistribute it and/or modify it under
-    the terms of the GNU Lesser General Public License as published by the
-    Free Software Foundation; either version 3 of the License, or (at your
-    option) any later version.
+<message name = "ORLY" id = "2">
+Server challenges the client to authenticate itself
+    <field name = "mechanisms" type = "strings" />
+    <field name = "challenge" type = "frame" />
+</message>
 
-    This software is distributed in the hope that it will be useful, but
-    WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTA-
-    BILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General
-    Public License for more details.
+<message name = "YARLY" id = "3">
+Client responds with authentication information
+    <field name = "mechanism" type = "string" />
+    <field name = "response" type = "frame" />
+</message>
 
-    You should have received a copy of the GNU Lesser General Public License
-    along with this program. If not, see http://www.gnu.org/licenses/.
-    </license>
-    
-    <message name = "OHAI" id = "1">
-    Client opens peering and requests access to a channel
-        <field name = "protocol" type = "string" value = "FILEMQ" />
-        <field name = "version" type = "octet" value = "1" />
-        <field name = "nodeid" type = "octets" size = "16" />
-        <field name = "channel" type = "string" />
-    </message>
+<message name = "OHAI-OK" id = "4">
+Server grants the client access
+</message>
 
-    <message name = "ORLY" id = "2">
-    Server challenges the client to authenticate itself
-        <field name = "mechanisms" type = "strings" />
-        <field name = "challenge" type = "frame" />
-    </message>
-    
-    <message name = "YARLY" id = "3">
-    Client responds with authentication information
-        <field name = "mechanism" type = "string" />
-        <field name = "response" type = "frame" />
-    </message>
-    
-    <message name = "OHAI-OK" id = "4">
-    Server grants the client access to the channel
-    </message>
-    
-    <message name = "ICANHAZ" id = "5">
-    Client subscribes to a path in its current channel
-        <field name = "path" type = "string" />
-        <field name = "options" type = "dictionary" />
-    </message>
+<message name = "ICANHAZ" id = "5">
+Client subscribes to a path
+    <field name = "path" type = "string" />
+    <field name = "options" type = "dictionary" />
+</message>
 
-    <message name = "ICANHAZ-OK" id = "6">
-    Server confirms the subscription
-    </message>
-    
-    <message name = "NOM" id = "7">
-    Client sends credit to the server
-        <field name = "credit" type = "number" />
-        <field name = "receipts" type = "strings" />
-    </message>
-    
-    <message name = "CHEEZBURGER" id = "8">
-    The server sends a chunk of file data
-        <field name = "headers" type = "dictionary" />
-        <field name = "chunk" type = "frame" />
-    </message>
+<message name = "ICANHAZ-OK" id = "6">
+Server confirms the subscription
+</message>
 
-    <message name = "HUGZ" id = "9">
-    Client or server sends a heartbeat
-    </message>
-    
-    <message name = "HUGZ-OK" id = "10">
-    Client or server answers a heartbeat
-    </message>
-    
-    <message name = "KTHXBAI" id = "11">
-    Client closes the peering
-    </message>
+<message name = "NOM" id = "7">
+Client sends credit to the server
+    <field name = "credit" type = "number" />
+    <field name = "receipts" type = "strings" />
+</message>
 
-    <message name = "SRSLY" id = "128">
-    Server refuses client due to access rights
-        <field name = "reason" type = "string" />
-    </message>
-    
-    <message name = "RTFM" id = "129">
-    Server tells client it sent an invalid message
-        <field name = "reason" type = "string" />
-    </message>
+<message name = "CHEEZBURGER" id = "8">
+The server sends a chunk of file data
+    <field name = "headers" type = "dictionary" />
+    <field name = "chunk" type = "frame" />
+</message>
+
+<message name = "HUGZ" id = "9">
+Client or server sends a heartbeat
+</message>
+
+<message name = "HUGZ-OK" id = "10">
+Client or server answers a heartbeat
+</message>
+
+<message name = "KTHXBAI" id = "11">
+Client closes the peering
+</message>
+
+<message name = "SRSLY" id = "128">
+Server refuses client due to access rights
+    <field name = "reason" type = "string" />
+</message>
+
+<message name = "RTFM" id = "129">
+Server tells client it sent an invalid message
+    <field name = "reason" type = "string" />
+</message>
+
 </class>

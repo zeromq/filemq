@@ -441,7 +441,7 @@ fmq_config_load (const char *filename)
 {
     FILE *file = fopen (filename, "r");
     if (!file)
-        return NULL;        //  File not found, or unreadable
+        return NULL;            //  File not found, or unreadable
 
     //  Prepare new fmq_config_t structure
     fmq_config_t *self = fmq_config_new ("root", NULL);
@@ -499,7 +499,6 @@ fmq_config_load (const char *filename)
     //  Either the whole ZPL file is valid or none of it is
     if (!valid)
         fmq_config_destroy (&self);
-    
     return self;
 }
 

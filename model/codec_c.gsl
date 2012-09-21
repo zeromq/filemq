@@ -1,3 +1,5 @@
+.include "library.gsl"
+.resolve_includes ()
 .echo "Generating ../include/$(class.name).h..."
 .output "../include/$(class.name).h"
 /*  =========================================================================
@@ -37,7 +39,10 @@ $(string.trim (class->license.):)
 */
 
 .for message
-#define $(CLASS.NAME)_$(MESSAGE.NAME)   $(id)
+#define $(CLASS.NAME)_$(MESSAGE.NAME)       $(id)
+.endfor
+.for class.field where type = "octets"
+#define $(CLASS.NAME)_$(FIELD.NAME)_SIZE    $(size)
 .endfor
 
 #ifdef __cplusplus
@@ -962,8 +967,8 @@ $(class.name)_test (bool verbose)
 .       if type = "octet"
     $(class.name)_$(name)_set (self, 123);
 .       elsif type = "octets"
-    byte $(name)_data [$(size)];
-    memset ($(name)_data, 123, $(size));
+    byte $(name)_data [$(CLASS.NAME)_$(FIELD.NAME)_SIZE];
+    memset ($(name)_data, 123, $(CLASS.NAME)_$(FIELD.NAME)_SIZE);
     $(class.name)_$(name)_set (self, $(name)_data);
 .       elsif type = "number"
     $(class.name)_$(name)_set (self, 12345678);
@@ -988,7 +993,7 @@ $(class.name)_test (bool verbose)
     assert ($(class.name)_$(name) (self) == 123);
 .       elsif type = "octets"
     assert ($(class.name)_$(name) (self) [0] == 123);
-    assert ($(class.name)_$(name) (self) [$(size) - 1] == 123);
+    assert ($(class.name)_$(name) (self) [$(CLASS.NAME)_$(FIELD.NAME)_SIZE - 1] == 123);
 .       elsif type = "number"
     assert ($(class.name)_$(name) (self) == 12345678);
 .       elsif type = "string"

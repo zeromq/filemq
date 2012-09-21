@@ -35,8 +35,7 @@ struct _fmq_msg_t {
     byte *ceiling;              //  Valid upper limit for read pointer
     char *protocol;
     byte version;
-    byte nodeid [16];
-    char *channel;
+    byte identity [16];
     zlist_t *mechanisms;
     size_t mechanisms_bytes;
     zframe_t *challenge;
@@ -161,7 +160,6 @@ fmq_msg_destroy (fmq_msg_t **self_p)
         //  Free class properties
         zframe_destroy (&self->address);
         free (self->protocol);
-        free (self->channel);
         if (self->mechanisms) {
             while (zlist_size (self->mechanisms))
                 free (zlist_pop (self->mechanisms));
@@ -229,9 +227,7 @@ fmq_msg_recv (void *socket)
             GET_OCTET (self->version);
             if (self->version != 1)
                 goto malformed;
-            GET_BLOCK (self->nodeid, 16);
-            free (self->channel);
-            GET_STRING (self->channel);
+            GET_BLOCK (self->identity, 16);
             break;
 
         case FMQ_MSG_ORLY:
@@ -394,12 +390,8 @@ fmq_msg_send (fmq_msg_t **self_p, void *socket)
             frame_size += 1 + strlen ("FILEMQ");
             //  version is an octet
             frame_size += 1;
-            //  nodeid is a block of 16 bytes
+            //  identity is a block of 16 bytes
             frame_size += 16;
-            //  channel is a string with 1-byte length
-            frame_size++;       //  Size is one octet
-            if (self->channel)
-                frame_size += strlen (self->channel);
             break;
             
         case FMQ_MSG_ORLY:
@@ -487,12 +479,7 @@ fmq_msg_send (fmq_msg_t **self_p, void *socket)
         case FMQ_MSG_OHAI:
             PUT_STRING ("FILEMQ");
             PUT_OCTET (1);
-            PUT_BLOCK (self->nodeid, 16);
-            if (self->channel) {
-                PUT_STRING (self->channel);
-            }
-            else
-                PUT_OCTET (0);      //  Empty string
+            PUT_BLOCK (self->identity, 16);
             break;
             
         case FMQ_MSG_ORLY:
@@ -653,18 +640,14 @@ fmq_msg_dump (fmq_msg_t *self)
             puts ("OHAI:");
             printf ("    protocol=filemq\n");
             printf ("    version=1\n");
-            printf ("    nodeid=");
-            int nodeid_index;
-            for (nodeid_index = 0; nodeid_index < 16; nodeid_index++) {
-                if (nodeid_index && (nodeid_index % 4 == 0))
+            printf ("    identity=");
+            int identity_index;
+            for (identity_index = 0; identity_index < 16; identity_index++) {
+                if (identity_index && (identity_index % 4 == 0))
                     printf ("-");
-                printf ("%02X", self->nodeid [nodeid_index]);
+                printf ("%02X", self->identity [identity_index]);
             }
             printf ("\n");
-            if (self->channel)
-                printf ("    channel='%s'\n", self->channel);
-            else
-                printf ("    channel=\n");
             break;
             
         case FMQ_MSG_ORLY:
@@ -843,45 +826,20 @@ fmq_msg_id_set (fmq_msg_t *self, int id)
 }
 
 //  --------------------------------------------------------------------------
-//  Get/set the nodeid field
+//  Get/set the identity field
 
 byte *
-fmq_msg_nodeid (fmq_msg_t *self)
+fmq_msg_identity (fmq_msg_t *self)
 {
     assert (self);
-    return self->nodeid;
+    return self->identity;
 }
 
 void
-fmq_msg_nodeid_set (fmq_msg_t *self, byte *nodeid)
+fmq_msg_identity_set (fmq_msg_t *self, byte *identity)
 {
     assert (self);
-    memcpy (self->nodeid, nodeid, 16);
-}
-
-
-//  --------------------------------------------------------------------------
-//  Get/set the channel field
-
-char *
-fmq_msg_channel (fmq_msg_t *self)
-{
-    assert (self);
-    return self->channel;
-}
-
-void
-fmq_msg_channel_set (fmq_msg_t *self, char *format, ...)
-{
-    //  Format into newly allocated string
-    assert (self);
-    va_list argptr;
-    va_start (argptr, format);
-    free (self->channel);
-    self->channel = (char *) malloc (STRING_MAX + 1);
-    assert (self->channel);
-    vsnprintf (self->channel, STRING_MAX, format, argptr);
-    va_end (argptr);
+    memcpy (self->identity, identity, 16);
 }
 
 
@@ -1282,17 +1240,15 @@ fmq_msg_test (bool verbose)
     //  Encode/send/decode and verify each message type
 
     self = fmq_msg_new (FMQ_MSG_OHAI);
-    byte nodeid_data [16];
-    memset (nodeid_data, 123, 16);
-    fmq_msg_nodeid_set (self, nodeid_data);
-    fmq_msg_channel_set (self, "Life is short but Now lasts for ever");
+    byte identity_data [FMQ_MSG_IDENTITY_SIZE];
+    memset (identity_data, 123, FMQ_MSG_IDENTITY_SIZE);
+    fmq_msg_identity_set (self, identity_data);
     fmq_msg_send (&self, output);
     
     self = fmq_msg_recv (input);
     assert (self);
-    assert (fmq_msg_nodeid (self) [0] == 123);
-    assert (fmq_msg_nodeid (self) [16 - 1] == 123);
-    assert (streq (fmq_msg_channel (self), "Life is short but Now lasts for ever"));
+    assert (fmq_msg_identity (self) [0] == 123);
+    assert (fmq_msg_identity (self) [FMQ_MSG_IDENTITY_SIZE - 1] == 123);
     fmq_msg_destroy (&self);
 
     self = fmq_msg_new (FMQ_MSG_ORLY);

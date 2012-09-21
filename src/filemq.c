@@ -37,12 +37,8 @@ int main (int argc, char *argv [])
     puts (COPYRIGHT);
     puts (NOWARRANTY);
     
-    //  Run selftest using 'anonymous.cfg' configuration
     fmq_server_t *self = fmq_server_new ();
-    assert (self);
-    puts ("Accepting FILEMQ connections on port 6000");
-    fmq_server_bind (self, "tcp://*:6000");
-    fmq_server_configure (self, "anonymous.cfg");
+    fmq_server_configure (self, "example.cfg");
 
     while (!zctx_interrupted)
         sleep (1);
