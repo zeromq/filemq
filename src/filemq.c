@@ -37,12 +37,19 @@ int main (int argc, char *argv [])
     puts (COPYRIGHT);
     puts (NOWARRANTY);
     
-    fmq_server_t *self = fmq_server_new ();
-    fmq_server_configure (self, "example.cfg");
+    fmq_server_t *server = fmq_server_new ();
+    fmq_server_configure (server, "server_test.cfg");
+    fmq_server_bind (server, "tcp://*:6000");
 
+    fmq_client_t *client = fmq_client_new ();
+    fmq_client_configure (client, "client_test.cfg");
+    fmq_client_connect (client, "tcp://localhost:6000");
+    
     while (!zctx_interrupted)
         sleep (1);
+    puts ("interrupted");
 
-    fmq_server_destroy (&self);
+    fmq_server_destroy (&server);
+    fmq_client_destroy (&client);
     return 0;
 }

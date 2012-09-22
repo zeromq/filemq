@@ -346,10 +346,9 @@ client_ping (const char *key, void *client, void *argument)
         self->heartbeat_at = zclock_time () + self->heartbeat;
     }
     //  Check whether to expire client, nothing received from it
-    if (zclock_time () >= self->expires_at) {
+    if (zclock_time () >= self->expires_at)
         server_client_execute ((server_t *) argument, self, expired_event);
-        client_destroy (&self);
-    }
+
     return 0;
 }
 
@@ -530,8 +529,8 @@ server_client_execute (server_t *self, client_t *client, int event)
         client->event = client->next_event;
         client->next_event = 0;
 .if switches.animate ?= 1
-        zclock_log ("%s:", s_state_name [client->state]);
-        zclock_log (" (%s)", s_event_name [client->event]);
+        zclock_log ("S: %s:", s_state_name [client->state]);
+        zclock_log ("S: (%s)", s_event_name [client->event]);
 .endif
         switch (client->state) {
 .for class.state
@@ -548,12 +547,12 @@ server_client_execute (server_t *self, client_t *client, int event)
 .       for action
 .           if name = "send"
 .               if switches.animate ?= 1
-                    zclock_log ("    + send $(MESSAGE:C)");
+                    zclock_log ("S:    + send $(MESSAGE:C)");
 .               endif
                     $(codec)_id_set (client->reply, $(CODEC)_$(MESSAGE:C));
 .           else
 .               if switches.animate ?= 1
-                    zclock_log ("    + $(name)");
+                    zclock_log ("S:    + $(name)");
 .               endif
                     $(name:c) (self, client);
 .               if count (class.action, name = -1.name) = 0
@@ -570,7 +569,7 @@ server_client_execute (server_t *self, client_t *client, int event)
 
 .endfor
         }
-        zclock_log ("      -------------------> %s", s_state_name [client->state]);
+        zclock_log ("S:      -------------------> %s", s_state_name [client->state]);
 
         if ($(codec)_id (client->reply)) {
 .if switches.trace ?= 1
@@ -722,7 +721,9 @@ $(class.name)_test (bool verbose)
 
 .   endfor
     $(class.name)_destroy (&self);
-    
+    //  No clean way to wait for a background thread to exit
+    //  Under valgrind this will randomly show as leakage
+    zclock_sleep (100);
 .endfor
     zctx_destroy (&ctx);
     printf ("OK\\n");

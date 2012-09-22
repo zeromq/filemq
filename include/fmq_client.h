@@ -49,6 +49,10 @@ void
 void
     fmq_client_connect (fmq_client_t *self, const char *endpoint);
 
+//  
+void
+    fmq_client_subscribe (fmq_client_t *self, const char *virtual, const char *local);
+
 //  Self test of this class
 int
     fmq_client_test (bool verbose);

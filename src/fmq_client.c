@@ -97,6 +97,20 @@ fmq_client_connect (fmq_client_t *self, const char *endpoint)
 }
 
 
+//  --------------------------------------------------------------------------
+
+void
+fmq_client_subscribe (fmq_client_t *self, const char *virtual, const char *local)
+{
+    assert (self);
+    assert (virtual);
+    assert (local);
+    zstr_sendm (self->pipe, "SUBSCRIBE");
+    zstr_sendm (self->pipe, virtual);
+    zstr_send (self->pipe, local);
+}
+
+
 //  ---------------------------------------------------------------------
 //  State machine constants
 
@@ -219,6 +233,11 @@ client_apply_config (client_t *self)
                 puts (fmq_config_value (entry));
             entry = fmq_config_next (entry);
         }
+        if (streq (fmq_config_name (section), "subscribe")) {
+            char *virtual = fmq_config_resolve (section, "virtual", "?");
+            char *local = fmq_config_resolve (section, "local", "?");
+            printf ("SUBSCRIBE: %s -> %s\n", virtual, local);
+        }
         section = fmq_config_next (section);
     }
 }
@@ -234,13 +253,17 @@ initialize_the_client (client_t *self)
 static void
 try_security_mechanism (client_t *self)
 {
-    
+        char *login = fmq_config_resolve (self->config, "security/plain/login", "guest"); 
+        char *password = fmq_config_resolve (self->config, "security/plain/password", "");
+        zframe_t *frame = fmq_sasl_plain_encode (login, password);                        
+        fmq_msg_mechanism_set (self->request, "PLAIN");                                   
+        fmq_msg_response_set (self->request, frame);                                      
 }
 
 static void
 get_next_subscription (client_t *self)
 {
-    
+        self->next_event = finished_event;
 }
 
 static void
@@ -288,123 +311,123 @@ client_execute (client_t *self, int event)
     while (self->next_event) {
         self->event = self->next_event;
         self->next_event = 0;
-        zclock_log ("%s:", s_state_name [self->state]);
-        zclock_log (" (%s)", s_event_name [self->event]);
+        zclock_log ("C: %s:", s_state_name [self->state]);
+        zclock_log ("C: (%s)", s_event_name [self->event]);
         switch (self->state) {
             case start_state:
                 if (self->event == ready_event) {
-                    zclock_log ("    + send OHAI");
+                    zclock_log ("C:    + send OHAI");
                     fmq_msg_id_set (self->request, FMQ_MSG_OHAI);
                     self->state = requesting_access_state;
                 }
                 else
                 if (self->event == srsly_event) {
-                    zclock_log ("    + log access denied");
+                    zclock_log ("C:    + log access denied");
                     log_access_denied (self);
-                    zclock_log ("    + terminate the client");
+                    zclock_log ("C:    + terminate the client");
                     terminate_the_client (self);
                 }
                 else
                 if (self->event == rtfm_event) {
-                    zclock_log ("    + log invalid message");
+                    zclock_log ("C:    + log invalid message");
                     log_invalid_message (self);
-                    zclock_log ("    + terminate the client");
+                    zclock_log ("C:    + terminate the client");
                     terminate_the_client (self);
                 }
                 else {
-                    zclock_log ("    + log protocol error");
+                    zclock_log ("C:    + log protocol error");
                     log_protocol_error (self);
-                    zclock_log ("    + terminate the client");
+                    zclock_log ("C:    + terminate the client");
                     terminate_the_client (self);
                 }
                 break;
 
             case requesting_access_state:
                 if (self->event == orly_event) {
-                    zclock_log ("    + try security mechanism");
+                    zclock_log ("C:    + try security mechanism");
                     try_security_mechanism (self);
-                    zclock_log ("    + send YARLY");
+                    zclock_log ("C:    + send YARLY");
                     fmq_msg_id_set (self->request, FMQ_MSG_YARLY);
                     self->state = requesting_access_state;
                 }
                 else
                 if (self->event == ohai_ok_event) {
-                    zclock_log ("    + get next subscription");
+                    zclock_log ("C:    + get next subscription");
                     get_next_subscription (self);
                     self->state = subscribing_state;
                 }
                 else
                 if (self->event == srsly_event) {
-                    zclock_log ("    + log access denied");
+                    zclock_log ("C:    + log access denied");
                     log_access_denied (self);
-                    zclock_log ("    + terminate the client");
+                    zclock_log ("C:    + terminate the client");
                     terminate_the_client (self);
                 }
                 else
                 if (self->event == rtfm_event) {
-                    zclock_log ("    + log invalid message");
+                    zclock_log ("C:    + log invalid message");
                     log_invalid_message (self);
-                    zclock_log ("    + terminate the client");
+                    zclock_log ("C:    + terminate the client");
                     terminate_the_client (self);
                 }
                 else {
-                    zclock_log ("    + log protocol error");
+                    zclock_log ("C:    + log protocol error");
                     log_protocol_error (self);
-                    zclock_log ("    + terminate the client");
+                    zclock_log ("C:    + terminate the client");
                     terminate_the_client (self);
                 }
                 break;
 
             case subscribing_state:
                 if (self->event == ok_event) {
-                    zclock_log ("    + send ICANHAZ");
+                    zclock_log ("C:    + send ICANHAZ");
                     fmq_msg_id_set (self->request, FMQ_MSG_ICANHAZ);
-                    zclock_log ("    + get next subscription");
+                    zclock_log ("C:    + get next subscription");
                     get_next_subscription (self);
                     self->state = subscribing_state;
                 }
                 else
                 if (self->event == finished_event) {
-                    zclock_log ("    + refill pipeline");
+                    zclock_log ("C:    + refill pipeline");
                     refill_pipeline (self);
-                    zclock_log ("    + send NOM");
+                    zclock_log ("C:    + send NOM");
                     fmq_msg_id_set (self->request, FMQ_MSG_NOM);
                     self->state = ready_state;
                 }
                 else
                 if (self->event == srsly_event) {
-                    zclock_log ("    + log access denied");
+                    zclock_log ("C:    + log access denied");
                     log_access_denied (self);
-                    zclock_log ("    + terminate the client");
+                    zclock_log ("C:    + terminate the client");
                     terminate_the_client (self);
                 }
                 else
                 if (self->event == rtfm_event) {
-                    zclock_log ("    + log invalid message");
+                    zclock_log ("C:    + log invalid message");
                     log_invalid_message (self);
-                    zclock_log ("    + terminate the client");
+                    zclock_log ("C:    + terminate the client");
                     terminate_the_client (self);
                 }
                 else {
-                    zclock_log ("    + log protocol error");
+                    zclock_log ("C:    + log protocol error");
                     log_protocol_error (self);
-                    zclock_log ("    + terminate the client");
+                    zclock_log ("C:    + terminate the client");
                     terminate_the_client (self);
                 }
                 break;
 
             case ready_state:
                 if (self->event == cheezburger_event) {
-                    zclock_log ("    + store file data");
+                    zclock_log ("C:    + store file data");
                     store_file_data (self);
-                    zclock_log ("    + refill pipeline");
+                    zclock_log ("C:    + refill pipeline");
                     refill_pipeline (self);
-                    zclock_log ("    + send NOM");
+                    zclock_log ("C:    + send NOM");
                     fmq_msg_id_set (self->request, FMQ_MSG_NOM);
                 }
                 else
                 if (self->event == hugz_event) {
-                    zclock_log ("    + send HUGZ_OK");
+                    zclock_log ("C:    + send HUGZ_OK");
                     fmq_msg_id_set (self->request, FMQ_MSG_HUGZ_OK);
                 }
                 else
@@ -412,30 +435,32 @@ client_execute (client_t *self, int event)
                 }
                 else
                 if (self->event == srsly_event) {
-                    zclock_log ("    + log access denied");
+                    zclock_log ("C:    + log access denied");
                     log_access_denied (self);
-                    zclock_log ("    + terminate the client");
+                    zclock_log ("C:    + terminate the client");
                     terminate_the_client (self);
                 }
                 else
                 if (self->event == rtfm_event) {
-                    zclock_log ("    + log invalid message");
+                    zclock_log ("C:    + log invalid message");
                     log_invalid_message (self);
-                    zclock_log ("    + terminate the client");
+                    zclock_log ("C:    + terminate the client");
                     terminate_the_client (self);
                 }
                 else {
-                    zclock_log ("    + log protocol error");
+                    zclock_log ("C:    + log protocol error");
                     log_protocol_error (self);
-                    zclock_log ("    + terminate the client");
+                    zclock_log ("C:    + terminate the client");
                     terminate_the_client (self);
                 }
                 break;
 
         }
-        zclock_log ("      -------------------> %s", s_state_name [self->state]);
+        zclock_log ("C:      -------------------> %s", s_state_name [self->state]);
 
         if (fmq_msg_id (self->request)) {
+            puts ("Send request to server");
+            fmq_msg_dump (self->request);
             fmq_msg_send (&self->request, self->dealer);
             self->request = fmq_msg_new (0);
         }
@@ -454,6 +479,9 @@ server_message (client_t *self)
     self->reply = fmq_msg_recv (self->dealer);
     if (!self->reply)
         return;         //  Interrupted; do nothing
+
+    puts ("Received reply from server");
+    fmq_msg_dump (self->reply);
     
     if (fmq_msg_id (self->reply) == FMQ_MSG_SRSLY)
         client_execute (self, srsly_event);
@@ -504,6 +532,14 @@ control_message (client_t *self)
 {
     zmsg_t *msg = zmsg_recv (self->pipe);
     char *method = zmsg_popstr (msg);
+    if (streq (method, "SUBSCRIBE")) {
+        char *virtual = zmsg_popstr (msg);
+        char *local = zmsg_popstr (msg);
+        printf ("SUBSCRIBE: %s -> %s\n", virtual, local);
+        free (virtual);
+        free (local);
+    }
+    else
     if (streq (method, "CONNECT")) {
         char *endpoint = zmsg_popstr (msg);
         client_restart (self, endpoint);
@@ -539,12 +575,13 @@ static void
 client_thread (void *args, zctx_t *ctx, void *pipe)
 {
     client_t *self = client_new (ctx, pipe);
-    zmq_pollitem_t items [] = {
-        { self->pipe, 0, ZMQ_POLLIN, 0 },
-        { self->dealer, 0, ZMQ_POLLIN, 0 }
-    };
-    int poll_size = self->dealer? 2: 1;
     while (!self->stopped) {
+        //  Build structure each time since self->dealer can change
+        zmq_pollitem_t items [] = {
+            { self->pipe, 0, ZMQ_POLLIN, 0 },
+            { self->dealer, 0, ZMQ_POLLIN, 0 }
+        };
+        int poll_size = self->dealer? 2: 1;
         if (zmq_poll (items, poll_size, 1000 * ZMQ_POLL_MSEC) == -1)
             break;              //  Context has been shut down
 

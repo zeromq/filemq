@@ -1,6 +1,5 @@
 <selftest>
     <init>
-//  We don't use a config file so we have to do this ourselves
 fmq_server_bind (self, "tcp://*:6000");
     </init>
     <step send = "OHAI" recv = "SRSLY" />
@@ -10,6 +9,9 @@ fmq_server_bind (self, "tcp://*:6000");
 </selftest>
 
 <selftest config = "anonymous.cfg">
+    <init>
+fmq_server_bind (self, "tcp://*:6000");
+    </init>
     <step send = "OHAI" recv = "OHAI-OK" />
     <step send = "ICANHAZ" recv = "ICANHAZ-OK" />
     <step send = "NOM" recv = "CHEEZBURGER" />
@@ -18,6 +20,9 @@ fmq_server_bind (self, "tcp://*:6000");
 </selftest>
 
 <selftest config = "server_test.cfg">
+    <init>
+fmq_server_bind (self, "tcp://*:6000");
+    </init>
     <step send = "OHAI" recv = "ORLY" />
     <step send = "YARLY" recv = "OHAI-OK">
 fmq_msg_mechanism_set (request, "PLAIN");

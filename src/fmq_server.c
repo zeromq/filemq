@@ -137,17 +137,17 @@ typedef enum {
 typedef enum {
     terminate_event = -1,
     ohai_event = 1,
-    _other_event = 2,
-    friend_event = 3,
-    foe_event = 4,
-    maybe_event = 5,
-    yarly_event = 6,
-    icanhaz_event = 7,
-    nom_event = 8,
-    hugz_event = 9,
-    kthxbai_event = 10,
-    heartbeat_event = 11,
-    expired_event = 12
+    heartbeat_event = 2,
+    expired_event = 3,
+    _other_event = 4,
+    friend_event = 5,
+    foe_event = 6,
+    maybe_event = 7,
+    yarly_event = 8,
+    icanhaz_event = 9,
+    nom_event = 10,
+    hugz_event = 11,
+    kthxbai_event = 12
 } event_t;
 
 //  Names for animation
@@ -164,6 +164,8 @@ static char *
 s_event_name [] = {
     "",
     "OHAI",
+    "heartbeat",
+    "expired",
     "$other",
     "friend",
     "foe",
@@ -172,9 +174,7 @@ s_event_name [] = {
     "ICANHAZ",
     "NOM",
     "HUGZ",
-    "KTHXBAI",
-    "heartbeat",
-    "expired"
+    "KTHXBAI"
 };
 
 
@@ -393,10 +393,9 @@ client_ping (const char *key, void *client, void *argument)
         self->heartbeat_at = zclock_time () + self->heartbeat;
     }
     //  Check whether to expire client, nothing received from it
-    if (zclock_time () >= self->expires_at) {
+    if (zclock_time () >= self->expires_at)
         server_client_execute ((server_t *) argument, self, expired_event);
-        client_destroy (&self);
-    }
+
     return 0;
 }
 
@@ -664,112 +663,138 @@ server_client_execute (server_t *self, client_t *client, int event)
     while (client->next_event) {
         client->event = client->next_event;
         client->next_event = 0;
-        zclock_log ("%s:", s_state_name [client->state]);
-        zclock_log (" (%s)", s_event_name [client->event]);
+        zclock_log ("S: %s:", s_state_name [client->state]);
+        zclock_log ("S: (%s)", s_event_name [client->event]);
         switch (client->state) {
             case start_state:
                 if (client->event == ohai_event) {
-                    zclock_log ("    + track client identity");
+                    zclock_log ("S:    + track client identity");
                     track_client_identity (self, client);
-                    zclock_log ("    + try anonymous access");
+                    zclock_log ("S:    + try anonymous access");
                     try_anonymous_access (self, client);
                     client->state = checking_client_state;
                 }
+                else
+                if (client->event == heartbeat_event) {
+                }
+                else
+                if (client->event == expired_event) {
+                    zclock_log ("S:    + terminate the client");
+                    terminate_the_client (self, client);
+                }
                 else {
-                    zclock_log ("    + send RTFM");
+                    zclock_log ("S:    + send RTFM");
                     fmq_msg_id_set (client->reply, FMQ_MSG_RTFM);
-                    zclock_log ("    + terminate the client");
+                    zclock_log ("S:    + terminate the client");
                     terminate_the_client (self, client);
                 }
                 break;
 
             case checking_client_state:
                 if (client->event == friend_event) {
-                    zclock_log ("    + send OHAI_OK");
+                    zclock_log ("S:    + send OHAI_OK");
                     fmq_msg_id_set (client->reply, FMQ_MSG_OHAI_OK);
                     client->state = ready_state;
                 }
                 else
                 if (client->event == foe_event) {
-                    zclock_log ("    + send SRSLY");
+                    zclock_log ("S:    + send SRSLY");
                     fmq_msg_id_set (client->reply, FMQ_MSG_SRSLY);
-                    zclock_log ("    + terminate the client");
+                    zclock_log ("S:    + terminate the client");
                     terminate_the_client (self, client);
                 }
                 else
                 if (client->event == maybe_event) {
-                    zclock_log ("    + list security mechanisms");
+                    zclock_log ("S:    + list security mechanisms");
                     list_security_mechanisms (self, client);
-                    zclock_log ("    + send ORLY");
+                    zclock_log ("S:    + send ORLY");
                     fmq_msg_id_set (client->reply, FMQ_MSG_ORLY);
                     client->state = challenging_client_state;
                 }
+                else
+                if (client->event == heartbeat_event) {
+                }
+                else
+                if (client->event == expired_event) {
+                    zclock_log ("S:    + terminate the client");
+                    terminate_the_client (self, client);
+                }
                 else {
-                    zclock_log ("    + send RTFM");
+                    zclock_log ("S:    + send RTFM");
                     fmq_msg_id_set (client->reply, FMQ_MSG_RTFM);
-                    zclock_log ("    + terminate the client");
+                    zclock_log ("S:    + terminate the client");
                     terminate_the_client (self, client);
                 }
                 break;
 
             case challenging_client_state:
                 if (client->event == yarly_event) {
-                    zclock_log ("    + try security mechanism");
+                    zclock_log ("S:    + try security mechanism");
                     try_security_mechanism (self, client);
                     client->state = checking_client_state;
                 }
+                else
+                if (client->event == heartbeat_event) {
+                }
+                else
+                if (client->event == expired_event) {
+                    zclock_log ("S:    + terminate the client");
+                    terminate_the_client (self, client);
+                }
                 else {
-                    zclock_log ("    + send RTFM");
+                    zclock_log ("S:    + send RTFM");
                     fmq_msg_id_set (client->reply, FMQ_MSG_RTFM);
-                    zclock_log ("    + terminate the client");
+                    zclock_log ("S:    + terminate the client");
                     terminate_the_client (self, client);
                 }
                 break;
 
             case ready_state:
                 if (client->event == icanhaz_event) {
-                    zclock_log ("    + store client subscription");
+                    zclock_log ("S:    + store client subscription");
                     store_client_subscription (self, client);
-                    zclock_log ("    + send ICANHAZ_OK");
+                    zclock_log ("S:    + send ICANHAZ_OK");
                     fmq_msg_id_set (client->reply, FMQ_MSG_ICANHAZ_OK);
                 }
                 else
                 if (client->event == nom_event) {
-                    zclock_log ("    + send CHEEZBURGER");
+                    zclock_log ("S:    + send CHEEZBURGER");
                     fmq_msg_id_set (client->reply, FMQ_MSG_CHEEZBURGER);
                 }
                 else
                 if (client->event == hugz_event) {
-                    zclock_log ("    + send HUGZ_OK");
+                    zclock_log ("S:    + send HUGZ_OK");
                     fmq_msg_id_set (client->reply, FMQ_MSG_HUGZ_OK);
                 }
                 else
                 if (client->event == kthxbai_event) {
-                    zclock_log ("    + terminate the client");
+                    zclock_log ("S:    + terminate the client");
                     terminate_the_client (self, client);
                 }
                 else
                 if (client->event == heartbeat_event) {
-                    zclock_log ("    + send HUGZ");
+                    zclock_log ("S:    + send HUGZ");
                     fmq_msg_id_set (client->reply, FMQ_MSG_HUGZ);
                 }
                 else
                 if (client->event == expired_event) {
-                    zclock_log ("    + terminate the client");
+                    zclock_log ("S:    + terminate the client");
                     terminate_the_client (self, client);
                 }
                 else {
-                    zclock_log ("    + send RTFM");
+                    zclock_log ("S:    + send RTFM");
                     fmq_msg_id_set (client->reply, FMQ_MSG_RTFM);
-                    zclock_log ("    + terminate the client");
+                    zclock_log ("S:    + terminate the client");
                     terminate_the_client (self, client);
                 }
                 break;
 
         }
-        zclock_log ("      -------------------> %s", s_state_name [client->state]);
+        zclock_log ("S:      -------------------> %s", s_state_name [client->state]);
 
         if (fmq_msg_id (client->reply)) {
+            puts ("Send message to client");
+            fmq_msg_dump (client->reply);
             fmq_msg_send (&client->reply, client->router);
             client->reply = fmq_msg_new (0);
             fmq_msg_address_set (client->reply, client->address);
@@ -792,6 +817,8 @@ server_client_message (server_t *self)
     if (!request)
         return;         //  Interrupted; do nothing
 
+    puts ("Received message from client");
+    fmq_msg_dump (request);
     char *hashkey = zframe_strhex (fmq_msg_address (request));
     client_t *client = zhash_lookup (self->clients, hashkey);
     if (client == NULL) {
@@ -888,8 +915,7 @@ fmq_server_test (bool verbose)
     //  Run selftest using '' configuration
     self = fmq_server_new ();
     assert (self);
-    //  We don't use a config file so we have to do this ourselves
-    fmq_server_bind (self, "tcp://*:6000");                       
+    fmq_server_bind (self, "tcp://*:6000");
     request = fmq_msg_new (FMQ_MSG_OHAI);
     fmq_msg_send (&request, dealer);
     reply = fmq_msg_recv (dealer);
@@ -919,11 +945,14 @@ fmq_server_test (bool verbose)
     fmq_msg_destroy (&reply);
 
     fmq_server_destroy (&self);
-    
+    //  No clean way to wait for a background thread to exit
+    //  Under valgrind this will randomly show as leakage
+    zclock_sleep (100);
     //  Run selftest using 'anonymous.cfg' configuration
     self = fmq_server_new ();
     assert (self);
     fmq_server_configure (self, "anonymous.cfg");
+    fmq_server_bind (self, "tcp://*:6000");
     request = fmq_msg_new (FMQ_MSG_OHAI);
     fmq_msg_send (&request, dealer);
     reply = fmq_msg_recv (dealer);
@@ -960,11 +989,14 @@ fmq_server_test (bool verbose)
     fmq_msg_destroy (&reply);
 
     fmq_server_destroy (&self);
-    
+    //  No clean way to wait for a background thread to exit
+    //  Under valgrind this will randomly show as leakage
+    zclock_sleep (100);
     //  Run selftest using 'server_test.cfg' configuration
     self = fmq_server_new ();
     assert (self);
     fmq_server_configure (self, "server_test.cfg");
+    fmq_server_bind (self, "tcp://*:6000");
     request = fmq_msg_new (FMQ_MSG_OHAI);
     fmq_msg_send (&request, dealer);
     reply = fmq_msg_recv (dealer);
@@ -1008,7 +1040,9 @@ fmq_server_test (bool verbose)
     fmq_msg_destroy (&reply);
 
     fmq_server_destroy (&self);
-    
+    //  No clean way to wait for a background thread to exit
+    //  Under valgrind this will randomly show as leakage
+    zclock_sleep (100);
     zctx_destroy (&ctx);
     printf ("OK\n");
     return 0;

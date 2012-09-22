@@ -1,0 +1,2 @@
+This is the directory used for testing. It has two folder; one 'send' for 
+files the server will send, and one 'recv' for files received by the client.

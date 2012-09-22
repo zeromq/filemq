@@ -61,9 +61,15 @@ self->next_event = ready_event;
 </action>
 
 <action name = "try security mechanism">
+    char *login = fmq_config_resolve (self->config, "security/plain/login", "guest");
+    char *password = fmq_config_resolve (self->config, "security/plain/password", "");
+    zframe_t *frame = fmq_sasl_plain_encode (login, password);
+    fmq_msg_mechanism_set (self->request, "PLAIN");
+    fmq_msg_response_set (self->request, frame);
 </action>
 
 <action name = "get next subscription">
+    self->next_event = finished_event;
 </action>
 
 <action name = "refill pipeline">
@@ -84,6 +90,12 @@ self->next_event = ready_event;
 <action name = "terminate the client">
 self->next_event = terminate_event;
 </action>
+
+<method name = "subscribe">
+<argument name = "virtual" type = "string" />
+<argument name = "local" type = "string" />
+printf ("SUBSCRIBE: %s -> %s\n", virtual, local);
+</method>
 
 <selftest config = "client_test.cfg">
 <init>
