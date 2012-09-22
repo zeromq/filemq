@@ -6,7 +6,8 @@ typedef struct {
 } sub_t;
 
 static sub_t *
-sub_new (client_t *client, char *path) {
+sub_new (client_t *client, char *path)
+{
     sub_t *self = (sub_t *) zmalloc (sizeof (sub_t));
     self->client = client;
     self->path = strdup (path);
@@ -14,7 +15,8 @@ sub_new (client_t *client, char *path) {
 }
 
 static void
-sub_destroy (sub_t **self_p) {
+sub_destroy (sub_t **self_p)
+{
     assert (self_p);
     if (*self_p) {
         sub_t *self = *self_p;

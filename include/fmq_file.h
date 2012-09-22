@@ -44,10 +44,6 @@ void
 fmq_file_t *
     fmq_file_dup (fmq_file_t *self);
 
-//  Return file path
-char *
-    fmq_file_path (fmq_file_t *self);
-
 //  Return file name
 char *
     fmq_file_name (fmq_file_t *self);

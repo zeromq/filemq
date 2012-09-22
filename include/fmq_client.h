@@ -1,7 +1,7 @@
 /*  =========================================================================
-    fmq_server.h
+    fmq_client.h
 
-    Generated header for fmq_server protocol server
+    Generated header for fmq_client protocol client
     -------------------------------------------------------------------------
     Copyright (c) 1991-2012 iMatix Corporation -- http://www.imatix.com     
     Copyright other contributors as noted in the AUTHORS file.              
@@ -23,51 +23,35 @@
     =========================================================================
 */
 
-#ifndef __FMQ_SERVER_H_INCLUDED__
-#define __FMQ_SERVER_H_INCLUDED__
+#ifndef __FMQ_CLIENT_H_INCLUDED__
+#define __FMQ_CLIENT_H_INCLUDED__
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 //  Opaque class structure
-typedef struct _fmq_server_t fmq_server_t;
+typedef struct _fmq_client_t fmq_client_t;
 
-//  Create a new fmq_server
-fmq_server_t *
-    fmq_server_new (void);
+//  Create a new fmq_client
+fmq_client_t *
+    fmq_client_new (void);
 
-//  Destroy the fmq_server
+//  Destroy the fmq_client
 void
-    fmq_server_destroy (fmq_server_t **self_p);
+    fmq_client_destroy (fmq_client_t **self_p);
 
-//  Bind to endpoint
+//  Load client configuration data
 void
-    fmq_server_bind (fmq_server_t *self, const char *endpoint);
-    
-//  Connect to endpoint
-void
-    fmq_server_connect (fmq_server_t *self, const char *endpoint);
+    fmq_client_configure (fmq_client_t *self, const char *config_file);
 
-//  Load server configuration data
+//  Open connection to server
 void
-    fmq_server_configure (fmq_server_t *self, const char *config_file);
-
-//  
-void
-    fmq_server_bind (fmq_server_t *self, const char *endpoint);
-
-//  
-void
-    fmq_server_connect (fmq_server_t *self, const char *endpoint);
-
-//  
-void
-    fmq_server_mount (fmq_server_t *self, const char *local, const char *virtual);
+    fmq_client_connect (fmq_client_t *self, const char *endpoint);
 
 //  Self test of this class
 int
-    fmq_server_test (bool verbose);
+    fmq_client_test (bool verbose);
 
 #ifdef __cplusplus
 }

@@ -60,37 +60,37 @@ FileMQ protocol server
 
 <!-- Server and client contexts -->
 <self>
-    <context>
-    zlist_t *subs;              //  Client subscriptions
-    zlist_t *mounts;            //  Mount points
-    </context>
+<context>
+zlist_t *subs;              //  Client subscriptions
+zlist_t *mounts;            //  Mount points
+</context>
 
-    <construct>
-    self->subs = zlist_new ();
-    self->mounts = zlist_new ();
-    </construct>
+<construct>
+self->subs = zlist_new ();
+self->mounts = zlist_new ();
+</construct>
 
-    <destruct>
-    //  Destroy subscriptions
-    while (zlist_size (self->subs)) {
-        sub_t *sub = (sub_t *) zlist_pop (self->subs);
-        sub_destroy (&sub);
-    }
-    zlist_destroy (&self->subs);
+<destruct>
+//  Destroy subscriptions
+while (zlist_size (self->subs)) {
+    sub_t *sub = (sub_t *) zlist_pop (self->subs);
+    sub_destroy (&sub);
+}
+zlist_destroy (&self->subs);
 
-    //  Destroy mount points
-    while (zlist_size (self->mounts)) {
-        mount_t *mount = (mount_t *) zlist_pop (self->mounts);
-        mount_destroy (&mount);
-    }
-    zlist_destroy (&self->mounts);
-    </destruct>
+//  Destroy mount points
+while (zlist_size (self->mounts)) {
+    mount_t *mount = (mount_t *) zlist_pop (self->mounts);
+    mount_destroy (&mount);
+}
+zlist_destroy (&self->mounts);
+</destruct>
 </self>
 
 <client>
-    <context>
-    byte identity [FMQ_MSG_IDENTITY_SIZE];
-    </context>
+<context>
+byte identity [FMQ_MSG_IDENTITY_SIZE];
+</context>
 </client>
 
 <!-- Embedded class for subscriptions -->
@@ -121,100 +121,100 @@ FileMQ protocol server
 -->
 
 <action name = "terminate the client">
-    //  Remove all subscriptions for this client
-    sub_t *sub = (sub_t *) zlist_first (self->subs);
-    while (sub) {
-        if (sub->client == client) {
-            sub_t *next = (sub_t *) zlist_next (self->subs);
-            zlist_remove (self->subs, sub);
-            sub_destroy (&sub);
-            sub = next;
-        }
-        else
-            sub = (sub_t *) zlist_next (self->subs);
+//  Remove all subscriptions for this client
+sub_t *sub = (sub_t *) zlist_first (self->subs);
+while (sub) {
+    if (sub->client == client) {
+        sub_t *next = (sub_t *) zlist_next (self->subs);
+        zlist_remove (self->subs, sub);
+        sub_destroy (&sub);
+        sub = next;
     }
-    client->next_event = terminate_event;
+    else
+        sub = (sub_t *) zlist_next (self->subs);
+}
+client->next_event = terminate_event;
 </action>
 
 <action name = "track client identity">
-    memcpy (client->identity, fmq_msg_identity (client->request), FMQ_MSG_IDENTITY_SIZE);
+memcpy (client->identity, fmq_msg_identity (client->request), FMQ_MSG_IDENTITY_SIZE);
 </action>
 
 <action name = "try anonymous access">
-    if (atoi (fmq_config_resolve (self->config, "security/anonymous", "0")) == 1)
-        client->next_event = friend_event;
-    else
-    if (atoi (fmq_config_resolve (self->config, "security/plain", "0")) == 1)
-        client->next_event = maybe_event;
-    else
-        client->next_event = foe_event;
+if (atoi (fmq_config_resolve (self->config, "security/anonymous", "0")) == 1)
+    client->next_event = friend_event;
+else
+if (atoi (fmq_config_resolve (self->config, "security/plain", "0")) == 1)
+    client->next_event = maybe_event;
+else
+    client->next_event = foe_event;
 </action>
     
 <action name = "list security mechanisms">
-    if (atoi (fmq_config_resolve (self->config, "security/anonymous", "0")) == 1)
-        fmq_msg_mechanisms_append (client->reply, "ANONYMOUS");
-    if (atoi (fmq_config_resolve (self->config, "security/plain", "0")) == 1)
-        fmq_msg_mechanisms_append (client->reply, "PLAIN");
+if (atoi (fmq_config_resolve (self->config, "security/anonymous", "0")) == 1)
+    fmq_msg_mechanisms_append (client->reply, "ANONYMOUS");
+if (atoi (fmq_config_resolve (self->config, "security/plain", "0")) == 1)
+    fmq_msg_mechanisms_append (client->reply, "PLAIN");
 </action>
 
 <action name = "try security mechanism">
-    client->next_event = foe_event;
-    char *login, *password;
-    if (streq (fmq_msg_mechanism (client->request), "PLAIN")
-    &&  fmq_sasl_plain_decode (fmq_msg_response (client->request), &login, &password) == 0) {
-        fmq_config_t *account = fmq_config_locate (self->config, "security/plain/account");
-        while (account) {
-            if (streq (fmq_config_resolve (account, "login", ""), login)
-            &&  streq (fmq_config_resolve (account, "password", ""), password)) {
-                client->next_event = friend_event;
-                break;
-            }
-            account = fmq_config_next (account);
+client->next_event = foe_event;
+char *login, *password;
+if (streq (fmq_msg_mechanism (client->request), "PLAIN")
+&&  fmq_sasl_plain_decode (fmq_msg_response (client->request), &login, &password) == 0) {
+    fmq_config_t *account = fmq_config_locate (self->config, "security/plain/account");
+    while (account) {
+        if (streq (fmq_config_resolve (account, "login", ""), login)
+        &&  streq (fmq_config_resolve (account, "password", ""), password)) {
+            client->next_event = friend_event;
+            break;
         }
+        account = fmq_config_next (account);
     }
-    free (login);
-    free (password);
+}
+free (login);
+free (password);
 </action>
 
 <action name = "store client subscription">
-    sub_t *sub = sub_new (client, fmq_msg_path (client->request));
-    zlist_append (self->subs, sub);
+sub_t *sub = sub_new (client, fmq_msg_path (client->request));
+zlist_append (self->subs, sub);
 </action>
 
 <!-- Hook actions -->
 <action name = "monitor the server">
-    mount_t *mount = (mount_t *) zlist_first (self->mounts);
-    while (mount) {
-        if (mount_refresh (mount)) {
+mount_t *mount = (mount_t *) zlist_first (self->mounts);
+while (mount) {
+    if (mount_refresh (mount)) {
 
-            //printf ("- %s/%s\n", fmq_file_path (old), fmq_file_name (old));
-            //printf ("+ %s/%s\n", fmq_file_path (new), fmq_file_name (new));
-            //printf ("# %s/%s\n", fmq_file_path (new), fmq_file_name (new));
-            //printf ("@ %s/%s\n", fmq_file_path (new), fmq_file_name (new));
+        //printf ("- %s/%s\n", fmq_file_path (old), fmq_file_name (old));
+        //printf ("+ %s/%s\n", fmq_file_path (new), fmq_file_name (new));
+        //printf ("# %s/%s\n", fmq_file_path (new), fmq_file_name (new));
+        //printf ("@ %s/%s\n", fmq_file_path (new), fmq_file_name (new));
 
 
-            //  Changed
-        }
-        mount = (mount_t *) zlist_next (self->mounts);
+        //  Changed
     }
+    mount = (mount_t *) zlist_next (self->mounts);
+}
 </action>
 
 <!-- API methods -->
 <method name = "bind">
-    <argument name = "endpoint" type = "string" />
-    zmq_bind (self->router, endpoint);
+<argument name = "endpoint" type = "string" />
+zmq_bind (self->router, endpoint);
 </method>
 
 <method name = "connect">
-    <argument name = "endpoint" type = "string" />
-    zmq_connect (self->router, endpoint);
+<argument name = "endpoint" type = "string" />
+zmq_connect (self->router, endpoint);
 </method>
 
 <method name = "mount">
-    <argument name = "local" type = "string" />
-    <argument name = "virtual" type = "string" />
-    mount_t *mount = mount_new (local, virtual);
-    zlist_append (self->mounts, mount);
+<argument name = "local" type = "string" />
+<argument name = "virtual" type = "string" />
+mount_t *mount = mount_new (local, virtual);
+zlist_append (self->mounts, mount);
 </method>
 
 <include filename = "fmq_server_selftest.xml" />

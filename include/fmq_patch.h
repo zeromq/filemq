@@ -1,5 +1,5 @@
 /*  =========================================================================
-    fmq_diff - work with directory diffs
+    fmq_patch - work with directory patches
 
     -------------------------------------------------------------------------
     Copyright (c) 1991-2012 iMatix Corporation -- http://www.imatix.com
@@ -22,42 +22,42 @@
     =========================================================================
 */
 
-#ifndef __FMQ_DIFF_H_INCLUDED__
-#define __FMQ_DIFF_H_INCLUDED__
+#ifndef __FMQ_PATCH_H_INCLUDED__
+#define __FMQ_PATCH_H_INCLUDED__
 
 typedef enum {
-    diff_create = 1,
-    diff_delete = 2,
-    diff_resize = 3,
-    diff_retime = 4
-} fmq_diff_op_t;
+    patch_create = 1,
+    patch_delete = 2,
+    patch_resize = 3,
+    patch_retime = 4
+} fmq_patch_op_t;
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 //  Opaque class structure
-typedef struct _fmq_diff_t fmq_diff_t;
+typedef struct _fmq_patch_t fmq_patch_t;
 
-//  Create new diff item
-fmq_diff_t *
-    fmq_diff_new (fmq_file_t *file, fmq_diff_op_t op);
+//  Create new patch
+fmq_patch_t *
+    fmq_patch_new (fmq_file_t *file, fmq_patch_op_t op);
 
-//  Destroy a diff item
+//  Destroy a patch
 void
-    fmq_diff_destroy (fmq_diff_t **self_p);
+    fmq_patch_destroy (fmq_patch_t **self_p);
 
-//  Return diff file item
+//  Return patch file item
 fmq_file_t *
-    fmq_diff_file (fmq_diff_t *self);
+    fmq_patch_file (fmq_patch_t *self);
 
-//  Return diff operation
-fmq_diff_op_t
-    fmq_diff_op (fmq_diff_t *self);
+//  Return operation
+fmq_patch_op_t
+    fmq_patch_op (fmq_patch_t *self);
     
 //  Self test of this class
 int
-    fmq_diff_test (bool verbose);
+    fmq_patch_test (bool verbose);
 
 #ifdef __cplusplus
 }

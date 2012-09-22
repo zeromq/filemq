@@ -1,0 +1,583 @@
+.#  client_c.gsl
+.#
+.#  Generates a client engine for a specified protocol.
+.#
+.include "library.gsl"
+.resolve_includes ()
+.echo "Generating ../include/$(class.name).h..."
+.output "../include/$(class.name).h"
+/*  =========================================================================
+    $(class.name).h
+
+    Generated header for $(class.name) protocol client
+    -------------------------------------------------------------------------
+    $(string.trim (class->license.):block                                   )
+    =========================================================================
+*/
+
+#ifndef __$(CLASS.NAME)_H_INCLUDED__
+#define __$(CLASS.NAME)_H_INCLUDED__
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+//  Opaque class structure
+typedef struct _$(class.name)_t $(class.name)_t;
+
+//  Create a new $(class.name)
+$(class.name)_t *
+    $(class.name)_new (void);
+
+//  Destroy the $(class.name)
+void
+    $(class.name)_destroy ($(class.name)_t **self_p);
+
+//  Load client configuration data
+void
+    $(class.name)_configure ($(class.name)_t *self, const char *config_file);
+
+//  Open connection to server
+void
+    $(class.name)_connect ($(class.name)_t *self, const char *endpoint);
+
+.for class.method
+//  $(method.text?'':)
+void
+    $(class.name)_$(name:c) ($(class.name)_t *self\
+.   for argument
+.       if type = "string"
+, const char *$(name)\
+.       elsif type = "number"
+, long $(name)\
+.       else
+.           echo "E: we didn't add support for $(type)s in methods"
+.       endif
+.   endfor
+);
+
+.endfor
+//  Self test of this class
+int
+    $(class.name)_test (bool verbose);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif
+.echo "Generating ../src/$(class.name).c..."
+.output "../src/$(class.name).c"
+/*  =========================================================================
+    $(class.name).c
+
+    Generated class for $(class.name) protocol client
+    -------------------------------------------------------------------------
+    $(string.trim (class->license.):block                                   )
+    =========================================================================
+*/
+
+#include <czmq.h>
+#include "../include/$(class.name).h"
+#include "../include/$(class.codec).h"
+#include "../include/fmq.h"
+
+//  The client runs as a background thread so that we can run multiple
+//  engines at once. The API talks to the client thread over an inproc
+//  pipe.
+
+static void
+    client_thread (void *args, zctx_t *ctx, void *pipe);
+
+//  ---------------------------------------------------------------------
+//  Structure of our front-end API class
+
+struct _$(class.name)_t {
+    zctx_t *ctx;        //  CZMQ context
+    void *pipe;         //  Pipe through to client
+};
+
+
+//  --------------------------------------------------------------------------
+//  Create a new $(class.name) and a new client instance
+
+$(class.name)_t *
+$(class.name)_new (void)
+{
+    $(class.name)_t *self = ($(class.name)_t *) zmalloc (sizeof ($(class.name)_t));
+    self->ctx = zctx_new ();
+    self->pipe = zthread_fork (self->ctx, client_thread, NULL);
+    return self;
+}
+
+
+//  --------------------------------------------------------------------------
+//  Destroy the $(class.name) and stop the client
+
+void
+$(class.name)_destroy ($(class.name)_t **self_p)
+{
+    assert (self_p);
+    if (*self_p) {
+        $(class.name)_t *self = *self_p;
+        zstr_send (self->pipe, "STOP");
+        char *string = zstr_recv (self->pipe);
+        free (string);
+        zctx_destroy (&self->ctx);
+        free (self);
+        *self_p = NULL;
+    }
+}
+
+
+//  --------------------------------------------------------------------------
+//  Load client configuration data
+
+void
+$(class.name)_configure ($(class.name)_t *self, const char *config_file)
+{
+    zstr_sendm (self->pipe, "CONFIG");
+    zstr_send  (self->pipe, config_file);
+}
+
+//  --------------------------------------------------------------------------
+//  Open connection to server
+
+void
+$(class.name)_connect ($(class.name)_t *self, const char *endpoint)
+{
+    zstr_sendm (self->pipe, "CONNECT");
+    zstr_send  (self->pipe, endpoint);
+}
+
+
+.for class.method
+//  --------------------------------------------------------------------------
+
+void
+$(class.name)_$(name:c) ($(class.name)_t *self\
+.   method.send = "send"
+.   for argument
+.       method.send = "sendm"
+.       if last ()
+.           argument.send = "send"
+.       else
+.           argument.send = "sendm"
+.       endif
+.       if type = "string"
+, const char *$(name)\
+.       elsif type = "number"
+, long $(name)\
+.       else
+.           echo "E: we didn't add support for $(type)s in methods"
+.       endif
+.   endfor
+)
+{
+    assert (self);
+.   for argument where type = "string"
+    assert ($(name));
+.   endfor
+    zstr_$(send) (self->pipe, "$(NAME)");
+.   for argument
+.       if type = "string"
+    zstr_$(send) (self->pipe, $(name));
+.       elsif type = "number"
+    zstr_$(send) (self->pipe, "%ld", $(name));
+.       endif
+.   endfor
+}
+
+
+.endfor
+.#  Inherit defaults state, if any, to all other states
+.for class.state as dstate where name = "defaults"
+.   for event as devent
+.       for class.state where count (event, name = devent.name) = 0
+.           copy devent to state
+.       endfor
+.   endfor
+.   delete dstate
+.endfor
+//  ---------------------------------------------------------------------
+//  State machine constants
+
+typedef enum {
+.for class.state
+    $(name:c)_state = $(index ())$(last ()??"" ?",")
+.   for event
+.       for class.event as cevent where cevent.name = event.name
+.       else
+.           if "$(name:)" = "$(NAME)"
+.               event.external = 1
+.           endif
+.           copy event to class
+.       endfor
+.   endfor
+.endfor
+} state_t;
+
+typedef enum {
+    terminate_event = -1,
+.for class.event
+    $(name:c)_event = $(index ())$(last ()??"" ?",")
+.endfor
+} event_t;
+
+.if switches.animate ?= 1
+//  Names for animation
+static char *
+s_state_name [] = {
+    "",
+.for class.state
+    "$(Name)"$(last ()??"" ?",")
+.endfor
+};
+
+static char *
+s_event_name [] = {
+    "",
+.for class.event
+    "$(name:)"$(last ()??"" ?",")
+.endfor
+};
+
+.endif
+
+//  Forward declarations
+typedef struct _client_t client_t;
+
+.for class.declare
+$(string.trim (declare.?''):)
+
+.endfor
+
+
+
+
+//  ---------------------------------------------------------------------
+//  Context for the client thread
+
+struct _client_t {
+    //  Properties accessible to client actions
+    event_t next_event;         //  Next event
+    
+    //  Properties you should NOT touch
+    zctx_t *ctx;                //  Own CZMQ context
+    void *pipe;                 //  Socket to back to caller
+    void *dealer;               //  Socket to talk to server
+    bool ready;                 //  Client connected
+    bool stopped;               //  Has client stopped?
+    fmq_config_t *config;       //  Configuration tree
+    state_t state;              //  Current state
+    event_t event;              //  Current event
+    $(codec)_t *request;        //  Next message to send
+    $(codec)_t *reply;          //  Last received reply
+.for class.self
+.   for context
+    $(string.trim (context.?''):block                                           )
+.   endfor
+.endfor
+};
+
+static client_t *
+client_new (zctx_t *ctx, void *pipe)
+{
+    client_t *self = (client_t *) zmalloc (sizeof (client_t));
+    self->ctx = ctx;
+    self->pipe = pipe;
+    self->config = fmq_config_new ("root", NULL);
+.for class.self
+.   for construct
+    $(string.trim (construct.?''):block                                         )
+.   endfor
+.endfor
+    return self;
+}
+
+static void
+client_destroy (client_t **self_p)
+{
+    assert (self_p);
+    if (*self_p) {
+        client_t *self = *self_p;
+        fmq_config_destroy (&self->config);
+        $(codec)_destroy (&self->request);
+        $(codec)_destroy (&self->reply);
+.for class.self
+.   for destruct
+        $(string.trim (destruct.?''):block                                      )
+.   endfor
+.endfor
+        free (self);
+        *self_p = NULL;
+    }
+}
+
+//  Apply configuration tree:
+//   * apply client configuration
+//   * print any echo items in top-level sections
+//   * apply sections that match methods
+
+static void
+client_apply_config (client_t *self)
+{
+    //  Get standard client configuration
+
+    //  Apply echo commands and class methods
+    fmq_config_t *section = fmq_config_child (self->config);
+    while (section) {
+        fmq_config_t *entry = fmq_config_child (section);
+        while (entry) {
+            if (streq (fmq_config_name (entry), "echo"))
+                puts (fmq_config_value (entry));
+            entry = fmq_config_next (entry);
+        }
+.for class.method
+        if (streq (fmq_config_name (section), "$(name)")) {
+.   for argument
+.       if type = "string"
+            char *$(name) = fmq_config_resolve (section, "$(name)", "?");
+.       elsif type = "number"
+            long $(name) = atoi (fmq_config_resolve (section, "$(name)", ""));
+.       endif
+.   endfor
+            $(string.trim (method.?''):block                                    )
+        }
+.   if !last ()
+        else
+.   endif
+.endfor
+        section = fmq_config_next (section);
+    }
+}
+
+.for class.action
+.   if first ()
+//  Custom actions for state machine
+
+.   endif
+static void
+$(name:c) (client_t *self)
+{
+    $(string.trim (action.?''):block                                            )
+}
+
+.endfor
+//  Execute state machine as long as we have events
+
+static void
+client_execute (client_t *self, int event)
+{
+    self->next_event = event;
+    while (self->next_event) {
+        self->event = self->next_event;
+        self->next_event = 0;
+.if switches.animate ?= 1
+        zclock_log ("%s:", s_state_name [self->state]);
+        zclock_log (" (%s)", s_event_name [self->event]);
+.endif
+        switch (self->state) {
+.for class.state
+            case $(name:c)_state:
+.   for event
+.       if name = "$other"
+                else {
+.       else
+.           if index () > 1
+                else
+.           endif
+                if (self->event == $(name:c)_event) {
+.       endif
+.       for action
+.           if name = "send"
+.               if switches.animate ?= 1
+                    zclock_log ("    + send $(MESSAGE:C)");
+.               endif
+                    $(codec)_id_set (self->request, $(CODEC)_$(MESSAGE:C));
+.           else
+.               if switches.animate ?= 1
+                    zclock_log ("    + $(name)");
+.               endif
+                    $(name:c) (self);
+.               if count (class.action, name = -1.name) = 0
+.                   echo 'E: you need to add <action name="$(name)">'
+.               endif
+.           endif
+.       endfor
+.       if defined (event.next)
+                    self->state = $(next:c)_state;
+.       endif
+                }
+.   endfor
+                break;
+
+.endfor
+        }
+        zclock_log ("      -------------------> %s", s_state_name [self->state]);
+
+        if ($(codec)_id (self->request)) {
+.if switches.trace ?= 1
+            puts ("Send request to server");
+            $(codec)_dump (self->request);
+.endif
+            $(codec)_send (&self->request, self->dealer);
+            self->request = $(codec)_new (0);
+        }
+        if (self->next_event == terminate_event) {
+            self->stopped = true;
+            break;
+        }
+    }
+}
+
+static void
+server_message (client_t *self)
+{
+    if (self->reply)
+        $(codec)_destroy (&self->reply);
+    self->reply = $(codec)_recv (self->dealer);
+    if (!self->reply)
+        return;         //  Interrupted; do nothing
+.if switches.trace ?= 1
+
+    puts ("Received reply from server");
+    $(codec)_dump (self->reply);
+.endif
+    
+.   for class.event where external ?= 1
+.   if index () > 1
+    else
+.   endif
+    if ($(codec)_id (self->reply) == $(CODEC)_$(NAME:C))
+        client_execute (self, $(name:c)_event);
+.   endfor
+}
+
+//  Restart client dialog from zero
+
+static void
+client_restart (client_t *self, char *endpoint)
+{
+    //  Free dialog-specific properties
+    if (self->dealer)
+        zsocket_destroy (self->ctx, self->dealer);
+    $(codec)_destroy (&self->request);
+
+    //  Restart dialog state machine from zero
+    self->dealer = zsocket_new (self->ctx, ZMQ_DEALER);
+    zmq_connect (self->dealer, endpoint);
+.for class.state where item () = 1
+    self->state = $(name:c)_state;
+.endfor
+    self->request = $(codec)_new (0);
+
+    //  Application hook to reinitialize dialog
+    //  Provides us with an event to kick things off
+    initialize_the_client (self);
+    client_execute (self, self->next_event);
+}
+
+static void
+control_message (client_t *self)
+{
+    zmsg_t *msg = zmsg_recv (self->pipe);
+    char *method = zmsg_popstr (msg);
+.for class.method
+    if (streq (method, "$(NAME)")) {
+.   for argument
+.       if type = "string"
+        char *$(name) = zmsg_popstr (msg);
+.       elsif type = "number"
+        char *$(name)_string = zmsg_popstr (msg);
+        long $(name) = atoi ($(name)_string);
+        free ($(name_string));
+.       endif
+.   endfor
+        $(string.trim (method.?''):block                                        )
+.   for argument where type = "string"
+        free ($(name));
+.   endfor
+    }
+    else
+.endfor
+    if (streq (method, "CONNECT")) {
+        char *endpoint = zmsg_popstr (msg);
+        client_restart (self, endpoint);
+        free (endpoint);
+    }
+    else
+    if (streq (method, "CONFIG")) {
+        char *config_file = zmsg_popstr (msg);
+        fmq_config_destroy (&self->config);
+        self->config = fmq_config_load (config_file);
+        if (self->config)
+            client_apply_config (self);
+        else {
+            printf ("E: cannot load config file '%s'\\n", config_file);
+            self->config = fmq_config_new ("root", NULL);
+        }
+        free (config_file);
+    }
+    else
+    if (streq (method, "STOP")) {
+        zstr_send (self->pipe, "OK");
+        self->stopped = true;
+        self->ready = true;
+    }
+    free (method);
+    zmsg_destroy (&msg);
+}
+
+//  Finally here's the client thread itself, which polls its two
+//  sockets and processes incoming messages
+
+static void
+client_thread (void *args, zctx_t *ctx, void *pipe)
+{
+    client_t *self = client_new (ctx, pipe);
+    zmq_pollitem_t items [] = {
+        { self->pipe, 0, ZMQ_POLLIN, 0 },
+        { self->dealer, 0, ZMQ_POLLIN, 0 }
+    };
+    int poll_size = self->dealer? 2: 1;
+    while (!self->stopped) {
+        if (zmq_poll (items, poll_size, 1000 * ZMQ_POLL_MSEC) == -1)
+            break;              //  Context has been shut down
+
+        //  Process incoming message from either socket
+        if (items [0].revents & ZMQ_POLLIN)
+            control_message (self);
+
+        if (items [1].revents & ZMQ_POLLIN)
+            server_message (self);
+    }
+    client_destroy (&self);
+}
+
+
+//  --------------------------------------------------------------------------
+//  Selftest
+
+int
+$(class.name)_test (bool verbose)
+{
+    printf (" * $(class.name): ");
+
+    $(class.name)_t *self;
+.for class.selftest
+    //  Run selftest using '$(config?'')' configuration
+    self = $(class.name)_new ();
+    assert (self);
+.   if defined (config)
+    $(class.name)_configure (self, "$(config:)");
+.   endif
+.   for init
+    $(string.trim (init.?''):block                                              )
+.   endfor
+    $(class.name)_destroy (&self);
+
+.endfor
+    printf ("OK\\n");
+    return 0;
+}

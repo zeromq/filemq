@@ -25,7 +25,7 @@
 
 #include <czmq.h>
 #include "../include/fmq_file.h"
-#include "../include/fmq_diff.h"
+#include "../include/fmq_patch.h"
 #include "../include/fmq_dir.h"
 
 //  Structure of our class
@@ -281,13 +281,13 @@ fmq_dir_count (fmq_dir_t *self)
 
 //  --------------------------------------------------------------------------
 //  Calculate differences between two versions of a directory tree
-//  Returns a list of fmq_diff_t differences. Either older or newer may
+//  Returns a list of fmq_patch_t patches. Either older or newer may
 //  be null, indicating the directory is empty/absent.
 
 zlist_t *
 fmq_dir_diff (fmq_dir_t *older, fmq_dir_t *newer)
 {
-    zlist_t *diffs = zlist_new ();
+    zlist_t *patches = zlist_new ();
     fmq_file_t **old_files = fmq_dir_flatten (older);
     fmq_file_t **new_files = fmq_dir_flatten (newer);
 
@@ -306,39 +306,36 @@ fmq_dir_diff (fmq_dir_t *older, fmq_dir_t *newer)
         else
         if (!new)
             cmp = -1;       //  New file was added at end of list
-        else {
-            cmp = strcmp (fmq_file_path (old), fmq_file_path (new));
-            if (cmp == 0)
-                cmp = strcmp (fmq_file_name (old), fmq_file_name (new));
-        }
-        if (cmp < 0) {
-            //  old file was deleted
-            zlist_append (diffs, fmq_diff_new (old, diff_delete));
-            new_index--;
-        }
         else
+            cmp = strcmp (fmq_file_name (old), fmq_file_name (new));
+
         if (cmp > 0) {
             //  new file was added
-            zlist_append (diffs, fmq_diff_new (new, diff_create));
+            zlist_append (patches, fmq_patch_new (new, patch_create));
             old_index--;
         }
         else
-        if (fmq_file_size (old) != fmq_file_size (new)) {
-            //  file has changed size
-            zlist_append (diffs, fmq_diff_new (new, diff_resize));
+        if (cmp < 0) {
+            //  old file was deleted
+            zlist_append (patches, fmq_patch_new (old, patch_delete));
+            new_index--;
         }
         else
-        if (fmq_file_time (old) != fmq_file_time (new)) {
+        if (fmq_file_size (old) != fmq_file_size (new))
+            //  file has changed size
+            zlist_append (patches, fmq_patch_new (new, patch_resize));
+        else
+        if (fmq_file_time (old) != fmq_file_time (new))
             //  file has changed timestamp
-            zlist_append (diffs, fmq_diff_new (new, diff_retime));
-        }
+            zlist_append (patches, fmq_patch_new (new, patch_retime));
+        
         old_index++;
         new_index++;
     }
     free (old_files);
     free (new_files);
     
-    return diffs;
+    return patches;
 }
 
 
@@ -418,7 +415,7 @@ fmq_dir_dump (fmq_dir_t *self, int indent)
         fmq_file_t *file = files [index];
         if (!file)
             break;
-        printf ("%s/%s\n", fmq_file_path (file), fmq_file_name (file));
+        puts (fmq_file_name (file));
     }
     free (files);
 }
@@ -438,13 +435,13 @@ fmq_dir_test (bool verbose)
         fmq_dir_dump (older, 0);
     }
     fmq_dir_t *newer = fmq_dir_new ("..", NULL);
-    zlist_t *diffs = fmq_dir_diff (older, newer);
-    assert (diffs);
-    while (zlist_size (diffs)) {
-        fmq_diff_t *diff = (fmq_diff_t *) zlist_pop (diffs);
-        fmq_diff_destroy (&diff);
+    zlist_t *patches = fmq_dir_diff (older, newer);
+    assert (patches);
+    while (zlist_size (patches)) {
+        fmq_patch_t *patch = (fmq_patch_t *) zlist_pop (patches);
+        fmq_patch_destroy (&patch);
     }
-    zlist_destroy (&diffs);
+    zlist_destroy (&patches);
     fmq_dir_destroy (&older);
     fmq_dir_destroy (&newer);
 

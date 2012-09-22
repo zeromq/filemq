@@ -37,14 +37,17 @@
     FMQ_MAKE_VERSION(FMQ_VERSION_MAJOR, FMQ_VERSION_MINOR, FMQ_VERSION_PATCH)
 
 //  These are reusable utility classes
+//  TODO: the generators and required classes should not be part of FMQ
+//  as such, but a separate project so they can be reused more widely.
 #include "fmq_file.h"
 #include "fmq_dir.h"
-#include "fmq_diff.h"
+#include "fmq_patch.h"
 #include "fmq_sasl.h"
 #include "fmq_config.h"
 
 //  These are specific to the FileMQ implementation
 #include "fmq_msg.h"
+#include "fmq_client.h"
 #include "fmq_server.h"
 
 #endif

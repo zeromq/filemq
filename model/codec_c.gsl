@@ -7,7 +7,7 @@
     
     Generated codec header for $(class.name)
     -------------------------------------------------------------------------
-$(string.trim (class->license.):)
+    $(string.trim (class->license.):block                                   )
     =========================================================================
 */
 
@@ -163,7 +163,7 @@ int
 
     Generated codec implementation for $(class.name)
     -------------------------------------------------------------------------
-$(string.trim (class->license.):)
+    $(string.trim (class->license.):block                                   )
     =========================================================================
 */
 

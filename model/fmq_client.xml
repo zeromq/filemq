@@ -1,17 +1,17 @@
-<class name = "fmq_client" script = "client_c">
+<class name = "fmq_client" script = "client_c" codec = "fmq_msg">
 This is the FILEMQ/1.0 client protocol handler
 <include filename = "license.xml" />
 
 <state name = "start">
-    <event name = "ok" next = "requesting access">
-        <action name = "send OHAI" />
+    <event name = "ready" next = "requesting access">
+        <action name = "send" message ="OHAI" />
     </event>
 </state>
 
 <state name = "requesting access">
     <event name = "ORLY" next = "requesting access">
         <action name = "try security mechanism" />
-        <action name = "send YARLY" />
+        <action name = "send" message = "YARLY" />
     </event>
     <event name = "OHAI-OK" next = "subscribing">
         <action name = "get next subscription" />
@@ -20,12 +20,12 @@ This is the FILEMQ/1.0 client protocol handler
 
 <state name = "subscribing">
     <event name = "ok" next = "subscribing">
-        <action name = "send ICANHAZ" />
+        <action name = "send" message = "ICANHAZ" />
         <action name = "get next subscription" />
     </event>
     <event name = "finished" next = "ready">
         <action name = "refill pipeline" />
-        <action name = "send NOM" />
+        <action name = "send" message = "NOM" />
     </event>
 </state>
 
@@ -33,35 +33,63 @@ This is the FILEMQ/1.0 client protocol handler
     <event name = "CHEEZBURGER">
         <action name = "store file data" />
         <action name = "refill pipeline" />
-        <action name = "send NOM" />
+        <action name = "send" message = "NOM" />
     </event>
     <event name = "HUGZ">
-        <action name = "send HUGZ-OK" />
-    </event>
-    <event name = "heartbeat">
-        <action name = "send HUGZ" />
+        <action name = "send" message = "HUGZ-OK" />
     </event>
     <event name = "ICANHAZ-OK" />
-    <event name = "HUGZ-OK" />
 </state>
 
-<state name = "default">
+<state name = "defaults">
     <event name = "SRSLY">
         <action name = "log access denied" />
-        <action name = "close the connection" />
+        <action name = "terminate the client" />
     </event>
     <event name = "RTFM">
         <action name = "log invalid message" />
-        <action name = "close the connection" />
+        <action name = "terminate the client" />
     </event>
-    <event name = "ROTFL">
+    <event name = "$other">
         <action name = "log protocol error" />
-        <action name = "close the connection" />
-    </event>
-    <event name = "PWNED">
-        <action name = "log server overloaded" />
-        <action name = "close the connection" />
+        <action name = "terminate the client" />
     </event>
 </state>
+
+<action name = "initialize the client">
+self->next_event = ready_event;
+</action>
+
+<action name = "try security mechanism">
+</action>
+
+<action name = "get next subscription">
+</action>
+
+<action name = "refill pipeline">
+</action>
+
+<action name = "store file data">
+</action>
+
+<action name = "log access denied">
+</action>
+
+<action name = "log invalid message">
+</action>
+
+<action name = "log protocol error">
+</action>
+
+<action name = "terminate the client">
+self->next_event = terminate_event;
+</action>
+
+<selftest config = "client_test.cfg">
+<init>
+fmq_client_connect (self, "tcp://localhost:6001");
+sleep (1);
+</init>
+</selftest>
 
 </class>

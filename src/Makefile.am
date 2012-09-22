@@ -9,8 +9,9 @@ include_HEADERS = \
 libfmq_la_SOURCES = \
     fmq_dir.c \
     fmq_file.c \
-    fmq_diff.c \
+    fmq_patch.c \
     fmq_msg.c \
+    fmq_client.c \
     fmq_server.c \
     fmq_config.c \
     fmq_sasl.c

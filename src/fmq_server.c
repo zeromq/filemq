@@ -3,31 +3,29 @@
 
     Generated class for fmq_server protocol server
     -------------------------------------------------------------------------
-    Copyright (c) 1991-2012 iMatix Corporation -- http://www.imatix.com
-    Copyright other contributors as noted in the AUTHORS file.
-
-    This file is part of FILEMQ, see http://filemq.org.
-
-    This is free software; you can redistribute it and/or modify it under
-    the terms of the GNU Lesser General Public License as published by the
-    Free Software Foundation; either version 3 of the License, or (at your
-    option) any later version.
-
-    This software is distributed in the hope that it will be useful, but
-    WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTA-
-    BILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General
-    Public License for more details.
-
+    Copyright (c) 1991-2012 iMatix Corporation -- http://www.imatix.com     
+    Copyright other contributors as noted in the AUTHORS file.              
+                                                                            
+    This file is part of FILEMQ, see http://filemq.org.                     
+                                                                            
+    This is free software; you can redistribute it and/or modify it under   
+    the terms of the GNU Lesser General Public License as published by the  
+    Free Software Foundation; either version 3 of the License, or (at your  
+    option) any later version.                                              
+                                                                            
+    This software is distributed in the hope that it will be useful, but    
+    WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTA-   
+    BILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General  
+    Public License for more details.                                        
+                                                                            
     You should have received a copy of the GNU Lesser General Public License
-    along with this program. If not, see http://www.gnu.org/licenses/.
+    along with this program. If not, see http://www.gnu.org/licenses/.      
     =========================================================================
 */
 
 #include <czmq.h>
 #include "../include/fmq_server.h"
 #include "../include/fmq_msg.h"
-//  TODO: the generators and required classes should not be part of FMQ
-//  as such, but a separate project so they can be reused more widely.
 #include "../include/fmq.h"
 
 //  The server runs as a background thread so that we can run multiple
@@ -153,7 +151,8 @@ typedef enum {
 } event_t;
 
 //  Names for animation
-char *s_state_name [] = {
+static char *
+s_state_name [] = {
     "",
     "Start",
     "Checking Client",
@@ -161,7 +160,8 @@ char *s_state_name [] = {
     "Ready"
 };
 
-char *s_event_name [] = {
+static char *
+s_event_name [] = {
     "",
     "OHAI",
     "$other",
@@ -189,7 +189,8 @@ typedef struct {
 } sub_t;
 
 static sub_t *
-sub_new (client_t *client, char *path) {
+sub_new (client_t *client, char *path)
+{
     sub_t *self = (sub_t *) zmalloc (sizeof (sub_t));
     self->client = client;
     self->path = strdup (path);
@@ -197,7 +198,8 @@ sub_new (client_t *client, char *path) {
 }
 
 static void
-sub_destroy (sub_t **self_p) {
+sub_destroy (sub_t **self_p)
+{
     assert (self_p);
     if (*self_p) {
         sub_t *self = *self_p;
@@ -206,6 +208,7 @@ sub_destroy (sub_t **self_p) {
         *self_p = NULL;
     }
 }
+
 //  Mount point in memory
 typedef struct {
     char *local;            //  Local path
@@ -217,33 +220,39 @@ typedef struct {
     off_t  size;            //  Total file size
     size_t count;           //  Total file count
 
-    //  List of diffs to directory
-    zlist_t *diffs;         //  fmq_diff_t items
+    //  List of patches to directory
+    zlist_t *patches;       //  fmq_patch_t items
 } mount_t;
 
 //  Constructor
 //  Loads directory tree if possible
 
 static mount_t *
-mount_new (char *local, char *virtual) {
+mount_new (char *local, char *virtual)
+{
     mount_t *self = (mount_t *) zmalloc (sizeof (mount_t));
     self->local = strdup (local);
     self->virtual = strdup (virtual);
     self->dir = fmq_dir_new (self->local, NULL);
-    if (self->dir)
-        fmq_dir_dump (self->dir, 0);
+    self->patches = zlist_new ();
     return self;
 }
 
 //  Destructor
 
 static void
-mount_destroy (mount_t **self_p) {
+mount_destroy (mount_t **self_p)
+{
     assert (self_p);
     if (*self_p) {
         mount_t *self = *self_p;
         free (self->local);
         free (self->virtual);
+        while (zlist_size (self->patches)) {
+            fmq_patch_t *patch = (fmq_patch_t *) zlist_pop (self->patches);
+            fmq_patch_destroy (&patch);
+        }
+        zlist_destroy (&self->patches);
         fmq_dir_destroy (&self->dir);
         free (self);
         *self_p = NULL;
@@ -253,38 +262,49 @@ mount_destroy (mount_t **self_p) {
 //  Reloads directory tree and returns true if changed, false if the same.
 
 static bool
-mount_refresh (mount_t *self) {
-    //  Get latest snapshot and if it's different, build a diffs list
+mount_refresh (mount_t *self)
+{
+    //  Get latest snapshot and build a patches list if it's changed
     fmq_dir_t *latest = fmq_dir_new (self->local, NULL);
-    zlist_t *diffs = fmq_dir_diff (self->dir, latest);
+    zlist_t *patches = fmq_dir_diff (self->dir, latest);
+
+    //  Drop old directory and replace with latest version
     fmq_dir_destroy (&self->dir);
     self->dir = latest;
 
-    fmq_diff_t *diff = (fmq_diff_t *) zlist_first (diffs);
-    while (diff) {
-        fmq_file_t *file = fmq_diff_file (diff);
-        fmq_diff_op_t op = fmq_diff_op (diff);
-        switch (op) {
-            case diff_create:
-                printf ("CREATE %s/%s\n", fmq_file_path (file), fmq_file_name (file));
+    //  Move new patches to mount patches list
+    //  If we had a previous operation on same file, remove that
+    while (zlist_size (patches)) {
+        fmq_patch_t *patch = (fmq_patch_t *) zlist_pop (patches);
+        //  Trace activity; we'll make this configurable later
+        switch (fmq_patch_op (patch)) {
+            case patch_create:
+                printf ("I: created: %s\n", fmq_file_name (fmq_patch_file (patch)));
                 break;
-            case diff_delete:
-                printf ("DELETE %s/%s\n", fmq_file_path (file), fmq_file_name (file));
+            case patch_delete:
+                printf ("I: deleted: %s\n", fmq_file_name (fmq_patch_file (patch)));
                 break;
-            case diff_resize:
-                printf ("RESIZE %s/%s\n", fmq_file_path (file), fmq_file_name (file));
+            case patch_resize:
+                printf ("I: changed: %s\n", fmq_file_name (fmq_patch_file (patch)));
                 break;
-            case diff_retime:
-                printf ("RETIME %s/%s\n", fmq_file_path (file), fmq_file_name (file));
+            case patch_retime:
+                printf ("I: touched: %s\n", fmq_file_name (fmq_patch_file (patch)));
                 break;
         }
-        diff = (fmq_diff_t *) zlist_next (diffs);
+        //  Remove old patch if any, for same file name
+        fmq_patch_t *check = (fmq_patch_t *) zlist_first (self->patches);
+        while (check) {
+            if (streq (fmq_file_name (fmq_patch_file (patch)),
+                       fmq_file_name (fmq_patch_file (check)))) {
+                zlist_remove (self->patches, check);
+                break;
+            }
+            else
+                check = (fmq_patch_t *) zlist_next (self->patches);
+        }
+        zlist_append (self->patches, patch);
     }
-    while (zlist_size (diffs)) {
-        diff = (fmq_diff_t *) zlist_pop (diffs);
-        fmq_diff_destroy (&diff);
-    }
-    zlist_destroy (&diffs);
+    zlist_destroy (&patches);
     return false;
 }
 
@@ -406,7 +426,7 @@ struct _server_t {
     int64_t monitor_at;         //  Next monitor at this time
     int heartbeat;              //  Heartbeat for clients
     zlist_t *subs;              //  Client subscriptions
-    zlist_t *mounts;            //  Mount points
+    zlist_t *mounts;            //  Mount points        
 };
 
 static server_t *
@@ -419,7 +439,7 @@ server_new (zctx_t *ctx, void *pipe)
     self->clients = zhash_new ();
     self->config = fmq_config_new ("root", NULL);
     self->monitor = 5000;       //  5 seconds by default
-    self->subs = zlist_new ();
+    self->subs = zlist_new ();  
     self->mounts = zlist_new ();
     return self;
 }
@@ -432,19 +452,19 @@ server_destroy (server_t **self_p)
         server_t *self = *self_p;
         fmq_config_destroy (&self->config);
         zhash_destroy (&self->clients);
-        //  Destroy subscriptions
-    while (zlist_size (self->subs)) {
-        sub_t *sub = (sub_t *) zlist_pop (self->subs);
-        sub_destroy (&sub);
-    }
-    zlist_destroy (&self->subs);
-
-    //  Destroy mount points
-    while (zlist_size (self->mounts)) {
-        mount_t *mount = (mount_t *) zlist_pop (self->mounts);
-        mount_destroy (&mount);
-    }
-    zlist_destroy (&self->mounts);
+        //  Destroy subscriptions                                 
+        while (zlist_size (self->subs)) {                         
+            sub_t *sub = (sub_t *) zlist_pop (self->subs);        
+            sub_destroy (&sub);                                   
+        }                                                         
+        zlist_destroy (&self->subs);                              
+                                                                  
+        //  Destroy mount points                                  
+        while (zlist_size (self->mounts)) {                       
+            mount_t *mount = (mount_t *) zlist_pop (self->mounts);
+            mount_destroy (&mount);                               
+        }                                                         
+        zlist_destroy (&self->mounts);                            
         free (self);
         *self_p = NULL;
     }
@@ -488,7 +508,7 @@ server_apply_config (server_t *self)
             char *local = fmq_config_resolve (section, "local", "?");
             char *virtual = fmq_config_resolve (section, "virtual", "?");
             mount_t *mount = mount_new (local, virtual);
-    zlist_append (self->mounts, mount);
+            zlist_append (self->mounts, mount);         
         }
         section = fmq_config_next (section);
     }
@@ -515,7 +535,7 @@ server_control_message (server_t *self)
         char *local = zmsg_popstr (msg);
         char *virtual = zmsg_popstr (msg);
         mount_t *mount = mount_new (local, virtual);
-    zlist_append (self->mounts, mount);
+        zlist_append (self->mounts, mount);         
         free (local);
         free (virtual);
     }
@@ -544,88 +564,95 @@ server_control_message (server_t *self)
 //  Custom actions for state machine
 
 static void
-terminate_the_client (server_t *self, client_t *client) {
-    //  Remove all subscriptions for this client
-    sub_t *sub = (sub_t *) zlist_first (self->subs);
-    while (sub) {
-        if (sub->client == client) {
+terminate_the_client (server_t *self, client_t *client)
+{
+    //  Remove all subscriptions for this client            
+    sub_t *sub = (sub_t *) zlist_first (self->subs);        
+    while (sub) {                                           
+        if (sub->client == client) {                        
             sub_t *next = (sub_t *) zlist_next (self->subs);
-            zlist_remove (self->subs, sub);
-            sub_destroy (&sub);
-            sub = next;
-        }
-        else
-            sub = (sub_t *) zlist_next (self->subs);
-    }
-    client->next_event = terminate_event;
+            zlist_remove (self->subs, sub);                 
+            sub_destroy (&sub);                             
+            sub = next;                                     
+        }                                                   
+        else                                                
+            sub = (sub_t *) zlist_next (self->subs);        
+    }                                                       
+    client->next_event = terminate_event;                   
 }
 
 static void
-track_client_identity (server_t *self, client_t *client) {
+track_client_identity (server_t *self, client_t *client)
+{
     memcpy (client->identity, fmq_msg_identity (client->request), FMQ_MSG_IDENTITY_SIZE);
 }
 
 static void
-try_anonymous_access (server_t *self, client_t *client) {
+try_anonymous_access (server_t *self, client_t *client)
+{
     if (atoi (fmq_config_resolve (self->config, "security/anonymous", "0")) == 1)
-        client->next_event = friend_event;
-    else
-    if (atoi (fmq_config_resolve (self->config, "security/plain", "0")) == 1)
-        client->next_event = maybe_event;
-    else
-        client->next_event = foe_event;
+        client->next_event = friend_event;                                       
+    else                                                                         
+    if (atoi (fmq_config_resolve (self->config, "security/plain", "0")) == 1)    
+        client->next_event = maybe_event;                                        
+    else                                                                         
+        client->next_event = foe_event;                                          
 }
 
 static void
-list_security_mechanisms (server_t *self, client_t *client) {
+list_security_mechanisms (server_t *self, client_t *client)
+{
     if (atoi (fmq_config_resolve (self->config, "security/anonymous", "0")) == 1)
-        fmq_msg_mechanisms_append (client->reply, "ANONYMOUS");
-    if (atoi (fmq_config_resolve (self->config, "security/plain", "0")) == 1)
-        fmq_msg_mechanisms_append (client->reply, "PLAIN");
+        fmq_msg_mechanisms_append (client->reply, "ANONYMOUS");                  
+    if (atoi (fmq_config_resolve (self->config, "security/plain", "0")) == 1)    
+        fmq_msg_mechanisms_append (client->reply, "PLAIN");                      
 }
 
 static void
-try_security_mechanism (server_t *self, client_t *client) {
-    client->next_event = foe_event;
-    char *login, *password;
-    if (streq (fmq_msg_mechanism (client->request), "PLAIN")
+try_security_mechanism (server_t *self, client_t *client)
+{
+    client->next_event = foe_event;                                                          
+    char *login, *password;                                                                  
+    if (streq (fmq_msg_mechanism (client->request), "PLAIN")                                 
     &&  fmq_sasl_plain_decode (fmq_msg_response (client->request), &login, &password) == 0) {
-        fmq_config_t *account = fmq_config_locate (self->config, "security/plain/account");
-        while (account) {
-            if (streq (fmq_config_resolve (account, "login", ""), login)
-            &&  streq (fmq_config_resolve (account, "password", ""), password)) {
-                client->next_event = friend_event;
-                break;
-            }
-            account = fmq_config_next (account);
-        }
-    }
-    free (login);
-    free (password);
+        fmq_config_t *account = fmq_config_locate (self->config, "security/plain/account");  
+        while (account) {                                                                    
+            if (streq (fmq_config_resolve (account, "login", ""), login)                     
+            &&  streq (fmq_config_resolve (account, "password", ""), password)) {            
+                client->next_event = friend_event;                                           
+                break;                                                                       
+            }                                                                                
+            account = fmq_config_next (account);                                             
+        }                                                                                    
+    }                                                                                        
+    free (login);                                                                            
+    free (password);                                                                         
 }
 
 static void
-store_client_subscription (server_t *self, client_t *client) {
+store_client_subscription (server_t *self, client_t *client)
+{
     sub_t *sub = sub_new (client, fmq_msg_path (client->request));
-    zlist_append (self->subs, sub);
+    zlist_append (self->subs, sub);                               
 }
 
 static void
-monitor_the_server (server_t *self, client_t *client) {
-    mount_t *mount = (mount_t *) zlist_first (self->mounts);
-    while (mount) {
-        if (mount_refresh (mount)) {
-
+monitor_the_server (server_t *self, client_t *client)
+{
+    mount_t *mount = (mount_t *) zlist_first (self->mounts);                 
+    while (mount) {                                                          
+        if (mount_refresh (mount)) {                                         
+                                                                             
             //printf ("- %s/%s\n", fmq_file_path (old), fmq_file_name (old));
             //printf ("+ %s/%s\n", fmq_file_path (new), fmq_file_name (new));
             //printf ("# %s/%s\n", fmq_file_path (new), fmq_file_name (new));
             //printf ("@ %s/%s\n", fmq_file_path (new), fmq_file_name (new));
-
-
-            //  Changed
-        }
-        mount = (mount_t *) zlist_next (self->mounts);
-    }
+                                                                             
+                                                                             
+            //  Changed                                                      
+        }                                                                    
+        mount = (mount_t *) zlist_next (self->mounts);                       
+    }                                                                        
 }
 
 //  Execute state machine as long as we have events
@@ -862,7 +889,7 @@ fmq_server_test (bool verbose)
     self = fmq_server_new ();
     assert (self);
     //  We don't use a config file so we have to do this ourselves
-    fmq_server_bind (self, "tcp://*:6000");
+    fmq_server_bind (self, "tcp://*:6000");                       
     request = fmq_msg_new (FMQ_MSG_OHAI);
     fmq_msg_send (&request, dealer);
     reply = fmq_msg_recv (dealer);
@@ -934,10 +961,10 @@ fmq_server_test (bool verbose)
 
     fmq_server_destroy (&self);
     
-    //  Run selftest using 'example.cfg' configuration
+    //  Run selftest using 'server_test.cfg' configuration
     self = fmq_server_new ();
     assert (self);
-    fmq_server_configure (self, "example.cfg");
+    fmq_server_configure (self, "server_test.cfg");
     request = fmq_msg_new (FMQ_MSG_OHAI);
     fmq_msg_send (&request, dealer);
     reply = fmq_msg_recv (dealer);
@@ -946,7 +973,7 @@ fmq_server_test (bool verbose)
     fmq_msg_destroy (&reply);
 
     request = fmq_msg_new (FMQ_MSG_YARLY);
-    fmq_msg_mechanism_set (request, "PLAIN");
+    fmq_msg_mechanism_set (request, "PLAIN");                                
     fmq_msg_response_set (request, fmq_sasl_plain_encode ("guest", "guest"));
     fmq_msg_send (&request, dealer);
     reply = fmq_msg_recv (dealer);

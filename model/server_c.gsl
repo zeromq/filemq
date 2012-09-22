@@ -11,7 +11,7 @@
 
     Generated header for $(class.name) protocol server
     -------------------------------------------------------------------------
-$(string.trim (class->license.):)
+    $(string.trim (class->license.):block                                   )
     =========================================================================
 */
 
@@ -77,15 +77,13 @@ int
 
     Generated class for $(class.name) protocol server
     -------------------------------------------------------------------------
-$(string.trim (class->license.):)
+    $(string.trim (class->license.):block                                   )
     =========================================================================
 */
 
 #include <czmq.h>
 #include "../include/$(class.name).h"
 #include "../include/$(class.codec).h"
-//  TODO: the generators and required classes should not be part of FMQ
-//  as such, but a separate project so they can be reused more widely.
 #include "../include/fmq.h"
 
 //  The server runs as a background thread so that we can run multiple
@@ -221,14 +219,16 @@ typedef enum {
 
 .if switches.animate ?= 1
 //  Names for animation
-char *s_state_name [] = {
+static char *
+s_state_name [] = {
     "",
 .for class.state
     "$(Name)"$(last ()??"" ?",")
 .endfor
 };
 
-char *s_event_name [] = {
+static char *
+s_event_name [] = {
     "",
 .for class.event
     "$(name:)"$(last ()??"" ?",")
@@ -242,9 +242,9 @@ typedef struct _server_t server_t;
 typedef struct _client_t client_t;
 
 .for class.declare
-$(string.trim (.?''):)
-.endfor
+$(string.trim (declare.?''):)
 
+.endfor
 
 //  ---------------------------------------------------------------------
 //  Simple class for one client we talk to
@@ -264,8 +264,10 @@ struct _client_t {
     zframe_t *address;          //  Client address identity
     $(codec)_t *request;        //  Last received request
     $(codec)_t *reply;          //  Reply to send out, if any
-.for class->client.context
-$(string.trim (.?''):)
+.for class.client
+.   for context
+    $(string.trim (context.?''):block                                           )
+.   endfor
 .endfor
 };
 
@@ -280,8 +282,10 @@ client_new (char *hashkey, zframe_t *address)
     self->address = zframe_dup (address);
     self->reply = $(codec)_new (0);
     $(codec)_address_set (self->reply, self->address);
-.for class->client.construct
-$(string.trim (.?''):)
+.for class.client
+.   for construct
+    $(string.trim (construct.?''):block                                         )
+.   endfor
 .endfor
     return self;
 }
@@ -296,8 +300,10 @@ client_destroy (client_t **self_p)
         $(codec)_destroy (&self->request);
         $(codec)_destroy (&self->reply);
         free (self->hashkey);
-.for class->client.destruct
-    $(string.trim (.?''):)
+.for class.client
+.   for destruct
+        $(string.trim (destruct.?''):block                                      )
+.   endfor
 .endfor
         free (self);
         *self_p = NULL;
@@ -372,8 +378,10 @@ struct _server_t {
     int monitor;                //  Monitor interval
     int64_t monitor_at;         //  Next monitor at this time
     int heartbeat;              //  Heartbeat for clients
-.for class->self.context
-$(string.trim (.?''):)
+.for class.self
+.   for context
+    $(string.trim (context.?''):block                                           )
+.   endfor
 .endfor
 };
 
@@ -387,8 +395,10 @@ server_new (zctx_t *ctx, void *pipe)
     self->clients = zhash_new ();
     self->config = fmq_config_new ("root", NULL);
     self->monitor = 5000;       //  5 seconds by default
-.for class->self.construct
-$(string.trim (.?''):)
+.for class.self
+.   for construct
+    $(string.trim (construct.?''):block                                         )
+.   endfor
 .endfor
     return self;
 }
@@ -401,8 +411,10 @@ server_destroy (server_t **self_p)
         server_t *self = *self_p;
         fmq_config_destroy (&self->config);
         zhash_destroy (&self->clients);
-.for class->self.destruct
-    $(string.trim (.?''):)
+.for class.self
+.   for destruct
+        $(string.trim (destruct.?''):block                                      )
+.   endfor
 .endfor
         free (self);
         *self_p = NULL;
@@ -442,7 +454,7 @@ server_apply_config (server_t *self)
             long $(name) = atoi (fmq_config_resolve (section, "$(name)", ""));
 .       endif
 .   endfor
-        $(string.trim (method.):)
+            $(string.trim (method.?''):block                                    )
         }
 .   if !last ()
         else
@@ -468,7 +480,7 @@ server_control_message (server_t *self)
         free ($(name_string));
 .       endif
 .   endfor
-    $(string.trim (method.):)
+        $(string.trim (method.?''):block                                        )
 .   for argument where type = "string"
         free ($(name));
 .   endfor        
@@ -502,8 +514,9 @@ server_control_message (server_t *self)
 
 .   endif
 static void
-$(name:c) (server_t *self, client_t *client) {
-$(string.trim (action.?''):)
+$(name:c) (server_t *self, client_t *client)
+{
+    $(string.trim (action.?''):block                                            )
 }
 
 .endfor
@@ -687,13 +700,13 @@ $(class.name)_test (bool verbose)
     $(class.name)_configure (self, "$(config:)");
 .   endif
 .   for init
-$(string.trim (init.?''):)
+    $(string.trim (init.?''):block                                              )
 .   endfor
 .   for step
 .       if defined (send)
     request = $(codec)_new ($(CODEC)_$(SEND:C));
 .           if defined (step.)
-$(string.trim (step.?''):)
+    $(string.trim (step.?''):block                                              )
 .           endif
     $(codec)_send (&request, dealer);
 .       endif

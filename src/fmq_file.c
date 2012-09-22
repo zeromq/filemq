@@ -46,8 +46,8 @@ fmq_file_new (const char *path, const char *name, time_t time, off_t size, mode_
         *self;
 
     self = (fmq_file_t *) zmalloc (sizeof (fmq_file_t));
-    self->path = strdup (path);
-    self->name = strdup (name);
+    self->name = malloc (strlen (path) + strlen (name) + 2);
+    sprintf (self->name, "%s/%s", path, name);
     self->time = time;
     self->size = size;
     self->mode = mode;
@@ -64,7 +64,6 @@ fmq_file_destroy (fmq_file_t **self_p)
     assert (self_p);
     if (*self_p) {
         fmq_file_t *self = *self_p;
-        free (self->path);
         free (self->name);
         free (self);
         *self_p = NULL;
@@ -78,19 +77,15 @@ fmq_file_destroy (fmq_file_t **self_p)
 fmq_file_t *
 fmq_file_dup (fmq_file_t *self)
 {
-    return fmq_file_new (self->path, self->name, self->time,
-                         self->size, self->mode);
-}
+    fmq_file_t
+        *copy;
 
-
-//  --------------------------------------------------------------------------
-//  Return file path
-
-char *
-fmq_file_path (fmq_file_t *self)
-{
-    assert (self);
-    return self->path;
+    copy = (fmq_file_t *) zmalloc (sizeof (fmq_file_t));
+    copy->name = strdup (self->name);
+    copy->time = self->time;
+    copy->size = self->size;
+    copy->mode = self->mode;
+    return copy;
 }
 
 
@@ -146,7 +141,7 @@ fmq_file_test (bool verbose)
     printf (" * fmq_file: ");
 
     fmq_file_t *file = fmq_file_new (".", "bilbo", 123456, 100, 0);
-    assert (streq (fmq_file_name (file), "bilbo"));
+    assert (streq (fmq_file_name (file), "./bilbo"));
     assert (fmq_file_time (file) == 123456);
     assert (fmq_file_size (file) == 100);
     assert (fmq_file_mode (file) == 0);

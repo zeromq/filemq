@@ -1,5 +1,6 @@
 /*  =========================================================================
-    fmq_diff - work with directory diffs
+    fmq_patch - work with directory patches
+    A patch is a change to the directory (create/delete/resize/retime).
 
     -------------------------------------------------------------------------
     Copyright (c) 1991-2012 iMatix Corporation -- http://www.imatix.com
@@ -24,40 +25,41 @@
 
 #include <czmq.h>
 #include "../include/fmq_file.h"
-#include "../include/fmq_diff.h"
+#include "../include/fmq_patch.h"
 
 //  Structure of our class
 
-struct _fmq_diff_t {
+struct _fmq_patch_t {
     fmq_file_t *file;           //  File we refer to
-    fmq_diff_op_t op;           //  Operation
+    fmq_patch_op_t op;          //  Operation
 };
 
 
 //  --------------------------------------------------------------------------
 //  Constructor
+//  Create new patch
 
-fmq_diff_t *
-fmq_diff_new (fmq_file_t *file, fmq_diff_op_t op)
+fmq_patch_t *
+fmq_patch_new (fmq_file_t *file, fmq_patch_op_t op)
 {
-    fmq_diff_t
+    fmq_patch_t
         *self;
 
-    self = (fmq_diff_t *) zmalloc (sizeof (fmq_diff_t));
+    self = (fmq_patch_t *) zmalloc (sizeof (fmq_patch_t));
     self->file = fmq_file_dup (file);
     self->op = op;
     return self;
 }
 
 //  --------------------------------------------------------------------------
-//  Destroy a diff item
+//  Destroy a patch
 
 void
-fmq_diff_destroy (fmq_diff_t **self_p)
+fmq_patch_destroy (fmq_patch_t **self_p)
 {
     assert (self_p);
     if (*self_p) {
-        fmq_diff_t *self = *self_p;
+        fmq_patch_t *self = *self_p;
         fmq_file_destroy (&self->file);
         free (self);
         *self_p = NULL;
@@ -66,10 +68,10 @@ fmq_diff_destroy (fmq_diff_t **self_p)
 
 
 //  --------------------------------------------------------------------------
-//  Return diff file item
+//  Return patch file item
 
 fmq_file_t *
-fmq_diff_file (fmq_diff_t *self)
+fmq_patch_file (fmq_patch_t *self)
 {
     assert (self);
     return self->file;
@@ -77,10 +79,10 @@ fmq_diff_file (fmq_diff_t *self)
 
 
 //  --------------------------------------------------------------------------
-//  Return diff operation
+//  Return operation
 
-fmq_diff_op_t
-fmq_diff_op (fmq_diff_t *self)
+fmq_patch_op_t
+fmq_patch_op (fmq_patch_t *self)
 {
     assert (self);
     return self->op;
@@ -90,21 +92,21 @@ fmq_diff_op (fmq_diff_t *self)
 //  --------------------------------------------------------------------------
 //  Self test of this class
 int
-fmq_diff_test (bool verbose)
+fmq_patch_test (bool verbose)
 {
-    printf (" * fmq_diff: ");
+    printf (" * fmq_patch: ");
 
     fmq_file_t *file = fmq_file_new (".", "bilbo", 123456, 100, 0);
-    fmq_diff_t *diff = fmq_diff_new (file, diff_create);
+    fmq_patch_t *patch = fmq_patch_new (file, patch_create);
     fmq_file_destroy (&file);
     
-    file = fmq_diff_file (diff);
-    assert (streq (fmq_file_name (file), "bilbo"));
+    file = fmq_patch_file (patch);
+    assert (streq (fmq_file_name (file), "./bilbo"));
     assert (fmq_file_time (file) == 123456);
     assert (fmq_file_size (file) == 100);
     assert (fmq_file_mode (file) == 0);
     
-    fmq_diff_destroy (&diff);
+    fmq_patch_destroy (&patch);
 
     printf ("OK\n");
     return 0;
