@@ -1,5 +1,9 @@
 FileMQ implementation in C
 
+A project to build a large-scale secure file distribution system over 0MQ using a pub-sub metaphor.
+
+Protocol spec is at http://rfc.zeromq.org/spec:19
+
 Work in progress
 
 To build:
