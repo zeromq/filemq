@@ -32,6 +32,7 @@
 struct _fmq_patch_t {
     fmq_file_t *file;           //  File we refer to
     fmq_patch_op_t op;          //  Operation
+    int number;                 //  Patch number
 };
 
 
@@ -40,14 +41,12 @@ struct _fmq_patch_t {
 //  Create new patch
 
 fmq_patch_t *
-fmq_patch_new (fmq_file_t *file, fmq_patch_op_t op)
+fmq_patch_new (fmq_file_t *file, fmq_patch_op_t op, int number)
 {
-    fmq_patch_t
-        *self;
-
-    self = (fmq_patch_t *) zmalloc (sizeof (fmq_patch_t));
+    fmq_patch_t *self = (fmq_patch_t *) zmalloc (sizeof (fmq_patch_t));
     self->file = fmq_file_dup (file);
     self->op = op;
+    self->number = number;
     return self;
 }
 
@@ -64,6 +63,16 @@ fmq_patch_destroy (fmq_patch_t **self_p)
         free (self);
         *self_p = NULL;
     }
+}
+
+
+//  --------------------------------------------------------------------------
+//  Create copy of a patch
+
+fmq_patch_t *
+fmq_patch_dup (fmq_patch_t *self)
+{
+    return fmq_patch_new (self->file, self->op, self->number);
 }
 
 
@@ -90,6 +99,28 @@ fmq_patch_op (fmq_patch_t *self)
 
 
 //  --------------------------------------------------------------------------
+//  Get patch number
+
+int
+fmq_patch_number (fmq_patch_t *self)
+{
+    assert (self);
+    return self->number;
+}
+
+
+//  --------------------------------------------------------------------------
+//  Set patch number
+
+void
+fmq_patch_set_number (fmq_patch_t *self, int number)
+{
+    assert (self);
+    self->number = number;
+}
+
+
+//  --------------------------------------------------------------------------
 //  Self test of this class
 int
 fmq_patch_test (bool verbose)
@@ -97,7 +128,7 @@ fmq_patch_test (bool verbose)
     printf (" * fmq_patch: ");
 
     fmq_file_t *file = fmq_file_new (".", "bilbo", 123456, 100, 0);
-    fmq_patch_t *patch = fmq_patch_new (file, patch_create);
+    fmq_patch_t *patch = fmq_patch_new (file, patch_create, 123);
     fmq_file_destroy (&file);
     
     file = fmq_patch_file (patch);
@@ -105,6 +136,7 @@ fmq_patch_test (bool verbose)
     assert (fmq_file_time (file) == 123456);
     assert (fmq_file_size (file) == 100);
     assert (fmq_file_mode (file) == 0);
+    assert (fmq_patch_number (patch) == 123);
     
     fmq_patch_destroy (&patch);
 

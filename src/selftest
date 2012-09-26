@@ -2,7 +2,29 @@
 cd ../model
 ./generate
 cd ../src
-gcc -g -o fmq_selftest fmq_*.c ${CFLAGS} ${LDFLAGS} -lczmq -lzmq
+
+gcc -g -o filemq filemq.c \
+    fmq_client.c \
+    fmq_config.c \
+    fmq_dir.c \
+    fmq_file.c \
+    fmq_msg.c \
+    fmq_patch.c \
+    fmq_sasl.c \
+    fmq_server.c \
+    ${CFLAGS} ${LDFLAGS} -lczmq -lzmq
+
+gcc -g -o fmq_selftest fmq_selftest.c  \
+    fmq_client.c \
+    fmq_config.c \
+    fmq_dir.c \
+    fmq_file.c \
+    fmq_msg.c \
+    fmq_patch.c \
+    fmq_sasl.c \
+    fmq_server.c \
+    ${CFLAGS} ${LDFLAGS} -lczmq -lzmq
+
 if [ $? -eq 0 ]; then
     if [ "$1" == "-q" ]; then
         ./fmq_selftest

@@ -47,6 +47,10 @@ struct _fmq_msg_t {
     int64_t credit;
     zlist_t *receipts;
     size_t receipts_bytes;
+    byte operation;
+    char *filename;
+    int64_t chunk_size;
+    int64_t chunk_offset;
     zhash_t *headers;
     size_t headers_bytes;
     zframe_t *chunk;
@@ -175,6 +179,7 @@ fmq_msg_destroy (fmq_msg_t **self_p)
                 free (zlist_pop (self->receipts));
             zlist_destroy (&self->receipts);
         }
+        free (self->filename);
         zhash_destroy (&self->headers);
         zframe_destroy (&self->chunk);
         free (self->reason);
@@ -225,7 +230,7 @@ fmq_msg_recv (void *socket)
             if (strneq (self->protocol, "FILEMQ"))
                 goto malformed;
             GET_OCTET (self->version);
-            if (self->version != 1)
+            if (self->version != FMQ_MSG_VERSION)
                 goto malformed;
             GET_BLOCK (self->identity, 16);
             break;
@@ -291,6 +296,11 @@ fmq_msg_recv (void *socket)
             break;
 
         case FMQ_MSG_CHEEZBURGER:
+            GET_OCTET (self->operation);
+            free (self->filename);
+            GET_STRING (self->filename);
+            GET_NUMBER (self->chunk_size);
+            GET_NUMBER (self->chunk_offset);
             GET_OCTET (hash_size);
             self->headers = zhash_new ();
             while (hash_size--) {
@@ -435,6 +445,16 @@ fmq_msg_send (fmq_msg_t **self_p, void *socket)
             break;
             
         case FMQ_MSG_CHEEZBURGER:
+            //  operation is an octet
+            frame_size += 1;
+            //  filename is a string with 1-byte length
+            frame_size++;       //  Size is one octet
+            if (self->filename)
+                frame_size += strlen (self->filename);
+            //  chunk_size is an 8-byte integer
+            frame_size += 8;
+            //  chunk_offset is an 8-byte integer
+            frame_size += 8;
             //  headers is an array of key=value strings
             frame_size++;       //  Size is one octet
             if (self->headers)
@@ -478,7 +498,7 @@ fmq_msg_send (fmq_msg_t **self_p, void *socket)
     switch (self->id) {
         case FMQ_MSG_OHAI:
             PUT_STRING ("FILEMQ");
-            PUT_OCTET (1);
+            PUT_OCTET (FMQ_MSG_VERSION);
             PUT_BLOCK (self->identity, 16);
             break;
             
@@ -540,6 +560,14 @@ fmq_msg_send (fmq_msg_t **self_p, void *socket)
             break;
             
         case FMQ_MSG_CHEEZBURGER:
+            PUT_OCTET (self->operation);
+            if (self->filename) {
+                PUT_STRING (self->filename);
+            }
+            else
+                PUT_OCTET (0);      //  Empty string
+            PUT_NUMBER (self->chunk_size);
+            PUT_NUMBER (self->chunk_offset);
             if (self->headers != NULL) {
                 PUT_OCTET (zhash_size (self->headers));
                 zhash_foreach (self->headers, s_headers_write, self);
@@ -639,7 +667,7 @@ fmq_msg_dump (fmq_msg_t *self)
         case FMQ_MSG_OHAI:
             puts ("OHAI:");
             printf ("    protocol=filemq\n");
-            printf ("    version=1\n");
+            printf ("    version=fmq_msg_version\n");
             printf ("    identity=");
             int identity_index;
             for (identity_index = 0; identity_index < 16; identity_index++) {
@@ -737,6 +765,13 @@ fmq_msg_dump (fmq_msg_t *self)
             
         case FMQ_MSG_CHEEZBURGER:
             puts ("CHEEZBURGER:");
+            printf ("    operation=%d\n", self->operation);
+            if (self->filename)
+                printf ("    filename='%s'\n", self->filename);
+            else
+                printf ("    filename=\n");
+            printf ("    chunk_size=%ld\n", (long) self->chunk_size);
+            printf ("    chunk_offset=%ld\n", (long) self->chunk_offset);
             printf ("    headers={\n");
             if (self->headers)
                 zhash_foreach (self->headers, s_headers_dump, self);
@@ -1109,6 +1144,85 @@ fmq_msg_receipts_size (fmq_msg_t *self)
 
 
 //  --------------------------------------------------------------------------
+//  Get/set the operation field
+
+byte
+fmq_msg_operation (fmq_msg_t *self)
+{
+    assert (self);
+    return self->operation;
+}
+
+void
+fmq_msg_operation_set (fmq_msg_t *self, byte operation)
+{
+    assert (self);
+    self->operation = operation;
+}
+
+
+//  --------------------------------------------------------------------------
+//  Get/set the filename field
+
+char *
+fmq_msg_filename (fmq_msg_t *self)
+{
+    assert (self);
+    return self->filename;
+}
+
+void
+fmq_msg_filename_set (fmq_msg_t *self, char *format, ...)
+{
+    //  Format into newly allocated string
+    assert (self);
+    va_list argptr;
+    va_start (argptr, format);
+    free (self->filename);
+    self->filename = (char *) malloc (STRING_MAX + 1);
+    assert (self->filename);
+    vsnprintf (self->filename, STRING_MAX, format, argptr);
+    va_end (argptr);
+}
+
+
+//  --------------------------------------------------------------------------
+//  Get/set the chunk_size field
+
+int64_t
+fmq_msg_chunk_size (fmq_msg_t *self)
+{
+    assert (self);
+    return self->chunk_size;
+}
+
+void
+fmq_msg_chunk_size_set (fmq_msg_t *self, int64_t chunk_size)
+{
+    assert (self);
+    self->chunk_size = chunk_size;
+}
+
+
+//  --------------------------------------------------------------------------
+//  Get/set the chunk_offset field
+
+int64_t
+fmq_msg_chunk_offset (fmq_msg_t *self)
+{
+    assert (self);
+    return self->chunk_offset;
+}
+
+void
+fmq_msg_chunk_offset_set (fmq_msg_t *self, int64_t chunk_offset)
+{
+    assert (self);
+    self->chunk_offset = chunk_offset;
+}
+
+
+//  --------------------------------------------------------------------------
 //  Get/set a value in the headers dictionary
 
 char *
@@ -1319,6 +1433,10 @@ fmq_msg_test (bool verbose)
     fmq_msg_destroy (&self);
 
     self = fmq_msg_new (FMQ_MSG_CHEEZBURGER);
+    fmq_msg_operation_set (self, 123);
+    fmq_msg_filename_set (self, "Life is short but Now lasts for ever");
+    fmq_msg_chunk_size_set (self, 12345678);
+    fmq_msg_chunk_offset_set (self, 12345678);
     fmq_msg_headers_insert (self, "Name", "Brutus");
     fmq_msg_headers_insert (self, "Age", "%d", 43);
     fmq_msg_chunk_set (self, zframe_new ("Captcha Diem", 12));
@@ -1326,6 +1444,10 @@ fmq_msg_test (bool verbose)
     
     self = fmq_msg_recv (input);
     assert (self);
+    assert (fmq_msg_operation (self) == 123);
+    assert (streq (fmq_msg_filename (self), "Life is short but Now lasts for ever"));
+    assert (fmq_msg_chunk_size (self) == 12345678);
+    assert (fmq_msg_chunk_offset (self) == 12345678);
     assert (fmq_msg_headers_size (self) == 2);
     assert (streq (fmq_msg_headers_string (self, "Name", "?"), "Brutus"));
     assert (fmq_msg_headers_number (self, "Age", 0) == 43);

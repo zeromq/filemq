@@ -53,7 +53,11 @@
         credit        number 
         receipts      strings 
 
-    CHEEZBURGER - The server sends a chunk of file data
+    CHEEZBURGER - The server sends a file patch
+        operation     octet 
+        filename      string 
+        chunk_size    number 
+        chunk_offset  number 
         headers       dictionary 
         chunk         frame 
 
@@ -69,6 +73,12 @@
     RTFM - Server tells client it sent an invalid message
         reason        string 
 */
+
+#define FMQ_MSG_VERSION                     1
+#define FMQ_MSG_FILE_CREATE                 1
+#define FMQ_MSG_FILE_DELETE                 2
+#define FMQ_MSG_FILE_RESIZE                 3
+#define FMQ_MSG_FILE_RETIME                 4
 
 #define FMQ_MSG_OHAI                        1
 #define FMQ_MSG_ORLY                        2
@@ -189,6 +199,30 @@ void
     fmq_msg_receipts_append (fmq_msg_t *self, char *format, ...);
 size_t
     fmq_msg_receipts_size (fmq_msg_t *self);
+
+//  Get/set the operation field
+byte
+    fmq_msg_operation (fmq_msg_t *self);
+void
+    fmq_msg_operation_set (fmq_msg_t *self, byte operation);
+
+//  Get/set the filename field
+char *
+    fmq_msg_filename (fmq_msg_t *self);
+void
+    fmq_msg_filename_set (fmq_msg_t *self, char *format, ...);
+
+//  Get/set the chunk_size field
+int64_t
+    fmq_msg_chunk_size (fmq_msg_t *self);
+void
+    fmq_msg_chunk_size_set (fmq_msg_t *self, int64_t chunk_size);
+
+//  Get/set the chunk_offset field
+int64_t
+    fmq_msg_chunk_offset (fmq_msg_t *self);
+void
+    fmq_msg_chunk_offset_set (fmq_msg_t *self, int64_t chunk_offset);
 
 //  Get/set a value in the headers dictionary
 char *

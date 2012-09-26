@@ -1,9 +1,15 @@
 <declare>
-//  Subscription in memory
+//  --------------------------------------------------------------------------
+//  Subscription object
+
 typedef struct {
     client_t *client;           //  Always refers to live client
-    char *path;                 //  Path we subscribe to
+    char *path;                 //  Path client is subscribed to
 } sub_t;
+
+
+//  --------------------------------------------------------------------------
+//  Constructor
 
 static sub_t *
 sub_new (client_t *client, char *path)
@@ -13,6 +19,10 @@ sub_new (client_t *client, char *path)
     self->path = strdup (path);
     return self;
 }
+
+
+//  --------------------------------------------------------------------------
+//  Destructor
 
 static void
 sub_destroy (sub_t **self_p)

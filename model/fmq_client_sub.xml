@@ -1,0 +1,26 @@
+<declare>
+//  Subscription in memory
+typedef struct {
+    char *path;                 //  Path we subscribe to
+} sub_t;
+
+static sub_t *
+sub_new (client_t *client, char *path)
+{
+    sub_t *self = (sub_t *) zmalloc (sizeof (sub_t));
+    self->path = strdup (path);
+    return self;
+}
+
+static void
+sub_destroy (sub_t **self_p)
+{
+    assert (self_p);
+    if (*self_p) {
+        sub_t *self = *self_p;
+        free (self->path);
+        free (self);
+        *self_p = NULL;
+    }
+}
+</declare>

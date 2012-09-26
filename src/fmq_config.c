@@ -45,10 +45,7 @@ struct _fmq_config_t {
 fmq_config_t *
 fmq_config_new (const char *name, fmq_config_t *parent)
 {
-    fmq_config_t
-        *self;
-
-    self = (fmq_config_t *) zmalloc (sizeof (fmq_config_t));
+    fmq_config_t *self = (fmq_config_t *) zmalloc (sizeof (fmq_config_t));
     fmq_config_name_set (self, name);
     if (parent) {
         if (parent->child) {
@@ -184,7 +181,7 @@ fmq_config_next (fmq_config_t *self)
 fmq_config_t *
 fmq_config_locate (fmq_config_t *self, const char *path)
 {
-    //  Calculate significant length of name
+    //  Check length of next path segment
     char *slash = strchr (path, '/');
     int length = strlen (path);
     if (slash)
@@ -220,6 +217,41 @@ fmq_config_resolve (fmq_config_t *self, const char *path, const char *default_va
 }
 
 
+//  --------------------------------------------------------------------------
+//  Set config item name, name may be NULL
+void
+fmq_config_path_set (fmq_config_t *self, const char *path, const char *value)
+{
+    //  Check length of next path segment
+    char *slash = strchr (path, '/');
+    int length = strlen (path);
+    if (slash)
+        length = slash - path;
+
+    //  Find or create items starting at first child of root
+    fmq_config_t *child = self->child;
+    while (child) {
+        if (strlen (child->name) == length
+        &&  memcmp (child->name, path, length) == 0) {
+            //  This segment exists
+            if (slash)          //  Recurse to next level
+                fmq_config_path_set (child, slash + 1, value);
+            else
+                fmq_config_value_set (child, value);
+            return;
+        }
+        child = child->next;
+    }
+    //  This segment doesn't exist, create it
+    child = fmq_config_new (path, self);
+    child->name [length] = 0;
+    if (slash)                  //  Recurse down further
+        fmq_config_path_set (child, slash + 1, value);
+    else
+        fmq_config_value_set (child, value);
+}
+
+    
 //  --------------------------------------------------------------------------
 //  Finds the latest node at the specified depth, where 0 is the root. If no
 //  such node exists, returns NULL.
@@ -556,6 +588,11 @@ fmq_config_test (bool verbose)
     assert (atoi (fmq_config_resolve (root, "frontend/option/hwm", "0")) == 1000);
     assert (streq (fmq_config_resolve (root, "backend/bind", ""), "tcp://*:5556"));
 
+    fmq_config_path_set (root, "frontend/option/hwm", "500");
+    assert (atoi (fmq_config_resolve (root, "frontend/option/hwm", "0")) == 500);
+    fmq_config_path_set (root, "frontend/option/lwm", "200");
+    assert (atoi (fmq_config_resolve (root, "frontend/option/lwm", "0")) == 200);
+    
     fmq_config_destroy (&root);
     assert (root == NULL);
 

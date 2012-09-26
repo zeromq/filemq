@@ -63,6 +63,10 @@ void
 char *
     fmq_config_value_format (fmq_config_t *self, const char *format, ...);
 
+//  Insert or update configuration key with value
+void
+    fmq_config_path_set (fmq_config_t *self, const char *path, const char *value);
+
 //  Find the first child of a config item, if any
 fmq_config_t *
     fmq_config_child (fmq_config_t *self);
@@ -79,6 +83,10 @@ fmq_config_t *
 char *
     fmq_config_resolve (fmq_config_t *self,
                         const char *path, const char *default_value);
+
+//  Set config item name, name may be NULL
+void
+    fmq_config_path_set (fmq_config_t *self, const char *path, const char *value);
 
 //  Locate the last config item at a specified depth
 fmq_config_t *

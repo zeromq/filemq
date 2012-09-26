@@ -86,6 +86,19 @@ fmq_client_configure (fmq_client_t *self, const char *config_file)
     zstr_send  (self->pipe, config_file);
 }
 
+
+//  --------------------------------------------------------------------------
+//  Set one configuration key value
+
+void
+fmq_client_setoption (fmq_client_t *self, const char *path, const char *value)
+{
+    zstr_sendm (self->pipe, "SETOPTION");
+    zstr_sendm (self->pipe, path);
+    zstr_send  (self->pipe, value);
+}
+
+
 //  --------------------------------------------------------------------------
 //  Open connection to server
 
@@ -100,14 +113,12 @@ fmq_client_connect (fmq_client_t *self, const char *endpoint)
 //  --------------------------------------------------------------------------
 
 void
-fmq_client_subscribe (fmq_client_t *self, const char *virtual, const char *local)
+fmq_client_subscribe (fmq_client_t *self, const char *path)
 {
     assert (self);
-    assert (virtual);
-    assert (local);
+    assert (path);
     zstr_sendm (self->pipe, "SUBSCRIBE");
-    zstr_sendm (self->pipe, virtual);
-    zstr_send (self->pipe, local);
+    zstr_send (self->pipe, path);
 }
 
 
@@ -133,7 +144,8 @@ typedef enum {
     finished_event = 8,
     cheezburger_event = 9,
     hugz_event = 10,
-    icanhaz_ok_event = 11
+    subscribe_event = 11,
+    icanhaz_ok_event = 12
 } event_t;
 
 //  Names for animation
@@ -159,6 +171,7 @@ s_event_name [] = {
     "finished",
     "CHEEZBURGER",
     "HUGZ",
+    "subscribe",
     "ICANHAZ-OK"
 };
 
@@ -166,8 +179,34 @@ s_event_name [] = {
 //  Forward declarations
 typedef struct _client_t client_t;
 
+//  There's no point making these configurable
+#define CREDIT_SLICE    1000000
+#define CREDIT_MINIMUM  (CREDIT_SLICE * 4) + 1
 
+//  Subscription in memory
+typedef struct {
+    char *path;                 //  Path we subscribe to
+} sub_t;
 
+static sub_t *
+sub_new (client_t *client, char *path)
+{
+    sub_t *self = (sub_t *) zmalloc (sizeof (sub_t));
+    self->path = strdup (path);
+    return self;
+}
+
+static void
+sub_destroy (sub_t **self_p)
+{
+    assert (self_p);
+    if (*self_p) {
+        sub_t *self = *self_p;
+        free (self->path);
+        free (self);
+        *self_p = NULL;
+    }
+}
 
 
 //  ---------------------------------------------------------------------
@@ -176,18 +215,22 @@ typedef struct _client_t client_t;
 struct _client_t {
     //  Properties accessible to client actions
     event_t next_event;         //  Next event
+    bool connected;             //  Are we connected to server?
+    zlist_t *subs;              //  Subscriptions              
+    size_t credit;              //  Current credit pending     
     
     //  Properties you should NOT touch
     zctx_t *ctx;                //  Own CZMQ context
     void *pipe;                 //  Socket to back to caller
     void *dealer;               //  Socket to talk to server
-    bool ready;                 //  Client connected
     bool stopped;               //  Has client stopped?
     fmq_config_t *config;       //  Configuration tree
     state_t state;              //  Current state
     event_t event;              //  Current event
     fmq_msg_t *request;         //  Next message to send
     fmq_msg_t *reply;           //  Last received reply
+    int heartbeat;              //  Heartbeat interval
+    int64_t expires_at;         //  Server expires at
 };
 
 static client_t *
@@ -197,6 +240,8 @@ client_new (zctx_t *ctx, void *pipe)
     self->ctx = ctx;
     self->pipe = pipe;
     self->config = fmq_config_new ("root", NULL);
+    self->subs = zlist_new ();
+    self->connected = false;  
     return self;
 }
 
@@ -209,6 +254,12 @@ client_destroy (client_t **self_p)
         fmq_config_destroy (&self->config);
         fmq_msg_destroy (&self->request);
         fmq_msg_destroy (&self->reply);
+        //  Destroy subscriptions                         
+        while (zlist_size (self->subs)) {                 
+            sub_t *sub = (sub_t *) zlist_pop (self->subs);
+            sub_destroy (&sub);                           
+        }                                                 
+        zlist_destroy (&self->subs);                      
         free (self);
         *self_p = NULL;
     }
@@ -223,6 +274,8 @@ static void
 client_apply_config (client_t *self)
 {
     //  Get standard client configuration
+    self->heartbeat = atoi (
+        fmq_config_resolve (self->config, "client/heartbeat", "1")) * 1000;
 
     //  Apply echo commands and class methods
     fmq_config_t *section = fmq_config_child (self->config);
@@ -234,9 +287,28 @@ client_apply_config (client_t *self)
             entry = fmq_config_next (entry);
         }
         if (streq (fmq_config_name (section), "subscribe")) {
-            char *virtual = fmq_config_resolve (section, "virtual", "?");
-            char *local = fmq_config_resolve (section, "local", "?");
-            printf ("SUBSCRIBE: %s -> %s\n", virtual, local);
+            char *path = fmq_config_resolve (section, "path", "?");
+            //  Store subscription along with any previous ones         
+            //  Check we don't already have a subscription for this path
+            sub_t *sub = (sub_t *) zlist_first (self->subs);            
+            while (sub) {                                               
+                if (streq (path, sub->path))                            
+                    return;                                             
+                sub = (sub_t *) zlist_next (self->subs);                
+            }                                                           
+            //  Subscription path must start with '/'                   
+            //  We'll do better error handling later                    
+            assert (*path == '/');                                      
+                                                                        
+            //  New subscription, so store it for later replay          
+            sub = sub_new (self, path);                                 
+            zlist_append (self->subs, sub);                             
+                                                                        
+            //  If we're connected, then also send to server            
+            if (self->connected) {                                      
+                fmq_msg_path_set (self->request, path);                 
+                self->next_event = subscribe_event;                     
+            }                                                           
         }
         section = fmq_config_next (section);
     }
@@ -253,23 +325,58 @@ initialize_the_client (client_t *self)
 static void
 try_security_mechanism (client_t *self)
 {
-        char *login = fmq_config_resolve (self->config, "security/plain/login", "guest"); 
-        char *password = fmq_config_resolve (self->config, "security/plain/password", "");
-        zframe_t *frame = fmq_sasl_plain_encode (login, password);                        
-        fmq_msg_mechanism_set (self->request, "PLAIN");                                   
-        fmq_msg_response_set (self->request, frame);                                      
+    char *login = fmq_config_resolve (self->config, "security/plain/login", "guest"); 
+    char *password = fmq_config_resolve (self->config, "security/plain/password", "");
+    zframe_t *frame = fmq_sasl_plain_encode (login, password);                        
+    fmq_msg_mechanism_set (self->request, "PLAIN");                                   
+    fmq_msg_response_set  (self->request, frame);                                     
+}
+
+static void
+connected_to_server (client_t *self)
+{
+    self->connected = true;
+}
+
+static void
+get_first_subscription (client_t *self)
+{
+    sub_t *sub = (sub_t *) zlist_first (self->subs);
+    if (sub) {                                      
+        fmq_msg_path_set (self->request, sub->path);
+        puts (sub->path);                           
+        self->next_event = ok_event;                
+    }                                               
+    else                                            
+        self->next_event = finished_event;          
 }
 
 static void
 get_next_subscription (client_t *self)
 {
-        self->next_event = finished_event;
+    sub_t *sub = (sub_t *) zlist_next (self->subs); 
+    if (sub) {                                      
+        fmq_msg_path_set (self->request, sub->path);
+        puts (sub->path);                           
+        self->next_event = ok_event;                
+    }                                               
+    else                                            
+        self->next_event = finished_event;          
 }
 
 static void
-refill_pipeline (client_t *self)
+refill_credit_as_needed (client_t *self)
 {
-    
+    //  If credit has fallen too low, send more credit     
+    size_t credit_to_send = 0;                             
+    while (self->credit < CREDIT_MINIMUM) {                
+        credit_to_send += CREDIT_SLICE;                    
+        self->credit += CREDIT_SLICE;                      
+    }                                                      
+    if (credit_to_send) {                                  
+        fmq_msg_credit_set (self->request, credit_to_send);
+        fmq_msg_id_set (self->request, FMQ_MSG_NOM);       
+    }                                                      
 }
 
 static void
@@ -281,24 +388,25 @@ store_file_data (client_t *self)
 static void
 log_access_denied (client_t *self)
 {
-    
+    puts ("W: server denied us access, retrying...");
 }
 
 static void
 log_invalid_message (client_t *self)
 {
-    
+    puts ("E: server claims we sent an invalid message");
 }
 
 static void
 log_protocol_error (client_t *self)
 {
-    
+    puts ("E: protocol error");
 }
 
 static void
 terminate_the_client (client_t *self)
 {
+    self->connected = false;           
     self->next_event = terminate_event;
 }
 
@@ -326,6 +434,7 @@ client_execute (client_t *self, int event)
                     log_access_denied (self);
                     zclock_log ("C:    + terminate the client");
                     terminate_the_client (self);
+                    self->state = start_state;
                 }
                 else
                 if (self->event == rtfm_event) {
@@ -352,8 +461,10 @@ client_execute (client_t *self, int event)
                 }
                 else
                 if (self->event == ohai_ok_event) {
-                    zclock_log ("C:    + get next subscription");
-                    get_next_subscription (self);
+                    zclock_log ("C:    + connected to server");
+                    connected_to_server (self);
+                    zclock_log ("C:    + get first subscription");
+                    get_first_subscription (self);
                     self->state = subscribing_state;
                 }
                 else
@@ -362,6 +473,7 @@ client_execute (client_t *self, int event)
                     log_access_denied (self);
                     zclock_log ("C:    + terminate the client");
                     terminate_the_client (self);
+                    self->state = start_state;
                 }
                 else
                 if (self->event == rtfm_event) {
@@ -388,10 +500,8 @@ client_execute (client_t *self, int event)
                 }
                 else
                 if (self->event == finished_event) {
-                    zclock_log ("C:    + refill pipeline");
-                    refill_pipeline (self);
-                    zclock_log ("C:    + send NOM");
-                    fmq_msg_id_set (self->request, FMQ_MSG_NOM);
+                    zclock_log ("C:    + refill credit as needed");
+                    refill_credit_as_needed (self);
                     self->state = ready_state;
                 }
                 else
@@ -400,6 +510,7 @@ client_execute (client_t *self, int event)
                     log_access_denied (self);
                     zclock_log ("C:    + terminate the client");
                     terminate_the_client (self);
+                    self->state = start_state;
                 }
                 else
                 if (self->event == rtfm_event) {
@@ -420,15 +531,18 @@ client_execute (client_t *self, int event)
                 if (self->event == cheezburger_event) {
                     zclock_log ("C:    + store file data");
                     store_file_data (self);
-                    zclock_log ("C:    + refill pipeline");
-                    refill_pipeline (self);
-                    zclock_log ("C:    + send NOM");
-                    fmq_msg_id_set (self->request, FMQ_MSG_NOM);
+                    zclock_log ("C:    + refill credit as needed");
+                    refill_credit_as_needed (self);
                 }
                 else
                 if (self->event == hugz_event) {
                     zclock_log ("C:    + send HUGZ_OK");
                     fmq_msg_id_set (self->request, FMQ_MSG_HUGZ_OK);
+                }
+                else
+                if (self->event == subscribe_event) {
+                    zclock_log ("C:    + send ICANHAZ");
+                    fmq_msg_id_set (self->request, FMQ_MSG_ICANHAZ);
                 }
                 else
                 if (self->event == icanhaz_ok_event) {
@@ -439,6 +553,7 @@ client_execute (client_t *self, int event)
                     log_access_denied (self);
                     zclock_log ("C:    + terminate the client");
                     terminate_the_client (self);
+                    self->state = start_state;
                 }
                 else
                 if (self->event == rtfm_event) {
@@ -457,10 +572,7 @@ client_execute (client_t *self, int event)
 
         }
         zclock_log ("C:      -------------------> %s", s_state_name [self->state]);
-
         if (fmq_msg_id (self->request)) {
-            puts ("Send request to server");
-            fmq_msg_dump (self->request);
             fmq_msg_send (&self->request, self->dealer);
             self->request = fmq_msg_new (0);
         }
@@ -471,55 +583,25 @@ client_execute (client_t *self, int event)
     }
 }
 
-static void
-server_message (client_t *self)
-{
-    if (self->reply)
-        fmq_msg_destroy (&self->reply);
-    self->reply = fmq_msg_recv (self->dealer);
-    if (!self->reply)
-        return;         //  Interrupted; do nothing
-
-    puts ("Received reply from server");
-    fmq_msg_dump (self->reply);
-    
-    if (fmq_msg_id (self->reply) == FMQ_MSG_SRSLY)
-        client_execute (self, srsly_event);
-    else
-    if (fmq_msg_id (self->reply) == FMQ_MSG_RTFM)
-        client_execute (self, rtfm_event);
-    else
-    if (fmq_msg_id (self->reply) == FMQ_MSG_ORLY)
-        client_execute (self, orly_event);
-    else
-    if (fmq_msg_id (self->reply) == FMQ_MSG_OHAI_OK)
-        client_execute (self, ohai_ok_event);
-    else
-    if (fmq_msg_id (self->reply) == FMQ_MSG_CHEEZBURGER)
-        client_execute (self, cheezburger_event);
-    else
-    if (fmq_msg_id (self->reply) == FMQ_MSG_HUGZ)
-        client_execute (self, hugz_event);
-    else
-    if (fmq_msg_id (self->reply) == FMQ_MSG_ICANHAZ_OK)
-        client_execute (self, icanhaz_ok_event);
-}
-
 //  Restart client dialog from zero
 
 static void
 client_restart (client_t *self, char *endpoint)
 {
-    //  Free dialog-specific properties
-    if (self->dealer)
-        zsocket_destroy (self->ctx, self->dealer);
+    //  Reconnect to new endpoint if specified
+    if (endpoint)  {
+        if (self->dealer)
+            zsocket_destroy (self->ctx, self->dealer);
+        self->dealer = zsocket_new (self->ctx, ZMQ_DEALER);
+        zmq_connect (self->dealer, endpoint);
+    }
+    //  Clear out any previous request data
     fmq_msg_destroy (&self->request);
+    self->request = fmq_msg_new (0);
 
     //  Restart dialog state machine from zero
-    self->dealer = zsocket_new (self->ctx, ZMQ_DEALER);
-    zmq_connect (self->dealer, endpoint);
     self->state = start_state;
-    self->request = fmq_msg_new (0);
+    self->expires_at = 0;
 
     //  Application hook to reinitialize dialog
     //  Provides us with an event to kick things off
@@ -533,11 +615,29 @@ control_message (client_t *self)
     zmsg_t *msg = zmsg_recv (self->pipe);
     char *method = zmsg_popstr (msg);
     if (streq (method, "SUBSCRIBE")) {
-        char *virtual = zmsg_popstr (msg);
-        char *local = zmsg_popstr (msg);
-        printf ("SUBSCRIBE: %s -> %s\n", virtual, local);
-        free (virtual);
-        free (local);
+        char *path = zmsg_popstr (msg);
+        //  Store subscription along with any previous ones         
+        //  Check we don't already have a subscription for this path
+        sub_t *sub = (sub_t *) zlist_first (self->subs);            
+        while (sub) {                                               
+            if (streq (path, sub->path))                            
+                return;                                             
+            sub = (sub_t *) zlist_next (self->subs);                
+        }                                                           
+        //  Subscription path must start with '/'                   
+        //  We'll do better error handling later                    
+        assert (*path == '/');                                      
+                                                                    
+        //  New subscription, so store it for later replay          
+        sub = sub_new (self, path);                                 
+        zlist_append (self->subs, sub);                             
+                                                                    
+        //  If we're connected, then also send to server            
+        if (self->connected) {                                      
+            fmq_msg_path_set (self->request, path);                 
+            self->next_event = subscribe_event;                     
+        }                                                           
+        free (path);
     }
     else
     if (streq (method, "CONNECT")) {
@@ -559,14 +659,59 @@ control_message (client_t *self)
         free (config_file);
     }
     else
+    if (streq (method, "SETOPTION")) {
+        char *path = zmsg_popstr (msg);
+        char *value = zmsg_popstr (msg);
+        fmq_config_path_set (self->config, path, value);
+        free (path);
+        free (value);
+    }
+    else
     if (streq (method, "STOP")) {
         zstr_send (self->pipe, "OK");
         self->stopped = true;
-        self->ready = true;
     }
     free (method);
     zmsg_destroy (&msg);
+
+    if (self->next_event)
+        client_execute (self, self->next_event);
 }
+
+static void
+server_message (client_t *self)
+{
+    if (self->reply)
+        fmq_msg_destroy (&self->reply);
+    self->reply = fmq_msg_recv (self->dealer);
+    if (!self->reply)
+        return;         //  Interrupted; do nothing
+    
+    if (fmq_msg_id (self->reply) == FMQ_MSG_SRSLY)
+        client_execute (self, srsly_event);
+    else
+    if (fmq_msg_id (self->reply) == FMQ_MSG_RTFM)
+        client_execute (self, rtfm_event);
+    else
+    if (fmq_msg_id (self->reply) == FMQ_MSG_ORLY)
+        client_execute (self, orly_event);
+    else
+    if (fmq_msg_id (self->reply) == FMQ_MSG_OHAI_OK)
+        client_execute (self, ohai_ok_event);
+    else
+    if (fmq_msg_id (self->reply) == FMQ_MSG_CHEEZBURGER)
+        client_execute (self, cheezburger_event);
+    else
+    if (fmq_msg_id (self->reply) == FMQ_MSG_HUGZ)
+        client_execute (self, hugz_event);
+    else
+    if (fmq_msg_id (self->reply) == FMQ_MSG_ICANHAZ_OK)
+        client_execute (self, icanhaz_ok_event);
+
+    //  Any input from server counts as activity
+    self->expires_at = zclock_time () + self->heartbeat * 2;
+}
+
 
 //  Finally here's the client thread itself, which polls its two
 //  sockets and processes incoming messages
@@ -582,15 +727,20 @@ client_thread (void *args, zctx_t *ctx, void *pipe)
             { self->dealer, 0, ZMQ_POLLIN, 0 }
         };
         int poll_size = self->dealer? 2: 1;
-        if (zmq_poll (items, poll_size, 1000 * ZMQ_POLL_MSEC) == -1)
+        if (zmq_poll (items, poll_size, self->heartbeat * ZMQ_POLL_MSEC) == -1)
             break;              //  Context has been shut down
 
-        //  Process incoming message from either socket
+        //  Process incoming messages; either of these can
+        //  throw events into the state machine
         if (items [0].revents & ZMQ_POLLIN)
             control_message (self);
 
         if (items [1].revents & ZMQ_POLLIN)
             server_message (self);
+
+        //  Check whether server seems dead
+        if (self->expires_at && zclock_time () >= self->expires_at)
+            client_restart (self, NULL);
     }
     client_destroy (&self);
 }

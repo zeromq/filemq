@@ -2,10 +2,19 @@
 This is the FILEMQ protocol version 1.0
 <include filename = "license.xml" />
 
+<!-- Protocol version -->
+<define name = "VERSION" value = "1" />
+
+<!-- File operations -->
+<define name = "FILE CREATE" value = "1" />
+<define name = "FILE DELETE" value = "2" />
+<define name = "FILE RESIZE" value = "3" />
+<define name = "FILE RETIME" value = "4" />
+
 <message name = "OHAI" id = "1">
 Client opens peering
     <field name = "protocol" type = "string" value = "FILEMQ" />
-    <field name = "version" type = "octet" value = "1" />
+    <field name = "version" type = "octet" value = "FMQ_MSG_VERSION" />
     <field name = "identity" type = "octets" size = "16" />
 </message>
 
@@ -42,7 +51,11 @@ Client sends credit to the server
 </message>
 
 <message name = "CHEEZBURGER" id = "8">
-The server sends a chunk of file data
+The server sends a file patch
+    <field name = "operation" type = "octet" />
+    <field name = "filename" type = "string" />
+    <field name = "chunk-size" type = "number" />
+    <field name = "chunk-offset" type = "number" />
     <field name = "headers" type = "dictionary" />
     <field name = "chunk" type = "frame" />
 </message>

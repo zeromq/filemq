@@ -42,10 +42,7 @@ struct _fmq_file_t {
 fmq_file_t *
 fmq_file_new (const char *path, const char *name, time_t time, off_t size, mode_t mode)
 {
-    fmq_file_t
-        *self;
-
-    self = (fmq_file_t *) zmalloc (sizeof (fmq_file_t));
+    fmq_file_t *self = (fmq_file_t *) zmalloc (sizeof (fmq_file_t));
     self->name = malloc (strlen (path) + strlen (name) + 2);
     sprintf (self->name, "%s/%s", path, name);
     self->time = time;

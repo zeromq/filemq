@@ -41,11 +41,15 @@ typedef struct _fmq_patch_t fmq_patch_t;
 
 //  Create new patch
 fmq_patch_t *
-    fmq_patch_new (fmq_file_t *file, fmq_patch_op_t op);
+    fmq_patch_new (fmq_file_t *file, fmq_patch_op_t op, int number);
 
 //  Destroy a patch
 void
     fmq_patch_destroy (fmq_patch_t **self_p);
+
+//  Create copy of a patch
+fmq_patch_t *
+    fmq_patch_dup (fmq_patch_t *self);
 
 //  Return patch file item
 fmq_file_t *
@@ -55,6 +59,14 @@ fmq_file_t *
 fmq_patch_op_t
     fmq_patch_op (fmq_patch_t *self);
     
+//  Get patch number
+int
+    fmq_patch_number (fmq_patch_t *self);
+
+//  Set patch number
+void
+    fmq_patch_set_number (fmq_patch_t *self, int number);
+
 //  Self test of this class
 int
     fmq_patch_test (bool verbose);

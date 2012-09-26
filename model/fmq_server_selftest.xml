@@ -14,7 +14,7 @@ fmq_server_bind (self, "tcp://*:6000");
     </init>
     <step send = "OHAI" recv = "OHAI-OK" />
     <step send = "ICANHAZ" recv = "ICANHAZ-OK" />
-    <step send = "NOM" recv = "CHEEZBURGER" />
+    <step send = "NOM" />
     <step send = "HUGZ" recv = "HUGZ-OK" />
     <step send = "YARLY" recv = "RTFM" />
 </selftest>
@@ -29,7 +29,7 @@ fmq_msg_mechanism_set (request, "PLAIN");
 fmq_msg_response_set (request, fmq_sasl_plain_encode ("guest", "guest"));
     </step>
     <step send = "ICANHAZ" recv = "ICANHAZ-OK" />
-    <step send = "NOM" recv = "CHEEZBURGER" />
+    <step send = "NOM" />
     <step send = "HUGZ" recv = "HUGZ-OK" />
     <step recv = "HUGZ" />
 </selftest>

@@ -34,8 +34,9 @@ FileMQ protocol server
         <action name = "store client subscription" />
         <action name = "send" message = "ICANHAZ-OK" />
     </event>
-    <event name = "NOM">
-        <action name = "send" message = "CHEEZBURGER" />
+    <event name = "NOM" next = "dispatching">
+        <action name = "store client credit" />
+        <action name = "get next patch for client" />
     </event>
     <event name = "HUGZ">
         <action name = "send" message = "HUGZ-OK" />
@@ -43,9 +44,20 @@ FileMQ protocol server
     <event name = "KTHXBAI">
         <action name = "terminate the client" />
     </event>
+    <event name = "dispatch" next = "dispatching">
+        <action name = "get next patch for client" />
+    </event>
     <event name = "heartbeat">
         <action name = "send" message = "HUGZ" />
     </event>
+</state>
+
+<state name = "dispatching">
+    <event name = "ok">
+        <action name = "send" message = "CHEEZBURGER" />
+        <action name = "get next patch for client" />
+    </event>
+    <event name = "finished" next = "ready" />
 </state>
 
 <state name = "defaults">
@@ -65,12 +77,11 @@ FileMQ protocol server
 zlist_t *subs;              //  Client subscriptions
 zlist_t *mounts;            //  Mount points
 </context>
-
 <construct>
+//  Default root
 self->subs = zlist_new ();
 self->mounts = zlist_new ();
 </construct>
-
 <destruct>
 //  Destroy subscriptions
 while (zlist_size (self->subs)) {
@@ -91,7 +102,20 @@ zlist_destroy (&self->mounts);
 <client>
 <context>
 byte identity [FMQ_MSG_IDENTITY_SIZE];
+size_t credit;              //  Credit remaining
+zlist_t *patches;           //  Patches to send
+size_t patch_nbr;           //  Sequence number
 </context>
+<construct>
+self->patches = zlist_new ();
+</construct>
+<destruct>
+while (zlist_size (self->patches)) {
+    fmq_patch_t *patch = (fmq_patch_t *) zlist_pop (self->patches);
+    fmq_patch_destroy (&patch);
+}
+zlist_destroy (&self->patches);
+</destruct>
 </client>
 
 <!-- Embedded class for subscriptions -->
@@ -100,27 +124,6 @@ byte identity [FMQ_MSG_IDENTITY_SIZE];
 <include filename = "fmq_server_mount.xml" />
 
 <!-- Action bodies -->
-<!--
-    - track mount points
-        - every N seconds, refresh
-        
-    - create log of file changes
-        - compare dirN+1 to dirN
-        - show newly created files
-        - show modified (extended) files
-        - show deleted files
-        - swap dir1 and dirn+1
-
-        - push changed files to clients
-    - credit incoming from clients
-        - new client should get all files
-    - how does client tell what 'version' it got?
-        - history/log
-        - sequence number/hash + file?
-        - replay history for new client
-        - take from log file, text...
--->
-
 <action name = "terminate the client">
 //  Remove all subscriptions for this client
 sub_t *sub = (sub_t *) zlist_first (self->subs);
@@ -178,27 +181,72 @@ free (password);
 </action>
 
 <action name = "store client subscription">
-sub_t *sub = sub_new (client, fmq_msg_path (client->request));
+//  Store subscription along with any previous ones
+//  Check we don't already have a subscription for this client/path
+sub_t *sub = (sub_t *) zlist_first (self->subs);
+char *path = fmq_msg_path (client->request);
+while (sub) {
+    if (client == sub->client && streq (path, sub->path))
+        return;
+    sub = (sub_t *) zlist_next (self->subs);
+}
+
+//  New subscription for this client, append to our list
+sub = sub_new (client, fmq_msg_path (client->request));
 zlist_append (self->subs, sub);
 </action>
 
+<action name = "store client credit">
+client->credit += fmq_msg_credit (client->request);
+</action>
+
 <!-- Hook actions -->
+<declare>
+//  Client hash function that checks if client is alive
+static int
+client_dispatch (const char *key, void *client, void *server)
+{
+    server_client_execute ((server_t *) server, (client_t *) client, dispatch_event);
+    return 0;
+}
+</declare>
 <action name = "monitor the server">
 mount_t *mount = (mount_t *) zlist_first (self->mounts);
 while (mount) {
-    if (mount_refresh (mount)) {
-
-        //printf ("- %s/%s\n", fmq_file_path (old), fmq_file_name (old));
-        //printf ("+ %s/%s\n", fmq_file_path (new), fmq_file_name (new));
-        //printf ("# %s/%s\n", fmq_file_path (new), fmq_file_name (new));
-        //printf ("@ %s/%s\n", fmq_file_path (new), fmq_file_name (new));
-
-
-        //  Changed
-    }
+    if (mount_refresh (mount, self))
+        zhash_foreach (self->clients, client_dispatch, self);
     mount = (mount_t *) zlist_next (self->mounts);
 }
 </action>
+
+<action name = "get next patch for client">
+fmq_patch_t *patch = (fmq_patch_t *) zlist_pop (client->patches);
+if (patch) {
+    client->next_event = ok_event;
+    switch (fmq_patch_op (patch)) {
+        case patch_create:
+            fmq_msg_operation_set (client->reply, FMQ_MSG_FILE_CREATE);
+            printf ("I: created: %s\n", fmq_file_name (fmq_patch_file (patch)));
+            break;
+        case patch_delete:
+            fmq_msg_operation_set (client->reply, FMQ_MSG_FILE_DELETE);
+            printf ("I: deleted: %s\n", fmq_file_name (fmq_patch_file (patch)));
+            break;
+        case patch_resize:
+            fmq_msg_operation_set (client->reply, FMQ_MSG_FILE_RESIZE);
+            printf ("I: changed: %s\n", fmq_file_name (fmq_patch_file (patch)));
+            break;
+        case patch_retime:
+            fmq_msg_operation_set (client->reply, FMQ_MSG_FILE_RETIME);
+            printf ("I: touched: %s\n", fmq_file_name (fmq_patch_file (patch)));
+            break;
+    }
+    fmq_msg_filename_set (client->reply, fmq_file_name (fmq_patch_file (patch)));
+}
+else
+    client->next_event = finished_event;
+</action>
+
 
 <!-- API methods -->
 <method name = "bind">
@@ -212,12 +260,45 @@ zmq_connect (self->router, endpoint);
 </method>
 
 <method name = "mount">
-<argument name = "local" type = "string" />
-<argument name = "virtual" type = "string" />
-mount_t *mount = mount_new (local, virtual);
+<argument name = "path" type = "string" />
+mount_t *mount = mount_new (
+    fmq_config_resolve (self->config, "server/root", "./fmqroot"), path);
 zlist_append (self->mounts, mount);
 </method>
 
 <include filename = "fmq_server_selftest.xml" />
+
+<!-- TODO
+    server:
+    
+    - client has to tell server last patch PATCH ID
+    - server applies patches since last PATCH ID
+    - push patches to clients
+    - patch id is sequence number
+    - change protocol to be a patch protocol
+    - test on sending growing files...
+        - streaming?
+    - on exit
+        save directory tree to disk
+        save patch list to disk
+    - on startup
+        load directory tree from disk
+        load patch list from disk
+    - list serialization code generator?
+
+    store patch list per client
+        use client identifier, not real id
+        test client disconnect & reconnect
+
+    some protocol for getting initial directory
+    subscribe option
+        to get all files?
+        what if some already exist?
+        not rsync protocol... 
+    
+    client:
+    - confirm applied patches
+
+-->
 
 </class>

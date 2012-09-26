@@ -37,6 +37,10 @@ void
 void
     $(class.name)_configure ($(class.name)_t *self, const char *config_file);
 
+//  Set one configuration key value
+void
+    $(class.name)_setoption ($(class.name)_t *self, const char *path, const char *value);
+
 //  Open connection to server
 void
     $(class.name)_connect ($(class.name)_t *self, const char *endpoint);
@@ -139,6 +143,19 @@ $(class.name)_configure ($(class.name)_t *self, const char *config_file)
     zstr_sendm (self->pipe, "CONFIG");
     zstr_send  (self->pipe, config_file);
 }
+
+
+//  --------------------------------------------------------------------------
+//  Set one configuration key value
+
+void
+$(class.name)_setoption ($(class.name)_t *self, const char *path, const char *value)
+{
+    zstr_sendm (self->pipe, "SETOPTION");
+    zstr_sendm (self->pipe, path);
+    zstr_send  (self->pipe, value);
+}
+
 
 //  --------------------------------------------------------------------------
 //  Open connection to server
@@ -252,32 +269,30 @@ $(string.trim (declare.?''):)
 
 .endfor
 
-
-
-
 //  ---------------------------------------------------------------------
 //  Context for the client thread
 
 struct _client_t {
     //  Properties accessible to client actions
     event_t next_event;         //  Next event
+.for class.self
+.   for context
+    $(string.trim (context.?''):block                                           )
+.   endfor
+.endfor
     
     //  Properties you should NOT touch
     zctx_t *ctx;                //  Own CZMQ context
     void *pipe;                 //  Socket to back to caller
     void *dealer;               //  Socket to talk to server
-    bool ready;                 //  Client connected
     bool stopped;               //  Has client stopped?
     fmq_config_t *config;       //  Configuration tree
     state_t state;              //  Current state
     event_t event;              //  Current event
     $(codec)_t *request;        //  Next message to send
     $(codec)_t *reply;          //  Last received reply
-.for class.self
-.   for context
-    $(string.trim (context.?''):block                                           )
-.   endfor
-.endfor
+    int heartbeat;              //  Heartbeat interval
+    int64_t expires_at;         //  Server expires at
 };
 
 static client_t *
@@ -323,6 +338,8 @@ static void
 client_apply_config (client_t *self)
 {
     //  Get standard client configuration
+    self->heartbeat = atoi (
+        fmq_config_resolve (self->config, "client/heartbeat", "1")) * 1000;
 
     //  Apply echo commands and class methods
     fmq_config_t *section = fmq_config_child (self->config);
@@ -414,8 +431,9 @@ client_execute (client_t *self, int event)
 
 .endfor
         }
+.if switches.animate ?= 1
         zclock_log ("C:      -------------------> %s", s_state_name [self->state]);
-
+.endif
         if ($(codec)_id (self->request)) {
 .if switches.trace ?= 1
             puts ("Send request to server");
@@ -431,46 +449,27 @@ client_execute (client_t *self, int event)
     }
 }
 
-static void
-server_message (client_t *self)
-{
-    if (self->reply)
-        $(codec)_destroy (&self->reply);
-    self->reply = $(codec)_recv (self->dealer);
-    if (!self->reply)
-        return;         //  Interrupted; do nothing
-.if switches.trace ?= 1
-
-    puts ("Received reply from server");
-    $(codec)_dump (self->reply);
-.endif
-    
-.   for class.event where external ?= 1
-.   if index () > 1
-    else
-.   endif
-    if ($(codec)_id (self->reply) == $(CODEC)_$(NAME:C))
-        client_execute (self, $(name:c)_event);
-.   endfor
-}
-
 //  Restart client dialog from zero
 
 static void
 client_restart (client_t *self, char *endpoint)
 {
-    //  Free dialog-specific properties
-    if (self->dealer)
-        zsocket_destroy (self->ctx, self->dealer);
+    //  Reconnect to new endpoint if specified
+    if (endpoint)  {
+        if (self->dealer)
+            zsocket_destroy (self->ctx, self->dealer);
+        self->dealer = zsocket_new (self->ctx, ZMQ_DEALER);
+        zmq_connect (self->dealer, endpoint);
+    }
+    //  Clear out any previous request data
     $(codec)_destroy (&self->request);
+    self->request = $(codec)_new (0);
 
     //  Restart dialog state machine from zero
-    self->dealer = zsocket_new (self->ctx, ZMQ_DEALER);
-    zmq_connect (self->dealer, endpoint);
 .for class.state where item () = 1
     self->state = $(name:c)_state;
 .endfor
-    self->request = $(codec)_new (0);
+    self->expires_at = 0;
 
     //  Application hook to reinitialize dialog
     //  Provides us with an event to kick things off
@@ -520,14 +519,51 @@ control_message (client_t *self)
         free (config_file);
     }
     else
+    if (streq (method, "SETOPTION")) {
+        char *path = zmsg_popstr (msg);
+        char *value = zmsg_popstr (msg);
+        fmq_config_path_set (self->config, path, value);
+        free (path);
+        free (value);
+    }
+    else
     if (streq (method, "STOP")) {
         zstr_send (self->pipe, "OK");
         self->stopped = true;
-        self->ready = true;
     }
     free (method);
     zmsg_destroy (&msg);
+
+    if (self->next_event)
+        client_execute (self, self->next_event);
 }
+
+static void
+server_message (client_t *self)
+{
+    if (self->reply)
+        $(codec)_destroy (&self->reply);
+    self->reply = $(codec)_recv (self->dealer);
+    if (!self->reply)
+        return;         //  Interrupted; do nothing
+.if switches.trace ?= 1
+
+    puts ("Received reply from server");
+    $(codec)_dump (self->reply);
+.endif
+    
+.   for class.event where external ?= 1
+.   if index () > 1
+    else
+.   endif
+    if ($(codec)_id (self->reply) == $(CODEC)_$(NAME:C))
+        client_execute (self, $(name:c)_event);
+.   endfor
+
+    //  Any input from server counts as activity
+    self->expires_at = zclock_time () + self->heartbeat * 2;
+}
+
 
 //  Finally here's the client thread itself, which polls its two
 //  sockets and processes incoming messages
@@ -543,15 +579,20 @@ client_thread (void *args, zctx_t *ctx, void *pipe)
             { self->dealer, 0, ZMQ_POLLIN, 0 }
         };
         int poll_size = self->dealer? 2: 1;
-        if (zmq_poll (items, poll_size, 1000 * ZMQ_POLL_MSEC) == -1)
+        if (zmq_poll (items, poll_size, self->heartbeat * ZMQ_POLL_MSEC) == -1)
             break;              //  Context has been shut down
 
-        //  Process incoming message from either socket
+        //  Process incoming messages; either of these can
+        //  throw events into the state machine
         if (items [0].revents & ZMQ_POLLIN)
             control_message (self);
 
         if (items [1].revents & ZMQ_POLLIN)
             server_message (self);
+
+        //  Check whether server seems dead
+        if (self->expires_at && zclock_time () >= self->expires_at)
+            client_restart (self, NULL);
     }
     client_destroy (&self);
 }

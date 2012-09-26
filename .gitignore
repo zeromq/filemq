@@ -23,7 +23,9 @@ src/stamp-h1
 *.o
 *.lo
 *.la
+*.lst
 filemq
+core
 fmq_selftest
 src/fmqroot/send/*
 src/fmqroot/recv/*

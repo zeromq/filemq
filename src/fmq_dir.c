@@ -125,10 +125,7 @@ s_posix_populate_entry (fmq_dir_t *self, struct dirent *entry)
 fmq_dir_t *
 fmq_dir_new (const char *path, const char *parent)
 {
-    fmq_dir_t
-        *self;
-
-    self = (fmq_dir_t *) zmalloc (sizeof (fmq_dir_t));
+    fmq_dir_t *self = (fmq_dir_t *) zmalloc (sizeof (fmq_dir_t));
     if (parent) {
         self->path = malloc (strlen (path) + strlen (parent) + 2);
         sprintf (self->path, "%s/%s", parent, path);
@@ -311,23 +308,23 @@ fmq_dir_diff (fmq_dir_t *older, fmq_dir_t *newer)
 
         if (cmp > 0) {
             //  new file was added
-            zlist_append (patches, fmq_patch_new (new, patch_create));
+            zlist_append (patches, fmq_patch_new (new, patch_create, 0));
             old_index--;
         }
         else
         if (cmp < 0) {
             //  old file was deleted
-            zlist_append (patches, fmq_patch_new (old, patch_delete));
+            zlist_append (patches, fmq_patch_new (old, patch_delete, 0));
             new_index--;
         }
         else
         if (fmq_file_size (old) != fmq_file_size (new))
             //  file has changed size
-            zlist_append (patches, fmq_patch_new (new, patch_resize));
+            zlist_append (patches, fmq_patch_new (new, patch_resize, 0));
         else
         if (fmq_file_time (old) != fmq_file_time (new))
             //  file has changed timestamp
-            zlist_append (patches, fmq_patch_new (new, patch_retime));
+            zlist_append (patches, fmq_patch_new (new, patch_retime, 0));
         
         old_index++;
         new_index++;

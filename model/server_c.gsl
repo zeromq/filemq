@@ -45,6 +45,10 @@ void
 void
     fmq_server_configure (fmq_server_t *self, const char *config_file);
 
+//  Set one configuration path value
+void
+    $(class.name)_setoption ($(class.name)_t *self, const char *path, const char *value);
+
 .for class.method
 //  $(method.text?'':)
 void
@@ -144,6 +148,18 @@ fmq_server_configure (fmq_server_t *self, const char *config_file)
 }
 
 
+//  --------------------------------------------------------------------------
+//  Set one configuration key value
+
+void
+$(class.name)_setoption ($(class.name)_t *self, const char *path, const char *value)
+{
+    zstr_sendm (self->pipe, "SETOPTION");
+    zstr_sendm (self->pipe, path);
+    zstr_send  (self->pipe, value);
+}
+
+
 .for class.method
 //  --------------------------------------------------------------------------
 
@@ -237,23 +253,42 @@ s_event_name [] = {
 
 .endif
 
-//  Forward declarations
-typedef struct _server_t server_t;
-typedef struct _client_t client_t;
+//  ---------------------------------------------------------------------
+//  Context for the server thread
 
-.for class.declare
-$(string.trim (declare.?''):)
-
+typedef struct {
+    //  Properties accessible to client actions
+.for class.self
+.   for context
+    $(string.trim (context.?''):block                                           )
+.   endfor
 .endfor
 
-//  ---------------------------------------------------------------------
-//  Simple class for one client we talk to
+    //  Properties you should NOT touch
+    zctx_t *ctx;                //  Own CZMQ context
+    void *pipe;                 //  Socket to back to caller
+    void *router;               //  Socket to talk to clients
+    zhash_t *clients;           //  Clients we've connected to
+    bool stopped;               //  Has server stopped?
+    fmq_config_t *config;       //  Configuration tree
+    int monitor;                //  Monitor interval
+    int64_t monitor_at;         //  Next monitor at this time
+    int heartbeat;              //  Heartbeat for clients
+} server_t;
 
-struct _client_t {
+//  ---------------------------------------------------------------------
+//  Context for each client connection
+
+typedef struct {
     //  Properties accessible to client actions
     int64_t heartbeat;          //  Heartbeat interval
     event_t next_event;         //  Next event
-    
+.for class.client
+.   for context
+    $(string.trim (context.?''):block                                           )
+.   endfor
+.endfor
+
     //  Properties you should NOT touch
     void *router;               //  Socket to client
     int64_t heartbeat_at;       //  Next heartbeat at this time
@@ -264,12 +299,18 @@ struct _client_t {
     zframe_t *address;          //  Client address identity
     $(codec)_t *request;        //  Last received request
     $(codec)_t *reply;          //  Reply to send out, if any
-.for class.client
-.   for context
-    $(string.trim (context.?''):block                                           )
-.   endfor
+} client_t;
+
+
+static void
+server_client_execute (server_t *server, client_t *client, int event);
+
+.for class.declare
+$(string.trim (declare.?''):)
+
 .endfor
-};
+
+//  Client methods
 
 static client_t *
 client_new (char *hashkey, zframe_t *address)
@@ -332,23 +373,24 @@ client_tickless (const char *key, void *client, void *argument)
     return 0;
 }
 
-static void
-server_client_execute (server_t *server, client_t *client, int event);
-
 //  Client hash function that checks if client is alive
 static int
 client_ping (const char *key, void *client, void *argument)
 {
     client_t *self = (client_t *) client;
+    //  Expire client if it's not answered us in a while
+    if (zclock_time () >= self->expires_at && self->expires_at) {
+        //  In case dialog doesn't handle expired_event by destroying
+        //  client, set expires_at to zero to prevent busy looping
+        self->expires_at = 0;
+        server_client_execute ((server_t *) argument, self, expired_event);
+    }
+    else
     //  Check whether to send heartbeat to client
     if (zclock_time () >= self->heartbeat_at) {
         server_client_execute ((server_t *) argument, self, heartbeat_event);
         self->heartbeat_at = zclock_time () + self->heartbeat;
     }
-    //  Check whether to expire client, nothing received from it
-    if (zclock_time () >= self->expires_at)
-        server_client_execute ((server_t *) argument, self, expired_event);
-
     return 0;
 }
 
@@ -361,28 +403,7 @@ client_free (void *argument)
 }
 
 
-//  ---------------------------------------------------------------------
-//  Context for the server thread
-
-struct _server_t {
-    //  Properties accessible to client actions
-    
-    //  Properties you should NOT touch
-    zctx_t *ctx;                //  Own CZMQ context
-    void *pipe;                 //  Socket to back to caller
-    void *router;               //  Socket to talk to clients
-    zhash_t *clients;           //  Clients we've connected to
-    bool stopped;               //  Has server stopped?
-    fmq_config_t *config;       //  Configuration tree
-    int monitor;                //  Monitor interval
-    int64_t monitor_at;         //  Next monitor at this time
-    int heartbeat;              //  Heartbeat for clients
-.for class.self
-.   for context
-    $(string.trim (context.?''):block                                           )
-.   endfor
-.endfor
-};
+//  Server methods
 
 static server_t *
 server_new (zctx_t *ctx, void *pipe)
@@ -499,6 +520,14 @@ server_control_message (server_t *self)
         free (config_file);
     }
     else
+    if (streq (method, "SETOPTION")) {
+        char *path = zmsg_popstr (msg);
+        char *value = zmsg_popstr (msg);
+        fmq_config_path_set (self->config, path, value);
+        free (path);
+        free (value);
+    }
+    else
     if (streq (method, "STOP")) {
         zstr_send (self->pipe, "OK");
         self->stopped = true;
@@ -569,8 +598,9 @@ server_client_execute (server_t *self, client_t *client, int event)
 
 .endfor
         }
+.if switches.animate ?= 1
         zclock_log ("S:      -------------------> %s", s_state_name [client->state]);
-
+.endif
         if ($(codec)_id (client->reply)) {
 .if switches.trace ?= 1
             puts ("Send message to client");
@@ -723,7 +753,7 @@ $(class.name)_test (bool verbose)
     $(class.name)_destroy (&self);
     //  No clean way to wait for a background thread to exit
     //  Under valgrind this will randomly show as leakage
-    zclock_sleep (100);
+    zclock_sleep (500);
 .endfor
     zctx_destroy (&ctx);
     printf ("OK\\n");

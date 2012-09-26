@@ -53,6 +53,10 @@ void
 void
     fmq_server_configure (fmq_server_t *self, const char *config_file);
 
+//  Set one configuration path value
+void
+    fmq_server_setoption (fmq_server_t *self, const char *path, const char *value);
+
 //  
 void
     fmq_server_bind (fmq_server_t *self, const char *endpoint);
@@ -63,7 +67,7 @@ void
 
 //  
 void
-    fmq_server_mount (fmq_server_t *self, const char *local, const char *virtual);
+    fmq_server_mount (fmq_server_t *self, const char *path);
 
 //  Self test of this class
 int

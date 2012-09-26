@@ -45,13 +45,17 @@ void
 void
     fmq_client_configure (fmq_client_t *self, const char *config_file);
 
+//  Set one configuration key value
+void
+    fmq_client_setoption (fmq_client_t *self, const char *path, const char *value);
+
 //  Open connection to server
 void
     fmq_client_connect (fmq_client_t *self, const char *endpoint);
 
 //  
 void
-    fmq_client_subscribe (fmq_client_t *self, const char *virtual, const char *local);
+    fmq_client_subscribe (fmq_client_t *self, const char *path);
 
 //  Self test of this class
 int

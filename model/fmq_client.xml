@@ -14,7 +14,8 @@ This is the FILEMQ/1.0 client protocol handler
         <action name = "send" message = "YARLY" />
     </event>
     <event name = "OHAI-OK" next = "subscribing">
-        <action name = "get next subscription" />
+        <action name = "connected to server" />
+        <action name = "get first subscription" />
     </event>
 </state>
 
@@ -24,25 +25,26 @@ This is the FILEMQ/1.0 client protocol handler
         <action name = "get next subscription" />
     </event>
     <event name = "finished" next = "ready">
-        <action name = "refill pipeline" />
-        <action name = "send" message = "NOM" />
+        <action name = "refill credit as needed" />
     </event>
 </state>
 
 <state name = "ready">
     <event name = "CHEEZBURGER">
         <action name = "store file data" />
-        <action name = "refill pipeline" />
-        <action name = "send" message = "NOM" />
+        <action name = "refill credit as needed" />
     </event>
     <event name = "HUGZ">
         <action name = "send" message = "HUGZ-OK" />
+    </event>
+    <event name = "subscribe">
+        <action name = "send" message = "ICANHAZ" />
     </event>
     <event name = "ICANHAZ-OK" />
 </state>
 
 <state name = "defaults">
-    <event name = "SRSLY">
+    <event name = "SRSLY" next = "start">
         <action name = "log access denied" />
         <action name = "terminate the client" />
     </event>
@@ -56,45 +58,132 @@ This is the FILEMQ/1.0 client protocol handler
     </event>
 </state>
 
+<!-- Server and client contexts -->
+<declare>
+//  There's no point making these configurable
+#define CREDIT_SLICE    1000000
+#define CREDIT_MINIMUM  (CREDIT_SLICE * 4) + 1
+</declare>
+
+<self>
+<context>
+bool connected;             //  Are we connected to server?
+zlist_t *subs;              //  Subscriptions
+size_t credit;              //  Current credit pending
+</context>
+
+<construct>
+self->subs = zlist_new ();
+self->connected = false;
+</construct>
+
+<destruct>
+//  Destroy subscriptions
+while (zlist_size (self->subs)) {
+    sub_t *sub = (sub_t *) zlist_pop (self->subs);
+    sub_destroy (&sub);
+}
+zlist_destroy (&self->subs);
+</destruct>
+</self>
+
+<!-- Embedded class for subscriptions -->
+<include filename = "fmq_client_sub.xml" />
+
 <action name = "initialize the client">
 self->next_event = ready_event;
 </action>
 
 <action name = "try security mechanism">
-    char *login = fmq_config_resolve (self->config, "security/plain/login", "guest");
-    char *password = fmq_config_resolve (self->config, "security/plain/password", "");
-    zframe_t *frame = fmq_sasl_plain_encode (login, password);
-    fmq_msg_mechanism_set (self->request, "PLAIN");
-    fmq_msg_response_set (self->request, frame);
+char *login = fmq_config_resolve (self->config, "security/plain/login", "guest");
+char *password = fmq_config_resolve (self->config, "security/plain/password", "");
+zframe_t *frame = fmq_sasl_plain_encode (login, password);
+fmq_msg_mechanism_set (self->request, "PLAIN");
+fmq_msg_response_set  (self->request, frame);
 </action>
 
-<action name = "get next subscription">
+<action name = "connected to server">
+self->connected = true;
+</action>
+
+<action name = "get first subscription">
+sub_t *sub = (sub_t *) zlist_first (self->subs);
+if (sub) {
+    fmq_msg_path_set (self->request, sub->path);
+    puts (sub->path);
+    self->next_event = ok_event;
+}
+else
     self->next_event = finished_event;
 </action>
 
-<action name = "refill pipeline">
+<action name = "get next subscription">
+sub_t *sub = (sub_t *) zlist_next (self->subs);
+if (sub) {
+    fmq_msg_path_set (self->request, sub->path);
+    puts (sub->path);
+    self->next_event = ok_event;
+}
+else
+    self->next_event = finished_event;
+</action>
+
+<action name = "refill credit as needed">
+//  If credit has fallen too low, send more credit
+size_t credit_to_send = 0;
+while (self->credit < CREDIT_MINIMUM) {
+    credit_to_send += CREDIT_SLICE;
+    self->credit += CREDIT_SLICE;
+}
+if (credit_to_send) {
+    fmq_msg_credit_set (self->request, credit_to_send);
+    fmq_msg_id_set (self->request, FMQ_MSG_NOM);
+}
 </action>
 
 <action name = "store file data">
 </action>
 
 <action name = "log access denied">
+puts ("W: server denied us access, retrying...");
 </action>
 
 <action name = "log invalid message">
+puts ("E: server claims we sent an invalid message");
 </action>
 
 <action name = "log protocol error">
+puts ("E: protocol error");
 </action>
 
 <action name = "terminate the client">
+self->connected = false;
 self->next_event = terminate_event;
 </action>
 
 <method name = "subscribe">
-<argument name = "virtual" type = "string" />
-<argument name = "local" type = "string" />
-printf ("SUBSCRIBE: %s -> %s\n", virtual, local);
+<argument name = "path" type = "string" />
+//  Store subscription along with any previous ones
+//  Check we don't already have a subscription for this path
+sub_t *sub = (sub_t *) zlist_first (self->subs);
+while (sub) {
+    if (streq (path, sub->path))
+        return;
+    sub = (sub_t *) zlist_next (self->subs);
+}
+//  Subscription path must start with '/'
+//  We'll do better error handling later
+assert (*path == '/');
+
+//  New subscription, so store it for later replay
+sub = sub_new (self, path);
+zlist_append (self->subs, sub);
+
+//  If we're connected, then also send to server
+if (self->connected) {
+    fmq_msg_path_set (self->request, path);
+    self->next_event = subscribe_event;
+}
 </method>
 
 <selftest config = "client_test.cfg">

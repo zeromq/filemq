@@ -87,6 +87,18 @@ fmq_server_configure (fmq_server_t *self, const char *config_file)
 
 
 //  --------------------------------------------------------------------------
+//  Set one configuration key value
+
+void
+fmq_server_setoption (fmq_server_t *self, const char *path, const char *value)
+{
+    zstr_sendm (self->pipe, "SETOPTION");
+    zstr_sendm (self->pipe, path);
+    zstr_send  (self->pipe, value);
+}
+
+
+//  --------------------------------------------------------------------------
 
 void
 fmq_server_bind (fmq_server_t *self, const char *endpoint)
@@ -113,14 +125,12 @@ fmq_server_connect (fmq_server_t *self, const char *endpoint)
 //  --------------------------------------------------------------------------
 
 void
-fmq_server_mount (fmq_server_t *self, const char *local, const char *virtual)
+fmq_server_mount (fmq_server_t *self, const char *path)
 {
     assert (self);
-    assert (local);
-    assert (virtual);
+    assert (path);
     zstr_sendm (self->pipe, "MOUNT");
-    zstr_sendm (self->pipe, local);
-    zstr_send (self->pipe, virtual);
+    zstr_send (self->pipe, path);
 }
 
 
@@ -131,7 +141,8 @@ typedef enum {
     start_state = 1,
     checking_client_state = 2,
     challenging_client_state = 3,
-    ready_state = 4
+    ready_state = 4,
+    dispatching_state = 5
 } state_t;
 
 typedef enum {
@@ -147,7 +158,10 @@ typedef enum {
     icanhaz_event = 9,
     nom_event = 10,
     hugz_event = 11,
-    kthxbai_event = 12
+    kthxbai_event = 12,
+    dispatch_event = 13,
+    ok_event = 14,
+    finished_event = 15
 } event_t;
 
 //  Names for animation
@@ -157,7 +171,8 @@ s_state_name [] = {
     "Start",
     "Checking Client",
     "Challenging Client",
-    "Ready"
+    "Ready",
+    "Dispatching"
 };
 
 static char *
@@ -174,19 +189,72 @@ s_event_name [] = {
     "ICANHAZ",
     "NOM",
     "HUGZ",
-    "KTHXBAI"
+    "KTHXBAI",
+    "dispatch",
+    "ok",
+    "finished"
 };
 
 
-//  Forward declarations
-typedef struct _server_t server_t;
-typedef struct _client_t client_t;
+//  ---------------------------------------------------------------------
+//  Context for the server thread
 
-//  Subscription in memory
+typedef struct {
+    //  Properties accessible to client actions
+    zlist_t *subs;              //  Client subscriptions
+    zlist_t *mounts;            //  Mount points        
+
+    //  Properties you should NOT touch
+    zctx_t *ctx;                //  Own CZMQ context
+    void *pipe;                 //  Socket to back to caller
+    void *router;               //  Socket to talk to clients
+    zhash_t *clients;           //  Clients we've connected to
+    bool stopped;               //  Has server stopped?
+    fmq_config_t *config;       //  Configuration tree
+    int monitor;                //  Monitor interval
+    int64_t monitor_at;         //  Next monitor at this time
+    int heartbeat;              //  Heartbeat for clients
+} server_t;
+
+//  ---------------------------------------------------------------------
+//  Context for each client connection
+
+typedef struct {
+    //  Properties accessible to client actions
+    int64_t heartbeat;          //  Heartbeat interval
+    event_t next_event;         //  Next event
+    byte identity [FMQ_MSG_IDENTITY_SIZE];          
+    size_t credit;              //  Credit remaining
+    zlist_t *patches;           //  Patches to send 
+    size_t patch_nbr;           //  Sequence number 
+
+    //  Properties you should NOT touch
+    void *router;               //  Socket to client
+    int64_t heartbeat_at;       //  Next heartbeat at this time
+    int64_t expires_at;         //  Expires at this time
+    state_t state;              //  Current state
+    event_t event;              //  Current event
+    char *hashkey;              //  Key into clients hash
+    zframe_t *address;          //  Client address identity
+    fmq_msg_t *request;         //  Last received request
+    fmq_msg_t *reply;           //  Reply to send out, if any
+} client_t;
+
+
+static void
+server_client_execute (server_t *server, client_t *client, int event);
+
+//  --------------------------------------------------------------------------
+//  Subscription object
+
 typedef struct {
     client_t *client;           //  Always refers to live client
-    char *path;                 //  Path we subscribe to
+    char *path;                 //  Path client is subscribed to
 } sub_t;
+
+
+//  --------------------------------------------------------------------------
+//  Constructor
 
 static sub_t *
 sub_new (client_t *client, char *path)
@@ -196,6 +264,10 @@ sub_new (client_t *client, char *path)
     self->path = strdup (path);
     return self;
 }
+
+
+//  --------------------------------------------------------------------------
+//  Destructor
 
 static void
 sub_destroy (sub_t **self_p)
@@ -209,35 +281,37 @@ sub_destroy (sub_t **self_p)
     }
 }
 
+//  --------------------------------------------------------------------------
 //  Mount point in memory
+
 typedef struct {
-    char *local;            //  Local path
-    char *virtual;          //  Virtual path
+    char *fullpath;         //  Root + path
+    char *path;             //  Path (after root)
     fmq_dir_t *dir;         //  Directory tree
-
-    //  Directory signature
-    time_t time;            //  Modification time
-    off_t  size;            //  Total file size
-    size_t count;           //  Total file count
-
-    //  List of patches to directory
-    zlist_t *patches;       //  fmq_patch_t items
 } mount_t;
 
+
+//  --------------------------------------------------------------------------
 //  Constructor
 //  Loads directory tree if possible
 
 static mount_t *
-mount_new (char *local, char *virtual)
+mount_new (char *root, char *path)
 {
+    //  Mount path must start with '/'
+    //  We'll do better error handling later
+    assert (*path == '/');
+    
     mount_t *self = (mount_t *) zmalloc (sizeof (mount_t));
-    self->local = strdup (local);
-    self->virtual = strdup (virtual);
-    self->dir = fmq_dir_new (self->local, NULL);
-    self->patches = zlist_new ();
+    self->fullpath = (char *) malloc (strlen (root) + strlen (path) + 1);
+    sprintf (self->fullpath, "%s%s", root, path);
+    self->path = strdup (path);
+    self->dir = fmq_dir_new (self->fullpath, NULL);
     return self;
 }
 
+
+//  --------------------------------------------------------------------------
 //  Destructor
 
 static void
@@ -246,89 +320,61 @@ mount_destroy (mount_t **self_p)
     assert (self_p);
     if (*self_p) {
         mount_t *self = *self_p;
-        free (self->local);
-        free (self->virtual);
-        while (zlist_size (self->patches)) {
-            fmq_patch_t *patch = (fmq_patch_t *) zlist_pop (self->patches);
-            fmq_patch_destroy (&patch);
-        }
-        zlist_destroy (&self->patches);
+        free (self->fullpath);
+        free (self->path);
         fmq_dir_destroy (&self->dir);
         free (self);
         *self_p = NULL;
     }
 }
 
-//  Reloads directory tree and returns true if changed, false if the same.
+
+//  --------------------------------------------------------------------------
+//  Reloads directory tree and returns true if changed, false if the same
 
 static bool
-mount_refresh (mount_t *self)
+mount_refresh (mount_t *self, server_t *server)
 {
+    bool changed = false;
+
     //  Get latest snapshot and build a patches list if it's changed
-    fmq_dir_t *latest = fmq_dir_new (self->local, NULL);
+    fmq_dir_t *latest = fmq_dir_new (self->fullpath, NULL);
     zlist_t *patches = fmq_dir_diff (self->dir, latest);
 
     //  Drop old directory and replace with latest version
     fmq_dir_destroy (&self->dir);
     self->dir = latest;
 
-    //  Move new patches to mount patches list
-    //  If we had a previous operation on same file, remove that
-    while (zlist_size (patches)) {
-        fmq_patch_t *patch = (fmq_patch_t *) zlist_pop (patches);
-        //  Trace activity; we'll make this configurable later
-        switch (fmq_patch_op (patch)) {
-            case patch_create:
-                printf ("I: created: %s\n", fmq_file_name (fmq_patch_file (patch)));
-                break;
-            case patch_delete:
-                printf ("I: deleted: %s\n", fmq_file_name (fmq_patch_file (patch)));
-                break;
-            case patch_resize:
-                printf ("I: changed: %s\n", fmq_file_name (fmq_patch_file (patch)));
-                break;
-            case patch_retime:
-                printf ("I: touched: %s\n", fmq_file_name (fmq_patch_file (patch)));
-                break;
-        }
-        //  Remove old patch if any, for same file name
-        fmq_patch_t *check = (fmq_patch_t *) zlist_first (self->patches);
-        while (check) {
-            if (streq (fmq_file_name (fmq_patch_file (patch)),
-                       fmq_file_name (fmq_patch_file (check)))) {
-                zlist_remove (self->patches, check);
-                break;
+    //  Copy new patches to clients' patches list
+    //  TODO: remove any previous patches for same file name
+    sub_t *sub = (sub_t *) zlist_first (server->subs);
+    while (sub) {
+        //  Is subscription path a strict prefix of the mount path?
+        if (strncmp (self->path, sub->path, strlen (sub->path)) == 0) {
+            fmq_patch_t *patch = (fmq_patch_t *) zlist_first (patches);
+            while (patch) {
+                zlist_append (sub->client->patches, fmq_patch_dup (patch));
+                fmq_patch_set_number (patch, sub->client->patch_nbr++);
+                patch = (fmq_patch_t *) zlist_next (patches);
+                changed = true;
             }
-            else
-                check = (fmq_patch_t *) zlist_next (self->patches);
         }
-        zlist_append (self->patches, patch);
+        sub = (sub_t *) zlist_next (server->subs);
     }
     zlist_destroy (&patches);
-    return false;
+    return changed;
+}
+
+//  Client hash function that checks if client is alive
+static int
+client_dispatch (const char *key, void *client, void *server)
+{
+    server_client_execute ((server_t *) server, (client_t *) client, dispatch_event);
+    return 0;
 }
 
 
-//  ---------------------------------------------------------------------
-//  Simple class for one client we talk to
-
-struct _client_t {
-    //  Properties accessible to client actions
-    int64_t heartbeat;          //  Heartbeat interval
-    event_t next_event;         //  Next event
-    
-    //  Properties you should NOT touch
-    void *router;               //  Socket to client
-    int64_t heartbeat_at;       //  Next heartbeat at this time
-    int64_t expires_at;         //  Expires at this time
-    state_t state;              //  Current state
-    event_t event;              //  Current event
-    char *hashkey;              //  Key into clients hash
-    zframe_t *address;          //  Client address identity
-    fmq_msg_t *request;         //  Last received request
-    fmq_msg_t *reply;           //  Reply to send out, if any
-    byte identity [FMQ_MSG_IDENTITY_SIZE];
-};
+//  Client methods
 
 static client_t *
 client_new (char *hashkey, zframe_t *address)
@@ -339,6 +385,7 @@ client_new (char *hashkey, zframe_t *address)
     self->address = zframe_dup (address);
     self->reply = fmq_msg_new (0);
     fmq_msg_address_set (self->reply, self->address);
+    self->patches = zlist_new ();
     return self;
 }
 
@@ -352,6 +399,11 @@ client_destroy (client_t **self_p)
         fmq_msg_destroy (&self->request);
         fmq_msg_destroy (&self->reply);
         free (self->hashkey);
+        while (zlist_size (self->patches)) {                               
+            fmq_patch_t *patch = (fmq_patch_t *) zlist_pop (self->patches);
+            fmq_patch_destroy (&patch);                                    
+        }                                                                  
+        zlist_destroy (&self->patches);                                    
         free (self);
         *self_p = NULL;
     }
@@ -379,23 +431,24 @@ client_tickless (const char *key, void *client, void *argument)
     return 0;
 }
 
-static void
-server_client_execute (server_t *server, client_t *client, int event);
-
 //  Client hash function that checks if client is alive
 static int
 client_ping (const char *key, void *client, void *argument)
 {
     client_t *self = (client_t *) client;
+    //  Expire client if it's not answered us in a while
+    if (zclock_time () >= self->expires_at && self->expires_at) {
+        //  In case dialog doesn't handle expired_event by destroying
+        //  client, set expires_at to zero to prevent busy looping
+        self->expires_at = 0;
+        server_client_execute ((server_t *) argument, self, expired_event);
+    }
+    else
     //  Check whether to send heartbeat to client
     if (zclock_time () >= self->heartbeat_at) {
         server_client_execute ((server_t *) argument, self, heartbeat_event);
         self->heartbeat_at = zclock_time () + self->heartbeat;
     }
-    //  Check whether to expire client, nothing received from it
-    if (zclock_time () >= self->expires_at)
-        server_client_execute ((server_t *) argument, self, expired_event);
-
     return 0;
 }
 
@@ -408,25 +461,7 @@ client_free (void *argument)
 }
 
 
-//  ---------------------------------------------------------------------
-//  Context for the server thread
-
-struct _server_t {
-    //  Properties accessible to client actions
-    
-    //  Properties you should NOT touch
-    zctx_t *ctx;                //  Own CZMQ context
-    void *pipe;                 //  Socket to back to caller
-    void *router;               //  Socket to talk to clients
-    zhash_t *clients;           //  Clients we've connected to
-    bool stopped;               //  Has server stopped?
-    fmq_config_t *config;       //  Configuration tree
-    int monitor;                //  Monitor interval
-    int64_t monitor_at;         //  Next monitor at this time
-    int heartbeat;              //  Heartbeat for clients
-    zlist_t *subs;              //  Client subscriptions
-    zlist_t *mounts;            //  Mount points        
-};
+//  Server methods
 
 static server_t *
 server_new (zctx_t *ctx, void *pipe)
@@ -438,6 +473,7 @@ server_new (zctx_t *ctx, void *pipe)
     self->clients = zhash_new ();
     self->config = fmq_config_new ("root", NULL);
     self->monitor = 5000;       //  5 seconds by default
+    //  Default root            
     self->subs = zlist_new ();  
     self->mounts = zlist_new ();
     return self;
@@ -504,10 +540,10 @@ server_apply_config (server_t *self)
         }
         else
         if (streq (fmq_config_name (section), "mount")) {
-            char *local = fmq_config_resolve (section, "local", "?");
-            char *virtual = fmq_config_resolve (section, "virtual", "?");
-            mount_t *mount = mount_new (local, virtual);
-            zlist_append (self->mounts, mount);         
+            char *path = fmq_config_resolve (section, "path", "?");
+            mount_t *mount = mount_new (                                             
+                fmq_config_resolve (self->config, "server/root", "./fmqroot"), path);
+            zlist_append (self->mounts, mount);                                      
         }
         section = fmq_config_next (section);
     }
@@ -531,12 +567,11 @@ server_control_message (server_t *self)
     }
     else
     if (streq (method, "MOUNT")) {
-        char *local = zmsg_popstr (msg);
-        char *virtual = zmsg_popstr (msg);
-        mount_t *mount = mount_new (local, virtual);
-        zlist_append (self->mounts, mount);         
-        free (local);
-        free (virtual);
+        char *path = zmsg_popstr (msg);
+        mount_t *mount = mount_new (                                             
+            fmq_config_resolve (self->config, "server/root", "./fmqroot"), path);
+        zlist_append (self->mounts, mount);                                      
+        free (path);
     }
     else
     if (streq (method, "CONFIG")) {
@@ -550,6 +585,14 @@ server_control_message (server_t *self)
             self->config = fmq_config_new ("root", NULL);
         }
         free (config_file);
+    }
+    else
+    if (streq (method, "SETOPTION")) {
+        char *path = zmsg_popstr (msg);
+        char *value = zmsg_popstr (msg);
+        fmq_config_path_set (self->config, path, value);
+        free (path);
+        free (value);
     }
     else
     if (streq (method, "STOP")) {
@@ -631,27 +674,66 @@ try_security_mechanism (server_t *self, client_t *client)
 static void
 store_client_subscription (server_t *self, client_t *client)
 {
-    sub_t *sub = sub_new (client, fmq_msg_path (client->request));
-    zlist_append (self->subs, sub);                               
+    //  Store subscription along with any previous ones                
+    //  Check we don't already have a subscription for this client/path
+    sub_t *sub = (sub_t *) zlist_first (self->subs);                   
+    char *path = fmq_msg_path (client->request);                       
+    while (sub) {                                                      
+        if (client == sub->client && streq (path, sub->path))          
+            return;                                                    
+        sub = (sub_t *) zlist_next (self->subs);                       
+    }                                                                  
+                                                                       
+    //  New subscription for this client, append to our list           
+    sub = sub_new (client, fmq_msg_path (client->request));            
+    zlist_append (self->subs, sub);                                    
+}
+
+static void
+store_client_credit (server_t *self, client_t *client)
+{
+    client->credit += fmq_msg_credit (client->request);
 }
 
 static void
 monitor_the_server (server_t *self, client_t *client)
 {
-    mount_t *mount = (mount_t *) zlist_first (self->mounts);                 
-    while (mount) {                                                          
-        if (mount_refresh (mount)) {                                         
-                                                                             
-            //printf ("- %s/%s\n", fmq_file_path (old), fmq_file_name (old));
-            //printf ("+ %s/%s\n", fmq_file_path (new), fmq_file_name (new));
-            //printf ("# %s/%s\n", fmq_file_path (new), fmq_file_name (new));
-            //printf ("@ %s/%s\n", fmq_file_path (new), fmq_file_name (new));
-                                                                             
-                                                                             
-            //  Changed                                                      
-        }                                                                    
-        mount = (mount_t *) zlist_next (self->mounts);                       
-    }                                                                        
+    mount_t *mount = (mount_t *) zlist_first (self->mounts);     
+    while (mount) {                                              
+        if (mount_refresh (mount, self))                         
+            zhash_foreach (self->clients, client_dispatch, self);
+        mount = (mount_t *) zlist_next (self->mounts);           
+    }                                                            
+}
+
+static void
+get_next_patch_for_client (server_t *self, client_t *client)
+{
+    fmq_patch_t *patch = (fmq_patch_t *) zlist_pop (client->patches);                
+    if (patch) {                                                                     
+        client->next_event = ok_event;                                               
+        switch (fmq_patch_op (patch)) {                                              
+            case patch_create:                                                       
+                fmq_msg_operation_set (client->reply, FMQ_MSG_FILE_CREATE);          
+                printf ("I: created: %s\n", fmq_file_name (fmq_patch_file (patch))); 
+                break;                                                               
+            case patch_delete:                                                       
+                fmq_msg_operation_set (client->reply, FMQ_MSG_FILE_DELETE);          
+                printf ("I: deleted: %s\n", fmq_file_name (fmq_patch_file (patch))); 
+                break;                                                               
+            case patch_resize:                                                       
+                fmq_msg_operation_set (client->reply, FMQ_MSG_FILE_RESIZE);          
+                printf ("I: changed: %s\n", fmq_file_name (fmq_patch_file (patch))); 
+                break;                                                               
+            case patch_retime:                                                       
+                fmq_msg_operation_set (client->reply, FMQ_MSG_FILE_RETIME);          
+                printf ("I: touched: %s\n", fmq_file_name (fmq_patch_file (patch))); 
+                break;                                                               
+        }                                                                            
+        fmq_msg_filename_set (client->reply, fmq_file_name (fmq_patch_file (patch)));
+    }                                                                                
+    else                                                                             
+        client->next_event = finished_event;                                         
 }
 
 //  Execute state machine as long as we have events
@@ -758,8 +840,11 @@ server_client_execute (server_t *self, client_t *client, int event)
                 }
                 else
                 if (client->event == nom_event) {
-                    zclock_log ("S:    + send CHEEZBURGER");
-                    fmq_msg_id_set (client->reply, FMQ_MSG_CHEEZBURGER);
+                    zclock_log ("S:    + store client credit");
+                    store_client_credit (self, client);
+                    zclock_log ("S:    + get next patch for client");
+                    get_next_patch_for_client (self, client);
+                    client->state = dispatching_state;
                 }
                 else
                 if (client->event == hugz_event) {
@@ -770,6 +855,12 @@ server_client_execute (server_t *self, client_t *client, int event)
                 if (client->event == kthxbai_event) {
                     zclock_log ("S:    + terminate the client");
                     terminate_the_client (self, client);
+                }
+                else
+                if (client->event == dispatch_event) {
+                    zclock_log ("S:    + get next patch for client");
+                    get_next_patch_for_client (self, client);
+                    client->state = dispatching_state;
                 }
                 else
                 if (client->event == heartbeat_event) {
@@ -789,12 +880,36 @@ server_client_execute (server_t *self, client_t *client, int event)
                 }
                 break;
 
+            case dispatching_state:
+                if (client->event == ok_event) {
+                    zclock_log ("S:    + send CHEEZBURGER");
+                    fmq_msg_id_set (client->reply, FMQ_MSG_CHEEZBURGER);
+                    zclock_log ("S:    + get next patch for client");
+                    get_next_patch_for_client (self, client);
+                }
+                else
+                if (client->event == finished_event) {
+                    client->state = ready_state;
+                }
+                else
+                if (client->event == heartbeat_event) {
+                }
+                else
+                if (client->event == expired_event) {
+                    zclock_log ("S:    + terminate the client");
+                    terminate_the_client (self, client);
+                }
+                else {
+                    zclock_log ("S:    + send RTFM");
+                    fmq_msg_id_set (client->reply, FMQ_MSG_RTFM);
+                    zclock_log ("S:    + terminate the client");
+                    terminate_the_client (self, client);
+                }
+                break;
+
         }
         zclock_log ("S:      -------------------> %s", s_state_name [client->state]);
-
         if (fmq_msg_id (client->reply)) {
-            puts ("Send message to client");
-            fmq_msg_dump (client->reply);
             fmq_msg_send (&client->reply, client->router);
             client->reply = fmq_msg_new (0);
             fmq_msg_address_set (client->reply, client->address);
@@ -817,8 +932,6 @@ server_client_message (server_t *self)
     if (!request)
         return;         //  Interrupted; do nothing
 
-    puts ("Received message from client");
-    fmq_msg_dump (request);
     char *hashkey = zframe_strhex (fmq_msg_address (request));
     client_t *client = zhash_lookup (self->clients, hashkey);
     if (client == NULL) {
@@ -947,7 +1060,7 @@ fmq_server_test (bool verbose)
     fmq_server_destroy (&self);
     //  No clean way to wait for a background thread to exit
     //  Under valgrind this will randomly show as leakage
-    zclock_sleep (100);
+    zclock_sleep (500);
     //  Run selftest using 'anonymous.cfg' configuration
     self = fmq_server_new ();
     assert (self);
@@ -969,10 +1082,6 @@ fmq_server_test (bool verbose)
 
     request = fmq_msg_new (FMQ_MSG_NOM);
     fmq_msg_send (&request, dealer);
-    reply = fmq_msg_recv (dealer);
-    assert (reply);
-    assert (fmq_msg_id (reply) == FMQ_MSG_CHEEZBURGER);
-    fmq_msg_destroy (&reply);
 
     request = fmq_msg_new (FMQ_MSG_HUGZ);
     fmq_msg_send (&request, dealer);
@@ -991,7 +1100,7 @@ fmq_server_test (bool verbose)
     fmq_server_destroy (&self);
     //  No clean way to wait for a background thread to exit
     //  Under valgrind this will randomly show as leakage
-    zclock_sleep (100);
+    zclock_sleep (500);
     //  Run selftest using 'server_test.cfg' configuration
     self = fmq_server_new ();
     assert (self);
@@ -1022,10 +1131,6 @@ fmq_server_test (bool verbose)
 
     request = fmq_msg_new (FMQ_MSG_NOM);
     fmq_msg_send (&request, dealer);
-    reply = fmq_msg_recv (dealer);
-    assert (reply);
-    assert (fmq_msg_id (reply) == FMQ_MSG_CHEEZBURGER);
-    fmq_msg_destroy (&reply);
 
     request = fmq_msg_new (FMQ_MSG_HUGZ);
     fmq_msg_send (&request, dealer);
@@ -1042,7 +1147,7 @@ fmq_server_test (bool verbose)
     fmq_server_destroy (&self);
     //  No clean way to wait for a background thread to exit
     //  Under valgrind this will randomly show as leakage
-    zclock_sleep (100);
+    zclock_sleep (500);
     zctx_destroy (&ctx);
     printf ("OK\n");
     return 0;

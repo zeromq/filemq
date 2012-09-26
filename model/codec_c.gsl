@@ -1,3 +1,7 @@
+.#  codec_c.gsl
+.#
+.#  Generates a codec for a protocol specification
+.#
 .include "library.gsl"
 .resolve_includes ()
 .echo "Generating ../include/$(class.name).h..."
@@ -37,6 +41,10 @@
 .   endfor
 .endfor
 */
+
+.for define
+#define $(CLASS.NAME)_$(DEFINE.NAME:C)      $(value)
+.endfor
 
 .for message
 #define $(CLASS.NAME)_$(MESSAGE.NAME)       $(id)
@@ -366,7 +374,7 @@ $(class.name)_recv (void *socket)
 .       if type = "octet"
             GET_OCTET (self->$(name));
 .           if defined (field.value)
-            if (self->$(name) != $(field.value))
+            if (self->$(name) != $(field.value:))
                 goto malformed;
 .           endif
 .       elsif type = "octets"
@@ -374,7 +382,7 @@ $(class.name)_recv (void *socket)
 .       elsif type = "number"
             GET_NUMBER (self->$(name));
 .           if defined (field.value)
-            if (self->$(name) != $(field.value))
+            if (self->$(name) != $(field.value:))
                 goto malformed;
 .           endif
 .       elsif type = "string"
@@ -516,7 +524,7 @@ $(class.name)_send ($(class.name)_t **self_p, void *socket)
 .   for field
 .       if type = "octet"
 .           if defined (field.value)
-            PUT_OCTET ($(field.value));
+            PUT_OCTET ($(field.value:));
 .           else
             PUT_OCTET (self->$(name));
 .           endif
@@ -524,7 +532,7 @@ $(class.name)_send ($(class.name)_t **self_p, void *socket)
             PUT_BLOCK (self->$(name), $(size));
 .       elsif type = "number"
 .           if defined (field.value)
-            PUT_NUMBER ($(field.value));
+            PUT_NUMBER ($(field.value:));
 .           else
             PUT_NUMBER (self->$(name));
 .           endif
