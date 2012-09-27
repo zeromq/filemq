@@ -23,7 +23,7 @@
 */
 
 #include <czmq.h>
-#include "../include/fmq_sasl.h"
+#include "../include/fmq.h"
 
 
 //  --------------------------------------------------------------------------

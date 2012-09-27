@@ -49,8 +49,6 @@ int main (int argc, char *argv [])
         fmq_client_configure (client, "client_test.cfg");
         fmq_client_setoption (client, "client/root", "./fmqroot/recv");
         fmq_client_connect   (client, "tcp://localhost:6000");
-        sleep (1);
-        //  We can subscribe at any time
         fmq_client_subscribe (client, "/photos");
     }
     while (!zctx_interrupted)

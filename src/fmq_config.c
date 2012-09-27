@@ -23,7 +23,7 @@
 */
 
 #include <czmq.h>
-#include "../include/fmq_config.h"
+#include "../include/fmq.h"
 
 //  Structure of our class
 

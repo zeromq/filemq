@@ -39,6 +39,7 @@
 //  These are reusable utility classes
 //  TODO: the generators and required classes should not be part of FMQ
 //  as such, but a separate project so they can be reused more widely.
+#include "fmq_chunk.h"
 #include "fmq_file.h"
 #include "fmq_dir.h"
 #include "fmq_patch.h"

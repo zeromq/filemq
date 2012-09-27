@@ -24,8 +24,7 @@
 */
 
 #include <czmq.h>
-#include "../include/fmq_file.h"
-#include "../include/fmq_patch.h"
+#include "../include/fmq.h"
 
 //  Structure of our class
 

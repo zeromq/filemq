@@ -73,12 +73,12 @@ int
     fmq_file_output (fmq_file_t *self);
     
 //  Read chunk from file at specified position
-zframe_t *
+fmq_chunk_t *
     fmq_file_read (fmq_file_t *self, size_t bytes, off_t offset);
 
 //  Write chunk to file at specified position
 int
-    fmq_file_write (fmq_file_t *self, zframe_t *frame, off_t offset);
+    fmq_file_write (fmq_file_t *self, fmq_chunk_t *chunk, off_t offset);
 
 //  Close file, if open
 void

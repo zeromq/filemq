@@ -24,9 +24,7 @@
 
 
 #include <czmq.h>
-#include "../include/fmq_file.h"
-#include "../include/fmq_patch.h"
-#include "../include/fmq_dir.h"
+#include "../include/fmq.h"
 
 //  Structure of our class
 
@@ -319,13 +317,9 @@ fmq_dir_diff (fmq_dir_t *older, fmq_dir_t *newer)
             new_index--;
         }
         else
-        if (fmq_file_size (old) != fmq_file_size (new))
-            //  file has changed size
-            zlist_append (patches, fmq_patch_new (new, patch_resize, 0));
-        else
-        if (fmq_file_time (old) != fmq_file_time (new))
-            //  file has changed timestamp
-            zlist_append (patches, fmq_patch_new (new, patch_retime, 0));
+        if (fmq_file_size (old) != fmq_file_size (new)
+        ||  fmq_file_time (old) != fmq_file_time (new))
+            zlist_append (patches, fmq_patch_new (new, patch_update, 0));
         
         old_index++;
         new_index++;
@@ -416,6 +410,7 @@ fmq_dir_remove (fmq_dir_t *self, bool force)
         fmq_dir_t *subdir = (fmq_dir_t *) zlist_pop (self->subdirs);
         while (subdir) {
             fmq_dir_remove (subdir, force);
+            fmq_dir_destroy (&subdir);
             subdir = (fmq_dir_t *) zlist_pop (self->subdirs);
         }
         self->size = 0;

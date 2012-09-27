@@ -35,6 +35,7 @@ int main (int argc, char *argv [])
 
     printf ("Running self tests...\n");
     fmq_patch_test (verbose);
+    fmq_chunk_test (verbose);
     fmq_file_test (verbose);
     fmq_dir_test (verbose);
     fmq_msg_test (verbose);

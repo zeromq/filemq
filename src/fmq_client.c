@@ -148,33 +148,6 @@ typedef enum {
     icanhaz_ok_event = 12
 } event_t;
 
-//  Names for animation
-static char *
-s_state_name [] = {
-    "",
-    "Start",
-    "Requesting Access",
-    "Subscribing",
-    "Ready"
-};
-
-static char *
-s_event_name [] = {
-    "",
-    "ready",
-    "SRSLY",
-    "RTFM",
-    "$other",
-    "ORLY",
-    "OHAI-OK",
-    "ok",
-    "finished",
-    "CHEEZBURGER",
-    "HUGZ",
-    "subscribe",
-    "ICANHAZ-OK"
-};
-
 
 //  Forward declarations
 typedef struct _client_t client_t;
@@ -419,129 +392,97 @@ client_execute (client_t *self, int event)
     while (self->next_event) {
         self->event = self->next_event;
         self->next_event = 0;
-        zclock_log ("C: %s:", s_state_name [self->state]);
-        zclock_log ("C: (%s)", s_event_name [self->event]);
         switch (self->state) {
             case start_state:
                 if (self->event == ready_event) {
-                    zclock_log ("C:    + send OHAI");
                     fmq_msg_id_set (self->request, FMQ_MSG_OHAI);
                     self->state = requesting_access_state;
                 }
                 else
                 if (self->event == srsly_event) {
-                    zclock_log ("C:    + log access denied");
                     log_access_denied (self);
-                    zclock_log ("C:    + terminate the client");
                     terminate_the_client (self);
                     self->state = start_state;
                 }
                 else
                 if (self->event == rtfm_event) {
-                    zclock_log ("C:    + log invalid message");
                     log_invalid_message (self);
-                    zclock_log ("C:    + terminate the client");
                     terminate_the_client (self);
                 }
                 else {
-                    zclock_log ("C:    + log protocol error");
                     log_protocol_error (self);
-                    zclock_log ("C:    + terminate the client");
                     terminate_the_client (self);
                 }
                 break;
 
             case requesting_access_state:
                 if (self->event == orly_event) {
-                    zclock_log ("C:    + try security mechanism");
                     try_security_mechanism (self);
-                    zclock_log ("C:    + send YARLY");
                     fmq_msg_id_set (self->request, FMQ_MSG_YARLY);
                     self->state = requesting_access_state;
                 }
                 else
                 if (self->event == ohai_ok_event) {
-                    zclock_log ("C:    + connected to server");
                     connected_to_server (self);
-                    zclock_log ("C:    + get first subscription");
                     get_first_subscription (self);
                     self->state = subscribing_state;
                 }
                 else
                 if (self->event == srsly_event) {
-                    zclock_log ("C:    + log access denied");
                     log_access_denied (self);
-                    zclock_log ("C:    + terminate the client");
                     terminate_the_client (self);
                     self->state = start_state;
                 }
                 else
                 if (self->event == rtfm_event) {
-                    zclock_log ("C:    + log invalid message");
                     log_invalid_message (self);
-                    zclock_log ("C:    + terminate the client");
                     terminate_the_client (self);
                 }
                 else {
-                    zclock_log ("C:    + log protocol error");
                     log_protocol_error (self);
-                    zclock_log ("C:    + terminate the client");
                     terminate_the_client (self);
                 }
                 break;
 
             case subscribing_state:
                 if (self->event == ok_event) {
-                    zclock_log ("C:    + send ICANHAZ");
                     fmq_msg_id_set (self->request, FMQ_MSG_ICANHAZ);
-                    zclock_log ("C:    + get next subscription");
                     get_next_subscription (self);
                     self->state = subscribing_state;
                 }
                 else
                 if (self->event == finished_event) {
-                    zclock_log ("C:    + refill credit as needed");
                     refill_credit_as_needed (self);
                     self->state = ready_state;
                 }
                 else
                 if (self->event == srsly_event) {
-                    zclock_log ("C:    + log access denied");
                     log_access_denied (self);
-                    zclock_log ("C:    + terminate the client");
                     terminate_the_client (self);
                     self->state = start_state;
                 }
                 else
                 if (self->event == rtfm_event) {
-                    zclock_log ("C:    + log invalid message");
                     log_invalid_message (self);
-                    zclock_log ("C:    + terminate the client");
                     terminate_the_client (self);
                 }
                 else {
-                    zclock_log ("C:    + log protocol error");
                     log_protocol_error (self);
-                    zclock_log ("C:    + terminate the client");
                     terminate_the_client (self);
                 }
                 break;
 
             case ready_state:
                 if (self->event == cheezburger_event) {
-                    zclock_log ("C:    + store file data");
                     store_file_data (self);
-                    zclock_log ("C:    + refill credit as needed");
                     refill_credit_as_needed (self);
                 }
                 else
                 if (self->event == hugz_event) {
-                    zclock_log ("C:    + send HUGZ_OK");
                     fmq_msg_id_set (self->request, FMQ_MSG_HUGZ_OK);
                 }
                 else
                 if (self->event == subscribe_event) {
-                    zclock_log ("C:    + send ICANHAZ");
                     fmq_msg_id_set (self->request, FMQ_MSG_ICANHAZ);
                 }
                 else
@@ -549,29 +490,22 @@ client_execute (client_t *self, int event)
                 }
                 else
                 if (self->event == srsly_event) {
-                    zclock_log ("C:    + log access denied");
                     log_access_denied (self);
-                    zclock_log ("C:    + terminate the client");
                     terminate_the_client (self);
                     self->state = start_state;
                 }
                 else
                 if (self->event == rtfm_event) {
-                    zclock_log ("C:    + log invalid message");
                     log_invalid_message (self);
-                    zclock_log ("C:    + terminate the client");
                     terminate_the_client (self);
                 }
                 else {
-                    zclock_log ("C:    + log protocol error");
                     log_protocol_error (self);
-                    zclock_log ("C:    + terminate the client");
                     terminate_the_client (self);
                 }
                 break;
 
         }
-        zclock_log ("C:      -------------------> %s", s_state_name [self->state]);
         if (fmq_msg_id (self->request)) {
             fmq_msg_send (&self->request, self->dealer);
             self->request = fmq_msg_new (0);

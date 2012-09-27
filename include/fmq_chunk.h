@@ -1,5 +1,5 @@
 /*  =========================================================================
-    fmq_patch - work with directory patches
+    fmq_chunk - work with memory chunks
 
     -------------------------------------------------------------------------
     Copyright (c) 1991-2012 iMatix Corporation -- http://www.imatix.com
@@ -22,56 +22,63 @@
     =========================================================================
 */
 
-#ifndef __FMQ_PATCH_H_INCLUDED__
-#define __FMQ_PATCH_H_INCLUDED__
-
-typedef enum {
-    patch_create = 1,
-    patch_delete = 2,
-    patch_update = 3
-} fmq_patch_op_t;
+#ifndef __FMQ_CHUNK_H_INCLUDED__
+#define __FMQ_CHUNK_H_INCLUDED__
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 //  Opaque class structure
-typedef struct _fmq_patch_t fmq_patch_t;
+typedef struct _fmq_chunk_t fmq_chunk_t;
 
-//  Create new patch
-fmq_patch_t *
-    fmq_patch_new (fmq_file_t *file, fmq_patch_op_t op, int number);
+//  Create new chunk
+fmq_chunk_t *
+    fmq_chunk_new (const void *data, size_t size);
 
-//  Destroy a patch
+//  Destroy a chunk
 void
-    fmq_patch_destroy (fmq_patch_t **self_p);
+    fmq_chunk_destroy (fmq_chunk_t **self_p);
 
-//  Create copy of a patch
-fmq_patch_t *
-    fmq_patch_dup (fmq_patch_t *self);
+//  Resizes chunk max_size as requested; chunk_cur size is set to zero
+void
+    fmq_chunk_resize (fmq_chunk_t *self, size_t size);
 
-//  Return patch file item
-fmq_file_t *
-    fmq_patch_file (fmq_patch_t *self);
+//  Return chunk cur size
+size_t
+    fmq_chunk_cur_size (fmq_chunk_t *self);
 
-//  Return operation
-fmq_patch_op_t
-    fmq_patch_op (fmq_patch_t *self);
-    
-//  Get patch number
+//  Return chunk max size
+size_t
+    fmq_chunk_max_size (fmq_chunk_t *self);
+
+//  Return chunk data
+byte *
+    fmq_chunk_data (fmq_chunk_t *self);
+
+//  Set chunk data from user-supplied data; truncate if too large
+size_t
+    fmq_chunk_set (fmq_chunk_t *self, const void *data, size_t size);
+
+//  Fill chunk data from user-supplied octet
+size_t
+    fmq_chunk_fill (fmq_chunk_t *self, byte filler, size_t size);
+
+//  Write chunk to an open file descriptor
 int
-    fmq_patch_number (fmq_patch_t *self);
-
-//  Set patch number
-void
-    fmq_patch_set_number (fmq_patch_t *self, int number);
-
+    fmq_chunk_write (fmq_chunk_t *self, FILE *handle);
+    
+//  Read chunk to an open file descriptor
+fmq_chunk_t *
+    fmq_chunk_read (FILE *handle, size_t bytes);
+    
 //  Self test of this class
 int
-    fmq_patch_test (bool verbose);
+    fmq_chunk_test (bool verbose);
 
 #ifdef __cplusplus
 }
 #endif
 
 #endif
+

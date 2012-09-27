@@ -232,13 +232,9 @@ if (patch) {
             fmq_msg_operation_set (client->reply, FMQ_MSG_FILE_DELETE);
             printf ("I: deleted: %s\n", fmq_file_name (fmq_patch_file (patch)));
             break;
-        case patch_resize:
-            fmq_msg_operation_set (client->reply, FMQ_MSG_FILE_RESIZE);
-            printf ("I: changed: %s\n", fmq_file_name (fmq_patch_file (patch)));
-            break;
-        case patch_retime:
-            fmq_msg_operation_set (client->reply, FMQ_MSG_FILE_RETIME);
-            printf ("I: touched: %s\n", fmq_file_name (fmq_patch_file (patch)));
+        case patch_update:
+            fmq_msg_operation_set (client->reply, FMQ_MSG_FILE_UPDATE);
+            printf ("I: updated: %s\n", fmq_file_name (fmq_patch_file (patch)));
             break;
     }
     fmq_msg_filename_set (client->reply, fmq_file_name (fmq_patch_file (patch)));
@@ -273,14 +269,17 @@ zlist_append (self->mounts, mount);
     - confirm applied patches
 
     server:
-
-    - client has to tell server last patch PATCH ID
-    - server applies patches since last PATCH ID
     - push patches to clients
     - patch id is sequence number
-    - change protocol to be a patch protocol
-    - test on sending growing files...
-        - streaming?
+    - send files only when modified >1 second in past
+    - to get stability
+    - alternatively send chunk by chunk and hash each chunk
+    - remove old patches on same file
+    
+    store patch list per client
+        use client identifier, not real id
+        test client disconnect & reconnect
+    
     - on exit
         save directory tree to disk
         save patch list to disk
@@ -288,12 +287,7 @@ zlist_append (self->mounts, mount);
         load directory tree from disk
         load patch list from disk
     - list serialization code generator?
-
-    - remove old patches on same file
-    store patch list per client
-        use client identifier, not real id
-        test client disconnect & reconnect
-
+    
     some protocol for getting initial directory
     subscribe option
         to get all files?

@@ -23,8 +23,7 @@
 */
 
 #include <czmq.h>
-#include "../include/fmq_file.h"
-#include "../include/fmq_dir.h"
+#include "../include/fmq.h"
 
 //  Structure of our class
 
@@ -256,9 +255,10 @@ fmq_file_output (fmq_file_t *self)
 
 //  --------------------------------------------------------------------------
 //  Read chunk from file at specified position
-//  Frame contains number of bytes read, 0 size means end of file
+//  Zero-sized chunk means we're at the end of the file
+//  Null chunk means there was another error
 
-zframe_t *
+fmq_chunk_t *
 fmq_file_read (fmq_file_t *self, size_t bytes, off_t offset)
 {
     assert (self);
@@ -274,12 +274,7 @@ fmq_file_read (fmq_file_t *self, size_t bytes, off_t offset)
     if (rc == -1)
         return NULL;
     
-    zframe_t *frame = zframe_new (NULL, bytes);
-    size_t bytes_read = fread (zframe_data (frame), 1, bytes, self->handle);
-    if (bytes_read < bytes)
-        zframe_destroy (&frame);
-        
-    return frame;
+    return fmq_chunk_read (self->handle, bytes);
 }
 
 
@@ -288,15 +283,13 @@ fmq_file_read (fmq_file_t *self, size_t bytes, off_t offset)
 //  Return 0 if OK, else -1
 
 int
-fmq_file_write (fmq_file_t *self, zframe_t *frame, off_t offset)
+fmq_file_write (fmq_file_t *self, fmq_chunk_t *chunk, off_t offset)
 {
     assert (self);
     assert (self->handle);
     int rc = fseek (self->handle, (long) offset, SEEK_SET);
-    if (rc >= 0) {
-        size_t items = fwrite (zframe_data (frame), 1, zframe_size (frame), self->handle);
-        rc = (items < zframe_size (frame))? -1: 0;
-    }
+    if (rc >= 0)
+        rc = fmq_chunk_write (chunk, self->handle);
     return rc;
 }
 
@@ -332,17 +325,22 @@ fmq_file_test (bool verbose)
     //  Create a test file in some random subdirectory
     file = fmq_file_new ("./this/is/a/test", "bilbo", 0, 0, 0);
     int rc = fmq_file_output (file);
-    zframe_t *chunk = zframe_new (NULL, 1000000);
-    rc = fmq_file_write (file, chunk, 100);
+    assert (rc == 0);
+    fmq_chunk_t *chunk = fmq_chunk_new (NULL, 100);
+    fmq_chunk_fill (chunk, 0, 100);
+    //  Write 100 bytes at position 1,000,000 in the file
+    rc = fmq_file_write (file, chunk, 1000000);
+    assert (rc == 0);
     fmq_file_close (file);
-    zframe_destroy (&chunk);
+    fmq_chunk_destroy (&chunk);
 
     //  Check we can read from file
     rc = fmq_file_input (file);
+    assert (rc == 0);
     chunk = fmq_file_read (file, 1000100, 0);
     assert (chunk);
-    assert (zframe_size (chunk) == 1000100);
-    zframe_destroy (&chunk);
+    assert (fmq_chunk_cur_size (chunk) == 1000100);
+    fmq_chunk_destroy (&chunk);
     
     //  Remove file and directory
     fmq_dir_t *dir = fmq_dir_new ("./this", NULL);
