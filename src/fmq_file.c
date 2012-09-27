@@ -24,15 +24,16 @@
 
 #include <czmq.h>
 #include "../include/fmq_file.h"
+#include "../include/fmq_dir.h"
 
 //  Structure of our class
 
 struct _fmq_file_t {
-    char  *path;            //  File path
-    char  *name;            //  File name without path
+    char  *name;            //  File name with path
     time_t time;            //  Modification time
     off_t  size;            //  Size of the file
     mode_t mode;            //  POSIX permission bits
+    FILE *handle;           //  Read/write handle
 };
 
 
@@ -130,8 +131,192 @@ fmq_file_mode (fmq_file_t *self)
 }
 
 
+//  Return POSIX file mode or -1 if file doesn't exist
+
+static mode_t
+s_file_mode (const char *filename)
+{
+#if (defined (WIN32))
+    DWORD dwfa = GetFileAttributes (filename);
+    if (dwfa == 0xffffffff)
+        return -1;
+
+    dbyte mode = 0;
+    if (dwfa & FILE_ATTRIBUTE_DIRECTORY)
+        mode |= S_IFDIR;
+    else
+        mode |= S_IFREG;
+    if (!(dwfa & FILE_ATTRIBUTE_HIDDEN))
+        mode |= S_IREAD;
+    if (!(dwfa & FILE_ATTRIBUTE_READONLY))
+        mode |= S_IWRITE;
+
+    return mode;
+#else
+    struct stat stat_buf;
+    if (stat ((char *) filename, &stat_buf) == 0)
+        return stat_buf.st_mode;
+    else
+        return -1;
+#endif
+}
+
+
+//  --------------------------------------------------------------------------
+//  Remove the file
+
+void
+fmq_file_remove (fmq_file_t *self)
+{
+    assert (self);
+#if (defined (WIN32))
+    DeleteFile (self->name);
+#else
+    unlink (self->name);
+#endif
+}
+
+
+static void
+s_assert_path (fmq_file_t *self)
+{
+    //  Create parent directory levels if needed
+    char *path = strdup (self->name);
+    char *slash = strchr (path + 1, '/');
+    do {
+        if (slash)
+            *slash = 0;         //  Cut at slash
+        mode_t mode = s_file_mode (path);
+        if (mode == -1) {
+            //  Does not exist, try to create it
+#if (defined (WIN32))
+            if (CreateDirectory (path, NULL))
+#else
+            if (mkdir (path, 0775))
+#endif
+                return;         //  Failed
+        }
+        else
+        if ((mode & S_IFDIR) == 0) {
+            //  Not a directory, abort
+        }
+        if (!slash)             //  End if last segment
+            break;
+       *slash = '/';
+        slash = strchr (slash + 1, '/');
+    } while (slash);
+
+    free (path);
+}
+
+
+//  --------------------------------------------------------------------------
+//  Open file for reading
+//  Returns 0 if OK, -1 if not found or not accessible
+
+int
+fmq_file_input (fmq_file_t *self)
+{
+    assert (self);
+    if (self->handle)
+        fmq_file_close (self);
+    
+    self->handle = fopen (self->name, "rb");
+    if (self->handle) {
+        struct stat stat_buf;
+        if (stat (self->name, &stat_buf) == 0)
+            self->size = stat_buf.st_size;
+        else
+            self->size = 0;
+    }
+    return self->handle? 0: -1;
+}
+
+
+//  --------------------------------------------------------------------------
+//  Open file for writing, creating directory if needed
+//  File is created if necessary; chunks can be written to file at any
+//  location. Returns 0 if OK, -1 if error.
+
+int
+fmq_file_output (fmq_file_t *self)
+{
+    assert (self);
+    s_assert_path (self);
+    if (self->handle)
+        fmq_file_close (self);
+
+    //  Create file if it doesn't exist, and always 
+    self->handle = fopen (self->name, "r+b");
+    if (!self->handle )
+        self->handle = fopen (self->name, "w+b");
+    return self->handle? 0: -1;
+}
+
+
+//  --------------------------------------------------------------------------
+//  Read chunk from file at specified position
+//  Frame contains number of bytes read, 0 size means end of file
+
+zframe_t *
+fmq_file_read (fmq_file_t *self, size_t bytes, off_t offset)
+{
+    assert (self);
+    assert (self->handle);
+    //  Calculate real number of bytes to read
+    if (offset > self->size)
+        bytes = 0;
+    else
+    if (bytes > self->size - offset)
+        bytes = self->size - offset;
+
+    int rc = fseek (self->handle, (long) offset, SEEK_SET);
+    if (rc == -1)
+        return NULL;
+    
+    zframe_t *frame = zframe_new (NULL, bytes);
+    size_t bytes_read = fread (zframe_data (frame), 1, bytes, self->handle);
+    if (bytes_read < bytes)
+        zframe_destroy (&frame);
+        
+    return frame;
+}
+
+
+//  --------------------------------------------------------------------------
+//  Write chunk to file at specified position
+//  Return 0 if OK, else -1
+
+int
+fmq_file_write (fmq_file_t *self, zframe_t *frame, off_t offset)
+{
+    assert (self);
+    assert (self->handle);
+    int rc = fseek (self->handle, (long) offset, SEEK_SET);
+    if (rc >= 0) {
+        size_t items = fwrite (zframe_data (frame), 1, zframe_size (frame), self->handle);
+        rc = (items < zframe_size (frame))? -1: 0;
+    }
+    return rc;
+}
+
+
+//  --------------------------------------------------------------------------
+//  Close file, if open
+
+void
+fmq_file_close (fmq_file_t *self)
+{
+    assert (self);
+    if (self->handle)
+        fclose (self->handle);
+    self->handle = 0;
+}
+
+
 //  --------------------------------------------------------------------------
 //  Self test of this class
+
 int
 fmq_file_test (bool verbose)
 {
@@ -144,6 +329,33 @@ fmq_file_test (bool verbose)
     assert (fmq_file_mode (file) == 0);
     fmq_file_destroy (&file);
 
+    //  Create a test file in some random subdirectory
+    file = fmq_file_new ("./this/is/a/test", "bilbo", 0, 0, 0);
+    int rc = fmq_file_output (file);
+    zframe_t *chunk = zframe_new (NULL, 1000000);
+    rc = fmq_file_write (file, chunk, 100);
+    fmq_file_close (file);
+    zframe_destroy (&chunk);
+
+    //  Check we can read from file
+    rc = fmq_file_input (file);
+    chunk = fmq_file_read (file, 1000100, 0);
+    assert (chunk);
+    assert (zframe_size (chunk) == 1000100);
+    zframe_destroy (&chunk);
+    
+    //  Remove file and directory
+    fmq_dir_t *dir = fmq_dir_new ("./this", NULL);
+    assert (fmq_dir_size (dir) == 1000100);
+    fmq_dir_remove (dir, true);
+    assert (fmq_dir_size (dir) == 0);
+    fmq_dir_destroy (&dir);
+
+    //  Check we can no longer read from file
+    rc = fmq_file_input (file);
+    assert (rc == -1);
+    fmq_file_destroy (&file);
+        
     printf ("OK\n");
     return 0;
 }

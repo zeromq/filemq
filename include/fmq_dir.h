@@ -64,6 +64,10 @@ size_t
 fmq_file_t **
     fmq_dir_flatten (fmq_dir_t *self);
 
+//  Remove directory, optionally including all files
+void
+    fmq_dir_remove (fmq_dir_t *self, bool force);
+
 //  Print contents of directory
 void
     fmq_dir_dump (fmq_dir_t *self, int indent);

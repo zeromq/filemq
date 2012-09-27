@@ -346,7 +346,6 @@ mount_refresh (mount_t *self, server_t *server)
     self->dir = latest;
 
     //  Copy new patches to clients' patches list
-    //  TODO: remove any previous patches for same file name
     sub_t *sub = (sub_t *) zlist_first (server->subs);
     while (sub) {
         //  Is subscription path a strict prefix of the mount path?

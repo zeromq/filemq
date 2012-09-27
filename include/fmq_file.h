@@ -60,6 +60,30 @@ off_t
 mode_t
     fmq_file_mode (fmq_file_t *self);
     
+//  Remove the file
+void
+    fmq_file_remove (fmq_file_t *self);
+
+//  Open file for reading
+int
+    fmq_file_input (fmq_file_t *self);
+
+//  Open file for writing, creating directory if needed
+int
+    fmq_file_output (fmq_file_t *self);
+    
+//  Read chunk from file at specified position
+zframe_t *
+    fmq_file_read (fmq_file_t *self, size_t bytes, off_t offset);
+
+//  Write chunk to file at specified position
+int
+    fmq_file_write (fmq_file_t *self, zframe_t *frame, off_t offset);
+
+//  Close file, if open
+void
+    fmq_file_close (fmq_file_t *self);
+    
 //  Self test of this class
 int
     fmq_file_test (bool verbose);
@@ -69,4 +93,3 @@ int
 #endif
 
 #endif
-

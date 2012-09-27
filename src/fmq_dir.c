@@ -43,7 +43,8 @@ struct _fmq_dir_t {
 static void
 s_win32_populate_entry (fmq_dir_t *self, WIN32_FIND_DATA *entry)
 {
-    //  Calculate file time (I suspect this is over-complex)
+    //  Calculate file time (I suspect this old code is over-complex)
+    //  Also it appears to return wrong values depending on DST
     unsigned long thi, tlo;
     double dthi, dtlo;
     double secs_since_1601;
@@ -395,6 +396,39 @@ fmq_dir_flatten (fmq_dir_t *self)
     if (self)
         index = s_dir_flatten (self, files, index);
     return files;
+}
+
+
+//  --------------------------------------------------------------------------
+//  Remove directory, optionally including all files
+
+void
+fmq_dir_remove (fmq_dir_t *self, bool force)
+{
+    //  If forced, remove all subdirectories and files
+    if (force) {
+        fmq_file_t *file = (fmq_file_t *) zlist_pop (self->files);
+        while (file) {
+            fmq_file_remove (file);
+            fmq_file_destroy (&file);
+            file = (fmq_file_t *) zlist_pop (self->files);
+        }
+        fmq_dir_t *subdir = (fmq_dir_t *) zlist_pop (self->subdirs);
+        while (subdir) {
+            fmq_dir_remove (subdir, force);
+            subdir = (fmq_dir_t *) zlist_pop (self->subdirs);
+        }
+        self->size = 0;
+        self->count = 0;
+    }
+    //  Remove if empty
+    if (zlist_size (self->files) == 0
+    &&  zlist_size (self->subdirs) == 0)
+#if (defined (WIN32))
+        RemoveDirectory (self->path);
+#else
+        rmdir (self->path);
+#endif
 }
 
 

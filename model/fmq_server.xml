@@ -269,8 +269,11 @@ zlist_append (self->mounts, mount);
 <include filename = "fmq_server_selftest.xml" />
 
 <!-- TODO
+    client:
+    - confirm applied patches
+
     server:
-    
+
     - client has to tell server last patch PATCH ID
     - server applies patches since last PATCH ID
     - push patches to clients
@@ -286,6 +289,7 @@ zlist_append (self->mounts, mount);
         load patch list from disk
     - list serialization code generator?
 
+    - remove old patches on same file
     store patch list per client
         use client identifier, not real id
         test client disconnect & reconnect
@@ -296,9 +300,6 @@ zlist_append (self->mounts, mount);
         what if some already exist?
         not rsync protocol... 
     
-    client:
-    - confirm applied patches
-
 -->
 
 </class>
