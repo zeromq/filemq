@@ -1,0 +1,125 @@
+The FILEMQ Protocol (FILEMQ) governs the delivery of files between a 'client' and a 'server'. FILEMQ runs over the ZeroMQ [http://rfc.zeromq.org/spec:15/ZMTP ZMTP protocol].
+
+* Name: rfc.zeromq.org/spec:19/FILEMQ
+* Editor: Pieter Hintjens <ph@imatix.com>
+* State: raw
+
+++ License
+
+Copyright (c) 2009-2012 iMatix Corporation
+
+This Specification is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation; either version 3 of the License, or (at your option) any later version.
+
+This Specification is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along with this program; if not, see <http://www.gnu.org/licenses>.
+
+++ Change Process
+
+This Specification is a free and open standard[((bibcite fandos))] and is governed by the Digital Standards Organization's Consensus-Oriented Specification System (COSS)[((bibcite coss))].
+
+++ Language
+
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED",  "MAY", and "OPTIONAL" in this document are to be interpreted as described in RFC 2119[((bibcite rfc2119))].
+
+++ Goals
+
+The FILEMQ protocol defines a mechanism for wide-area file distribution using a publish-subscribe pattern. Its goals are:
+
+* To allow clients to "subscribe" to server-hosted directories with zero out-of-band knowledge of the files that will be created on those directories.
+* To provide high-speed chunked file delivery to clients.
+* To allow the clients to cancel and restart file transfers arbitrarily.
+* To be fully secure.
+
+++ Implementation
+
++++ Formal Grammar
+
+The following ABNF grammar defines the FILEMQ protocol:
+
+[[code]]
+filemq-protocol = open-peering *use-peering [ close-peering ]
+
+open-peering    = C:OHAI *( S:ORLY C:YARLY ) ( S:OHAI-OK / error )
+
+use-peering     = C:ICANHAZ ( S:ICANHAZ-OK / error )
+                / C:NOM
+                / S:CHEEZBURGER
+                / C:HUGZ S:HUGZ-OK
+                / S:HUGZ C:HUGZ-OK
+
+close-peering   = C:KTHXBAI / S:KTHXBAI
+
+error           = S:SRSLY / S:RTFM
+
+;   The client opens peering to the server
+OHAI            = %x01 protocol version identity
+protocol        = string        ; Must be "FILEMQ"
+string          = size *VCHAR
+size            = OCTET
+version         = %x01
+identity        = 16OCTET
+
+;   The server challenges the client using the SASL model
+ORLY            = %x02 mechanisms challenge
+mechanisms      = size 1*mechanism
+mechanism       = string
+challenge       = *OCTET        ; 0MQ frame
+
+;   The client responds with SASL authentication information
+YARLY           = %x03 mechanism response
+response        = *OCTET        ; 0MQ frame
+
+;   The server grants the client access to the channel
+OHAI-OK         = %x04
+
+;   The client subscribes to a path in its current channel
+ICANHAZ         = %x05 path options
+path            = string        ; Full or partial path
+options         = dictionary
+dictionary      = size *key-value
+key-value       = string        ; Formatted as name=value
+
+;   The server confirms the subscription
+ICANHAZ-OK      = %x06
+
+;   The client sends credit to the server
+NOM             = %x07 credit
+credit          = number
+number          = 8OCTET        ; 64-bit integer, network order
+sequence        = number
+
+;   The server sends a chunk of file data
+CHEEZBURGER     = %x08 sequence operation filename offset headers chunk
+sequence        = number
+operation       = OCTET
+filename        = string
+offset          = number
+headers         = dictionary
+chunk           = FRAME
+
+;   Client or server sends a heartbeat, the other peer responds
+HUGZ            = %x09
+HUGZ-OK         = %x0A
+
+;   Client closes the peering
+KTHXBAI         = %x0B
+
+;   Server error replies
+S:SRSLY         = %x80 reason    ; Refused due to access rights
+S:RTFM          = %x81 reason    ; Client sent an invalid command
+[[/code]]
+
+++ Security
+
+FILEMQ uses the Simple Authentication and Security Layer (SASL) for authentication and encryption.
+
+++ References
+
+[[bibliography]]
+: rfc2119 : "Key words for use in RFCs to Indicate Requirement Levels" - [http://tools.ietf.org/html/rfc2119 ietf.org]
+: rfc4422 : "Simple Authentication and Security Layer" - [http://tools.ietf.org/html/rfc4422 ietf.org]
+: fandos : "Definition of a Free and Open Standard" - [http://www.digistan.org/open-standard:definition digistan.org]
+: coss : "Consensus Oriented Specification System" - [http://www.digistan.org/spec:1/COSS digistan.org]
+: zmtp : "15/ZMTP - ZeroMQ Message Transport Protocol" - [http://rfc.zeromq.org/spec:15 rfc.zeromq.org]
+[[/bibliography]]
