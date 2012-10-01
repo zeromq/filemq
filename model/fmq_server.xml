@@ -336,6 +336,10 @@ if (!mount) {
 <include filename = "fmq_server_selftest.xml" />
 
 <!-- TODO
+    allow mount points to overlap
+        - allow subscriptions to overlap
+        - filter duplicates to one client
+        
     store patch list per client
         use client identifier, not real id
         test client disconnect & reconnect

@@ -63,10 +63,6 @@ void
 
 //  
 void
-    fmq_server_connect (fmq_server_t *self, const char *endpoint);
-
-//  
-void
     fmq_server_publish (fmq_server_t *self, const char *path);
 
 //  Self test of this class
