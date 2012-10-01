@@ -46,7 +46,7 @@ void
 
 //  Return chunk cur size
 size_t
-    fmq_chunk_cur_size (fmq_chunk_t *self);
+    fmq_chunk_size (fmq_chunk_t *self);
 
 //  Return chunk max size
 size_t

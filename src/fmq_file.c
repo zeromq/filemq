@@ -96,6 +96,8 @@ fmq_file_destroy (fmq_file_t **self_p)
     assert (self_p);
     if (*self_p) {
         fmq_file_t *self = *self_p;
+        if (self->handle)
+            fclose (self->handle);
         free (self->name);
         free (self);
         *self_p = NULL;
@@ -122,13 +124,21 @@ fmq_file_dup (fmq_file_t *self)
 
 
 //  --------------------------------------------------------------------------
-//  Return file name
+//  Return file name, remove path if provided
 
 char *
-fmq_file_name (fmq_file_t *self)
+fmq_file_name (fmq_file_t *self, char *path)
 {
     assert (self);
-    return self->name;
+    char *name = self->name;
+    if (path
+    &&  strlen (self->name) >= strlen (path)
+    &&  memcmp (self->name, path, strlen (path)) == 0) {
+        name += strlen (path);
+        if (*name == '/')
+            name++;
+    }
+    return name;
 }
 
 
@@ -326,7 +336,7 @@ fmq_file_read (fmq_file_t *self, size_t bytes, off_t offset)
     int rc = fseek (self->handle, (long) offset, SEEK_SET);
     if (rc == -1)
         return NULL;
-    
+
     return fmq_chunk_read (self->handle, bytes);
 }
 
@@ -371,7 +381,7 @@ fmq_file_test (bool verbose)
     printf (" * fmq_file: ");
 
     fmq_file_t *file = fmq_file_new (".", "bilbo");
-    assert (streq (fmq_file_name (file), "./bilbo"));
+    assert (streq (fmq_file_name (file, "."), "bilbo"));
     assert (fmq_file_exists (file) == false);
     fmq_file_destroy (&file);
 
@@ -398,7 +408,7 @@ fmq_file_test (bool verbose)
     assert (rc == 0);
     chunk = fmq_file_read (file, 1000100, 0);
     assert (chunk);
-    assert (fmq_chunk_cur_size (chunk) == 1000100);
+    assert (fmq_chunk_size (chunk) == 1000100);
     fmq_chunk_destroy (&chunk);
     
     //  Remove file and directory

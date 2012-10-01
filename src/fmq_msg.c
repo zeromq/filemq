@@ -45,12 +45,10 @@ struct _fmq_msg_t {
     zhash_t *options;
     size_t options_bytes;
     int64_t credit;
-    zlist_t *receipts;
-    size_t receipts_bytes;
+    int64_t sequence;
     byte operation;
     char *filename;
-    int64_t chunk_size;
-    int64_t chunk_offset;
+    int64_t offset;
     zhash_t *headers;
     size_t headers_bytes;
     zframe_t *chunk;
@@ -174,11 +172,6 @@ fmq_msg_destroy (fmq_msg_t **self_p)
         zframe_destroy (&self->response);
         free (self->path);
         zhash_destroy (&self->options);
-        if (self->receipts) {
-            while (zlist_size (self->receipts))
-                free (zlist_pop (self->receipts));
-            zlist_destroy (&self->receipts);
-        }
         free (self->filename);
         zhash_destroy (&self->headers);
         zframe_destroy (&self->chunk);
@@ -285,22 +278,15 @@ fmq_msg_recv (void *socket)
 
         case FMQ_MSG_NOM:
             GET_NUMBER (self->credit);
-            GET_OCTET (list_size);
-            self->receipts = zlist_new ();
-            while (list_size--) {
-                char *string;
-                GET_STRING (string);
-                zlist_append (self->receipts, string);
-                self->receipts_bytes += strlen (string);
-            }
+            GET_NUMBER (self->sequence);
             break;
 
         case FMQ_MSG_CHEEZBURGER:
+            GET_NUMBER (self->sequence);
             GET_OCTET (self->operation);
             free (self->filename);
             GET_STRING (self->filename);
-            GET_NUMBER (self->chunk_size);
-            GET_NUMBER (self->chunk_offset);
+            GET_NUMBER (self->offset);
             GET_OCTET (hash_size);
             self->headers = zhash_new ();
             while (hash_size--) {
@@ -438,22 +424,20 @@ fmq_msg_send (fmq_msg_t **self_p, void *socket)
         case FMQ_MSG_NOM:
             //  credit is an 8-byte integer
             frame_size += 8;
-            //  receipts is an array of strings
-            frame_size++;       //  Size is one octet
-            if (self->receipts)
-                frame_size += zlist_size (self->receipts) + self->receipts_bytes;
+            //  sequence is an 8-byte integer
+            frame_size += 8;
             break;
             
         case FMQ_MSG_CHEEZBURGER:
+            //  sequence is an 8-byte integer
+            frame_size += 8;
             //  operation is an octet
             frame_size += 1;
             //  filename is a string with 1-byte length
             frame_size++;       //  Size is one octet
             if (self->filename)
                 frame_size += strlen (self->filename);
-            //  chunk_size is an 8-byte integer
-            frame_size += 8;
-            //  chunk_offset is an 8-byte integer
+            //  offset is an 8-byte integer
             frame_size += 8;
             //  headers is an array of key=value strings
             frame_size++;       //  Size is one octet
@@ -547,27 +531,18 @@ fmq_msg_send (fmq_msg_t **self_p, void *socket)
             
         case FMQ_MSG_NOM:
             PUT_NUMBER (self->credit);
-            if (self->receipts != NULL) {
-                PUT_OCTET (zlist_size (self->receipts));
-                char *receipts = (char *) zlist_first (self->receipts);
-                while (receipts) {
-                    PUT_STRING (receipts);
-                    receipts = (char *) zlist_next (self->receipts);
-                }
-            }
-            else
-                PUT_OCTET (0);      //  Empty string array
+            PUT_NUMBER (self->sequence);
             break;
             
         case FMQ_MSG_CHEEZBURGER:
+            PUT_NUMBER (self->sequence);
             PUT_OCTET (self->operation);
             if (self->filename) {
                 PUT_STRING (self->filename);
             }
             else
                 PUT_OCTET (0);      //  Empty string
-            PUT_NUMBER (self->chunk_size);
-            PUT_NUMBER (self->chunk_offset);
+            PUT_NUMBER (self->offset);
             if (self->headers != NULL) {
                 PUT_OCTET (zhash_size (self->headers));
                 zhash_foreach (self->headers, s_headers_write, self);
@@ -752,26 +727,18 @@ fmq_msg_dump (fmq_msg_t *self)
         case FMQ_MSG_NOM:
             puts ("NOM:");
             printf ("    credit=%ld\n", (long) self->credit);
-            printf ("    receipts={");
-            if (self->receipts) {
-                char *receipts = (char *) zlist_first (self->receipts);
-                while (receipts) {
-                    printf (" '%s'", receipts);
-                    receipts = (char *) zlist_next (self->receipts);
-                }
-            }
-            printf (" }\n");
+            printf ("    sequence=%ld\n", (long) self->sequence);
             break;
             
         case FMQ_MSG_CHEEZBURGER:
             puts ("CHEEZBURGER:");
+            printf ("    sequence=%ld\n", (long) self->sequence);
             printf ("    operation=%d\n", self->operation);
             if (self->filename)
                 printf ("    filename='%s'\n", self->filename);
             else
                 printf ("    filename=\n");
-            printf ("    chunk_size=%ld\n", (long) self->chunk_size);
-            printf ("    chunk_offset=%ld\n", (long) self->chunk_offset);
+            printf ("    offset=%ld\n", (long) self->offset);
             printf ("    headers={\n");
             if (self->headers)
                 zhash_foreach (self->headers, s_headers_dump, self);
@@ -1095,51 +1062,20 @@ fmq_msg_credit_set (fmq_msg_t *self, int64_t credit)
 
 
 //  --------------------------------------------------------------------------
-//  Iterate through the receipts field, and append a receipts value
+//  Get/set the sequence field
 
-char *
-fmq_msg_receipts_first (fmq_msg_t *self)
+int64_t
+fmq_msg_sequence (fmq_msg_t *self)
 {
     assert (self);
-    if (self->receipts)
-        return (char *) (zlist_first (self->receipts));
-    else
-        return NULL;
-}
-
-char *
-fmq_msg_receipts_next (fmq_msg_t *self)
-{
-    assert (self);
-    if (self->receipts)
-        return (char *) (zlist_next (self->receipts));
-    else
-        return NULL;
+    return self->sequence;
 }
 
 void
-fmq_msg_receipts_append (fmq_msg_t *self, char *format, ...)
+fmq_msg_sequence_set (fmq_msg_t *self, int64_t sequence)
 {
-    //  Format into newly allocated string
     assert (self);
-    va_list argptr;
-    va_start (argptr, format);
-    char *string = (char *) malloc (STRING_MAX + 1);
-    assert (string);
-    vsnprintf (string, STRING_MAX, format, argptr);
-    va_end (argptr);
-    
-    //  Attach string to list
-    if (!self->receipts)
-        self->receipts = zlist_new ();
-    zlist_append (self->receipts, string);
-    self->receipts_bytes += strlen (string);
-}
-
-size_t
-fmq_msg_receipts_size (fmq_msg_t *self)
-{
-    return zlist_size (self->receipts);
+    self->sequence = sequence;
 }
 
 
@@ -1187,38 +1123,20 @@ fmq_msg_filename_set (fmq_msg_t *self, char *format, ...)
 
 
 //  --------------------------------------------------------------------------
-//  Get/set the chunk_size field
+//  Get/set the offset field
 
 int64_t
-fmq_msg_chunk_size (fmq_msg_t *self)
+fmq_msg_offset (fmq_msg_t *self)
 {
     assert (self);
-    return self->chunk_size;
+    return self->offset;
 }
 
 void
-fmq_msg_chunk_size_set (fmq_msg_t *self, int64_t chunk_size)
+fmq_msg_offset_set (fmq_msg_t *self, int64_t offset)
 {
     assert (self);
-    self->chunk_size = chunk_size;
-}
-
-
-//  --------------------------------------------------------------------------
-//  Get/set the chunk_offset field
-
-int64_t
-fmq_msg_chunk_offset (fmq_msg_t *self)
-{
-    assert (self);
-    return self->chunk_offset;
-}
-
-void
-fmq_msg_chunk_offset_set (fmq_msg_t *self, int64_t chunk_offset)
-{
-    assert (self);
-    self->chunk_offset = chunk_offset;
+    self->offset = offset;
 }
 
 
@@ -1420,23 +1338,20 @@ fmq_msg_test (bool verbose)
 
     self = fmq_msg_new (FMQ_MSG_NOM);
     fmq_msg_credit_set (self, 12345678);
-    fmq_msg_receipts_append (self, "Name: %s", "Brutus");
-    fmq_msg_receipts_append (self, "Age: %d", 43);
+    fmq_msg_sequence_set (self, 12345678);
     fmq_msg_send (&self, output);
     
     self = fmq_msg_recv (input);
     assert (self);
     assert (fmq_msg_credit (self) == 12345678);
-    assert (fmq_msg_receipts_size (self) == 2);
-    assert (streq (fmq_msg_receipts_first (self), "Name: Brutus"));
-    assert (streq (fmq_msg_receipts_next (self), "Age: 43"));
+    assert (fmq_msg_sequence (self) == 12345678);
     fmq_msg_destroy (&self);
 
     self = fmq_msg_new (FMQ_MSG_CHEEZBURGER);
+    fmq_msg_sequence_set (self, 12345678);
     fmq_msg_operation_set (self, 123);
     fmq_msg_filename_set (self, "Life is short but Now lasts for ever");
-    fmq_msg_chunk_size_set (self, 12345678);
-    fmq_msg_chunk_offset_set (self, 12345678);
+    fmq_msg_offset_set (self, 12345678);
     fmq_msg_headers_insert (self, "Name", "Brutus");
     fmq_msg_headers_insert (self, "Age", "%d", 43);
     fmq_msg_chunk_set (self, zframe_new ("Captcha Diem", 12));
@@ -1444,10 +1359,10 @@ fmq_msg_test (bool verbose)
     
     self = fmq_msg_recv (input);
     assert (self);
+    assert (fmq_msg_sequence (self) == 12345678);
     assert (fmq_msg_operation (self) == 123);
     assert (streq (fmq_msg_filename (self), "Life is short but Now lasts for ever"));
-    assert (fmq_msg_chunk_size (self) == 12345678);
-    assert (fmq_msg_chunk_offset (self) == 12345678);
+    assert (fmq_msg_offset (self) == 12345678);
     assert (fmq_msg_headers_size (self) == 2);
     assert (streq (fmq_msg_headers_string (self, "Name", "?"), "Brutus"));
     assert (fmq_msg_headers_number (self, "Age", 0) == 43);

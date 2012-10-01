@@ -145,7 +145,8 @@ typedef enum {
     cheezburger_event = 9,
     hugz_event = 10,
     subscribe_event = 11,
-    icanhaz_ok_event = 12
+    send_credit_event = 12,
+    icanhaz_ok_event = 13
 } event_t;
 
 
@@ -191,6 +192,7 @@ struct _client_t {
     bool connected;             //  Are we connected to server?
     zlist_t *subs;              //  Subscriptions              
     size_t credit;              //  Current credit pending     
+    fmq_file_t *file;           //  File we're writing to      
     
     //  Properties you should NOT touch
     zctx_t *ctx;                //  Own CZMQ context
@@ -346,14 +348,45 @@ refill_credit_as_needed (client_t *self)
     }                                                      
     if (credit_to_send) {                                  
         fmq_msg_credit_set (self->request, credit_to_send);
-        fmq_msg_id_set (self->request, FMQ_MSG_NOM);       
+        self->next_event = send_credit_event;              
     }                                                      
 }
 
 static void
-store_file_data (client_t *self)
+process_the_patch (client_t *self)
 {
-    
+    char *rootdir = fmq_config_resolve (self->config, "client/root", "fmqroot");      
+    char *filename = fmq_msg_filename (self->reply);                                  
+                                                                                      
+    if (fmq_msg_operation (self->reply) == FMQ_MSG_FILE_CREATE) {                     
+        if (self->file == NULL) {                                                     
+            zclock_log ("I: create %s", filename);                                    
+            self->file = fmq_file_new (rootdir, filename);                            
+            if (fmq_file_output (self->file)) {                                       
+                //  File not writeable, skip patch                                    
+                fmq_file_destroy (&self->file);                                       
+                return;                                                               
+            }                                                                         
+        }                                                                             
+        //  Try to write, ignore errors in this version                               
+        zframe_t *frame = fmq_msg_chunk (self->reply);                                
+        fmq_chunk_t *chunk = fmq_chunk_new (zframe_data (frame), zframe_size (frame));
+        if (fmq_chunk_size (chunk) > 0) {                                             
+            fmq_file_write (self->file, chunk, fmq_msg_offset (self->reply));         
+            self->credit -= fmq_chunk_size (chunk);                                   
+        }                                                                             
+        else                                                                          
+            //  Zero-sized chunk means end of file                                    
+            fmq_file_destroy (&self->file);                                           
+        fmq_chunk_destroy (&chunk);                                                   
+    }                                                                                 
+    else                                                                              
+    if (fmq_msg_operation (self->reply) == FMQ_MSG_FILE_DELETE) {                     
+        zclock_log ("I: delete %s", filename);                                        
+        fmq_file_t *file = fmq_file_new (rootdir, filename);                          
+        fmq_file_remove (file);                                                       
+        fmq_file_destroy (&file);                                                     
+    }                                                                                 
 }
 
 static void
@@ -478,7 +511,7 @@ client_execute (client_t *self, int event)
 
             case ready_state:
                 if (self->event == cheezburger_event) {
-                    store_file_data (self);
+                    process_the_patch (self);
                     refill_credit_as_needed (self);
                 }
                 else
@@ -490,6 +523,12 @@ client_execute (client_t *self, int event)
                 else
                 if (self->event == subscribe_event) {
                     fmq_msg_id_set (self->request, FMQ_MSG_ICANHAZ);
+                    fmq_msg_send (&self->request, self->dealer);
+                    self->request = fmq_msg_new (0);
+                }
+                else
+                if (self->event == send_credit_event) {
+                    fmq_msg_id_set (self->request, FMQ_MSG_NOM);
                     fmq_msg_send (&self->request, self->dealer);
                     self->request = fmq_msg_new (0);
                 }

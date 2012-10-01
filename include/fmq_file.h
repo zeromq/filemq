@@ -48,9 +48,9 @@ void
 fmq_file_t *
     fmq_file_dup (fmq_file_t *self);
 
-//  Return file name
+//  Return file name, remove path if provided
 char *
-    fmq_file_name (fmq_file_t *self);
+    fmq_file_name (fmq_file_t *self, char *path);
 
 //  Return file time
 time_t

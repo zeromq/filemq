@@ -71,7 +71,6 @@ mount_refresh (mount_t *self, server_t *server)
             fmq_patch_t *patch = (fmq_patch_t *) zlist_first (patches);
             while (patch) {
                 zlist_append (sub->client->patches, fmq_patch_dup (patch));
-                fmq_patch_set_number (patch, sub->client->patch_nbr++);
                 patch = (fmq_patch_t *) zlist_next (patches);
                 changed = true;
             }

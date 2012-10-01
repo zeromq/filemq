@@ -31,7 +31,7 @@ This is the FILEMQ/1.0 client protocol handler
 
 <state name = "ready">
     <event name = "CHEEZBURGER">
-        <action name = "store file data" />
+        <action name = "process the patch" />
         <action name = "refill credit as needed" />
     </event>
     <event name = "HUGZ">
@@ -39,6 +39,9 @@ This is the FILEMQ/1.0 client protocol handler
     </event>
     <event name = "subscribe">
         <action name = "send" message = "ICANHAZ" />
+    </event>
+    <event name = "send credit">
+        <action name = "send" message = "NOM" />
     </event>
     <event name = "ICANHAZ-OK" />
 </state>
@@ -70,6 +73,7 @@ This is the FILEMQ/1.0 client protocol handler
 bool connected;             //  Are we connected to server?
 zlist_t *subs;              //  Subscriptions
 size_t credit;              //  Current credit pending
+fmq_file_t *file;           //  File we're writing to
 </context>
 
 <construct>
@@ -135,11 +139,43 @@ while (self->credit < CREDIT_MINIMUM) {
 }
 if (credit_to_send) {
     fmq_msg_credit_set (self->request, credit_to_send);
-    fmq_msg_id_set (self->request, FMQ_MSG_NOM);
+    self->next_event = send_credit_event;
 }
 </action>
 
-<action name = "store file data">
+<action name = "process the patch">
+char *rootdir = fmq_config_resolve (self->config, "client/root", "fmqroot");
+char *filename = fmq_msg_filename (self->reply);
+
+if (fmq_msg_operation (self->reply) == FMQ_MSG_FILE_CREATE) {
+    if (self->file == NULL) {
+        zclock_log ("I: create %s", filename);
+        self->file = fmq_file_new (rootdir, filename);
+        if (fmq_file_output (self->file)) {
+            //  File not writeable, skip patch
+            fmq_file_destroy (&self->file);
+            return;
+        }
+    }
+    //  Try to write, ignore errors in this version
+    zframe_t *frame = fmq_msg_chunk (self->reply);
+    fmq_chunk_t *chunk = fmq_chunk_new (zframe_data (frame), zframe_size (frame));
+    if (fmq_chunk_size (chunk) > 0) {
+        fmq_file_write (self->file, chunk, fmq_msg_offset (self->reply));
+        self->credit -= fmq_chunk_size (chunk);
+    }
+    else
+        //  Zero-sized chunk means end of file
+        fmq_file_destroy (&self->file);
+    fmq_chunk_destroy (&chunk);
+}
+else
+if (fmq_msg_operation (self->reply) == FMQ_MSG_FILE_DELETE) {
+    zclock_log ("I: delete %s", filename);
+    fmq_file_t *file = fmq_file_new (rootdir, filename);
+    fmq_file_remove (file);
+    fmq_file_destroy (&file);
+}
 </action>
 
 <action name = "log access denied">

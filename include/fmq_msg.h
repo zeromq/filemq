@@ -51,13 +51,13 @@
 
     NOM - Client sends credit to the server
         credit        number 
-        receipts      strings 
+        sequence      number 
 
-    CHEEZBURGER - The server sends a file patch
+    CHEEZBURGER - The server sends a file chunk
+        sequence      number 
         operation     octet 
         filename      string 
-        chunk_size    number 
-        chunk_offset  number 
+        offset        number 
         headers       dictionary 
         chunk         frame 
 
@@ -188,15 +188,11 @@ int64_t
 void
     fmq_msg_credit_set (fmq_msg_t *self, int64_t credit);
 
-//  Iterate through the receipts field, and append a receipts value
-char *
-    fmq_msg_receipts_first (fmq_msg_t *self);
-char *
-    fmq_msg_receipts_next (fmq_msg_t *self);
+//  Get/set the sequence field
+int64_t
+    fmq_msg_sequence (fmq_msg_t *self);
 void
-    fmq_msg_receipts_append (fmq_msg_t *self, char *format, ...);
-size_t
-    fmq_msg_receipts_size (fmq_msg_t *self);
+    fmq_msg_sequence_set (fmq_msg_t *self, int64_t sequence);
 
 //  Get/set the operation field
 byte
@@ -210,17 +206,11 @@ char *
 void
     fmq_msg_filename_set (fmq_msg_t *self, char *format, ...);
 
-//  Get/set the chunk_size field
+//  Get/set the offset field
 int64_t
-    fmq_msg_chunk_size (fmq_msg_t *self);
+    fmq_msg_offset (fmq_msg_t *self);
 void
-    fmq_msg_chunk_size_set (fmq_msg_t *self, int64_t chunk_size);
-
-//  Get/set the chunk_offset field
-int64_t
-    fmq_msg_chunk_offset (fmq_msg_t *self);
-void
-    fmq_msg_chunk_offset_set (fmq_msg_t *self, int64_t chunk_offset);
+    fmq_msg_offset_set (fmq_msg_t *self, int64_t offset);
 
 //  Get/set a value in the headers dictionary
 char *

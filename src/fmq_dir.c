@@ -274,19 +274,19 @@ fmq_dir_diff (fmq_dir_t *older, fmq_dir_t *newer)
         if (!new)
             cmp = -1;       //  New file was added at end of list
         else
-            cmp = strcmp (fmq_file_name (old), fmq_file_name (new));
+            cmp = strcmp (fmq_file_name (old, NULL), fmq_file_name (new, NULL));
 
         if (cmp > 0) {
             //  New file was created
             if (fmq_file_stable (new))
-                zlist_append (patches, fmq_patch_new (new, patch_create, 0));
+                zlist_append (patches, fmq_patch_new (new, patch_create));
             old_index--;
         }
         else
         if (cmp < 0) {
             //  Old file was deleted
             if (fmq_file_stable (old))
-                zlist_append (patches, fmq_patch_new (old, patch_delete, 0));
+                zlist_append (patches, fmq_patch_new (old, patch_delete));
             new_index--;
         }
         else
@@ -296,11 +296,11 @@ fmq_dir_diff (fmq_dir_t *older, fmq_dir_t *newer)
                 //  Since we don't check file contents, treat as created
                 if (fmq_file_time (new) != fmq_file_time (old)
                 ||  fmq_file_size (new) != fmq_file_size (old))
-                    zlist_append (patches, fmq_patch_new (new, patch_create, 0));
+                    zlist_append (patches, fmq_patch_new (new, patch_create));
             }
             else
                 //  File was created over some period of time
-                zlist_append (patches, fmq_patch_new (new, patch_create, 0));
+                zlist_append (patches, fmq_patch_new (new, patch_create));
         }
         old_index++;
         new_index++;
@@ -330,8 +330,8 @@ s_dir_compare (void *item1, void *item2)
 static bool
 s_file_compare (void *item1, void *item2)
 {
-    if (strcmp (fmq_file_name ((fmq_file_t *) item1),
-                fmq_file_name ((fmq_file_t *) item2)) > 0)
+    if (strcmp (fmq_file_name ((fmq_file_t *) item1, NULL),
+                fmq_file_name ((fmq_file_t *) item2, NULL)) > 0)
         return true;
     else
         return false;
@@ -422,7 +422,7 @@ fmq_dir_dump (fmq_dir_t *self, int indent)
         fmq_file_t *file = files [index];
         if (!file)
             break;
-        puts (fmq_file_name (file));
+        puts (fmq_file_name (file, NULL));
     }
     free (files);
 }

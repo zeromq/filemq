@@ -28,7 +28,7 @@
 //  Structure of our class
 
 struct _fmq_chunk_t {
-    size_t cur_size;            //  Current size of data part
+    size_t size;                //  Current size of data part
     size_t max_size;            //  Maximum allocated size
     byte  *data;                //  Data part follows here
 };
@@ -45,11 +45,11 @@ fmq_chunk_new (const void *data, size_t size)
         self->max_size = size;
         self->data = (byte *) self + sizeof (fmq_chunk_t);
         if (data) {
-            self->cur_size = size;
+            self->size = size;
             memcpy (self->data, data, size);
         }
         else
-            self->cur_size = 0;
+            self->size = 0;
     }
     return self;
 }
@@ -86,7 +86,7 @@ fmq_chunk_resize (fmq_chunk_t *self, size_t size)
 
     self->data = zmalloc (size);
     self->max_size = size;
-    self->cur_size = 0;
+    self->size = 0;
 }
 
 
@@ -101,7 +101,7 @@ fmq_chunk_set (fmq_chunk_t *self, const void *data, size_t size)
     if (size > self->max_size)
         size = self->max_size;
     memcpy (self->data, data, size);
-    self->cur_size = size;
+    self->size = size;
     return size;
 }
 
@@ -117,7 +117,7 @@ fmq_chunk_fill (fmq_chunk_t *self, byte filler, size_t size)
     if (size > self->max_size)
         size = self->max_size;
     memset (self->data, filler, size);
-    self->cur_size = size;
+    self->size = size;
     return size;
 }
 
@@ -126,10 +126,10 @@ fmq_chunk_fill (fmq_chunk_t *self, byte filler, size_t size)
 //  Return chunk cur size
 
 size_t
-fmq_chunk_cur_size (fmq_chunk_t *self)
+fmq_chunk_size (fmq_chunk_t *self)
 {
     assert (self);
-    return self->cur_size;
+    return self->size;
 }
 
 
@@ -162,7 +162,7 @@ fmq_chunk_t *
 fmq_chunk_read (FILE *handle, size_t bytes)
 {
     fmq_chunk_t *self = fmq_chunk_new (NULL, bytes);
-    self->cur_size = fread (self->data, 1, bytes, handle);
+    self->size = fread (self->data, 1, bytes, handle);
     return self;
 }
 
@@ -173,8 +173,8 @@ fmq_chunk_read (FILE *handle, size_t bytes)
 int
 fmq_chunk_write (fmq_chunk_t *self, FILE *handle)
 {
-    size_t items = fwrite (self->data, 1, self->cur_size, handle);
-    int rc = (items < self->cur_size)? -1: 0;
+    size_t items = fwrite (self->data, 1, self->size, handle);
+    int rc = (items < self->size)? -1: 0;
     return rc;
 }
 
@@ -188,7 +188,7 @@ fmq_chunk_test (bool verbose)
 
     fmq_chunk_t *chunk = fmq_chunk_new ("1234567890", 10);
     assert (chunk);
-    assert (fmq_chunk_cur_size (chunk) == 10);
+    assert (fmq_chunk_size (chunk) == 10);
     assert (memcmp (fmq_chunk_data (chunk), "1234567890", 10) == 0);
     fmq_chunk_destroy (&chunk);
 

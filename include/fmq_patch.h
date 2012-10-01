@@ -39,7 +39,7 @@ typedef struct _fmq_patch_t fmq_patch_t;
 
 //  Create new patch
 fmq_patch_t *
-    fmq_patch_new (fmq_file_t *file, fmq_patch_op_t op, int number);
+    fmq_patch_new (fmq_file_t *file, fmq_patch_op_t op);
 
 //  Destroy a patch
 void
@@ -57,14 +57,6 @@ fmq_file_t *
 fmq_patch_op_t
     fmq_patch_op (fmq_patch_t *self);
     
-//  Get patch number
-int
-    fmq_patch_number (fmq_patch_t *self);
-
-//  Set patch number
-void
-    fmq_patch_set_number (fmq_patch_t *self, int number);
-
 //  Self test of this class
 int
     fmq_patch_test (bool verbose);

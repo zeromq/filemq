@@ -45,15 +45,15 @@ Server confirms the subscription
 <message name = "NOM" id = "7">
 Client sends credit to the server
     <field name = "credit" type = "number" />
-    <field name = "receipts" type = "strings" />
+    <field name = "sequence" type = "number" />
 </message>
 
 <message name = "CHEEZBURGER" id = "8">
-The server sends a file patch
+The server sends a file chunk
+    <field name = "sequence" type = "number" />
     <field name = "operation" type = "octet" />
     <field name = "filename" type = "string" />
-    <field name = "chunk-size" type = "number" />
-    <field name = "chunk-offset" type = "number" />
+    <field name = "offset" type = "number" />
     <field name = "headers" type = "dictionary" />
     <field name = "chunk" type = "frame" />
 </message>

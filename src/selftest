@@ -1,4 +1,7 @@
-#  Run selftests and check memory
+#! /bin/bash
+#
+#   Run selftests and check memory
+
 cd ../model
 ./generate
 cd ../src
@@ -25,3 +28,48 @@ if [ $? -eq 0 ]; then
 fi
 rm -f vgcore.*
 
+function push_file {
+    dd if=/dev/urandom of=./fmqroot/send/$1 bs=$3 count=$2 2> /dev/null
+}
+
+gcc -g -o filemq filemq.c \
+    fmq_chunk.c \
+    fmq_client.c \
+    fmq_config.c \
+    fmq_dir.c \
+    fmq_file.c \
+    fmq_msg.c \
+    fmq_patch.c \
+    fmq_sasl.c \
+    fmq_server.c \
+    ${CFLAGS} ${LDFLAGS} -lczmq -lzmq
+#
+#   Start server and client
+killall -q filemq -r ".*filemq.*"
+
+rm -rf fmqroot/send/* fmqroot/recv/*
+mkdir fmqroot/send/logs fmqroot/send/photos
+
+./filemq -c &
+./filemq -s &
+sleep 1
+
+#   Push some files into photos and logs
+push_file logs/log.1 2500 100
+push_file logs/log.2 9999 100
+push_file photos/DSCF0001.jpg  1000 1000
+push_file photos/DSCF0002.jpg  2000 1000
+push_file photos/DSCF0003.jpg  4000 1000
+push_file photos/DSCF0004.jpg  8000 1000
+push_file photos/DSCF0005.jpg 16000 1000
+push_file photos/DSCF0006.jpg 32000 1000
+echo "Pause 1..."
+sleep 3
+
+#   Replace some files
+push_file photos/DSCF0002.jpg 3500 1000
+push_file photos/DSCF0003.jpg 4000 1000
+echo "Pause 2..."
+sleep 3
+
+killall -q filemq -r ".*filemq.*"
