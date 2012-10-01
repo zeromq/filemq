@@ -318,7 +318,7 @@ zmq_bind (self->router, endpoint);
 zmq_connect (self->router, endpoint);
 </method>
 
-<method name = "mount">
+<method name = "publish">
 <argument name = "path" type = "string" />
 mount_t *mount = mount_new (
     fmq_config_resolve (self->config, "server/root", "./fmqroot"), path);

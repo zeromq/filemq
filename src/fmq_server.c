@@ -125,11 +125,11 @@ fmq_server_connect (fmq_server_t *self, const char *endpoint)
 //  --------------------------------------------------------------------------
 
 void
-fmq_server_mount (fmq_server_t *self, const char *path)
+fmq_server_publish (fmq_server_t *self, const char *path)
 {
     assert (self);
     assert (path);
-    zstr_sendm (self->pipe, "MOUNT");
+    zstr_sendm (self->pipe, "PUBLISH");
     zstr_send (self->pipe, path);
 }
 
@@ -517,7 +517,7 @@ server_apply_config (server_t *self)
             zmq_connect (self->router, endpoint);
         }
         else
-        if (streq (fmq_config_name (section), "mount")) {
+        if (streq (fmq_config_name (section), "publish")) {
             char *path = fmq_config_resolve (section, "path", "?");
             mount_t *mount = mount_new (                                             
                 fmq_config_resolve (self->config, "server/root", "./fmqroot"), path);
@@ -544,7 +544,7 @@ server_control_message (server_t *self)
         free (endpoint);
     }
     else
-    if (streq (method, "MOUNT")) {
+    if (streq (method, "PUBLISH")) {
         char *path = zmsg_popstr (msg);
         mount_t *mount = mount_new (                                             
             fmq_config_resolve (self->config, "server/root", "./fmqroot"), path);

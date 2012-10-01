@@ -67,7 +67,7 @@ void
 
 //  
 void
-    fmq_server_mount (fmq_server_t *self, const char *path);
+    fmq_server_publish (fmq_server_t *self, const char *path);
 
 //  Self test of this class
 int

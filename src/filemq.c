@@ -45,7 +45,7 @@ int main (int argc, char *argv [])
         fmq_server_configure (server, "server_test.cfg");
         fmq_server_setoption (server, "server/root", "./fmqroot/send");
         fmq_server_bind (server, "tcp://*:6000");
-        fmq_server_mount (server, "/photos");
+        fmq_server_publish (server, "/photos");
     }
     if (argc < 2 || streq (argv [1], "-c")) {
         client = fmq_client_new ();
