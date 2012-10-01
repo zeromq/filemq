@@ -27,8 +27,7 @@
 
 typedef enum {
     patch_create = 1,
-    patch_delete = 2,
-    patch_update = 3
+    patch_delete = 2
 } fmq_patch_op_t;
 
 #ifdef __cplusplus

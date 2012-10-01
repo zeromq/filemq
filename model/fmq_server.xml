@@ -210,6 +210,7 @@ client_dispatch (const char *key, void *client, void *server)
     return 0;
 }
 </declare>
+
 <action name = "monitor the server">
 mount_t *mount = (mount_t *) zlist_first (self->mounts);
 while (mount) {
@@ -222,19 +223,16 @@ while (mount) {
 <action name = "get next patch for client">
 fmq_patch_t *patch = (fmq_patch_t *) zlist_pop (client->patches);
 if (patch) {
+    assert (fmq_patch_file (patch));
     client->next_event = ok_event;
     switch (fmq_patch_op (patch)) {
         case patch_create:
             fmq_msg_operation_set (client->reply, FMQ_MSG_FILE_CREATE);
-            printf ("I: created: %s\n", fmq_file_name (fmq_patch_file (patch)));
+            zclock_log ("I: created: %s", fmq_file_name (fmq_patch_file (patch)));
             break;
         case patch_delete:
             fmq_msg_operation_set (client->reply, FMQ_MSG_FILE_DELETE);
-            printf ("I: deleted: %s\n", fmq_file_name (fmq_patch_file (patch)));
-            break;
-        case patch_update:
-            fmq_msg_operation_set (client->reply, FMQ_MSG_FILE_UPDATE);
-            printf ("I: updated: %s\n", fmq_file_name (fmq_patch_file (patch)));
+            zclock_log ("I: deleted: %s", fmq_file_name (fmq_patch_file (patch)));
             break;
     }
     fmq_msg_filename_set (client->reply, fmq_file_name (fmq_patch_file (patch)));
@@ -271,9 +269,6 @@ zlist_append (self->mounts, mount);
     server:
     - push patches to clients
     - patch id is sequence number
-    - send files only when modified >1 second in past
-    - to get stability
-    - alternatively send chunk by chunk and hash each chunk
     - remove old patches on same file
     
     store patch list per client

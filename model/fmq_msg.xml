@@ -8,7 +8,6 @@ This is the FILEMQ protocol version 1.0
 <!-- File operations -->
 <define name = "FILE CREATE" value = "1" />
 <define name = "FILE DELETE" value = "2" />
-<define name = "FILE UPDATE" value = "3" />
 
 <message name = "OHAI" id = "1">
 Client opens peering

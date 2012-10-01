@@ -358,6 +358,8 @@ client_set_request (client_t *self, $(codec)_t *request)
         $(codec)_destroy (&self->request);
     self->request = request;
 
+    //  Any input from client counts as heartbeat
+    self->heartbeat_at = zclock_time () + self->heartbeat;
     //  Any input from client counts as activity
     self->expires_at = zclock_time () + self->heartbeat * 3;
 }
@@ -579,6 +581,13 @@ server_client_execute (server_t *self, client_t *client, int event)
                     zclock_log ("S:    + send $(MESSAGE:C)");
 .               endif
                     $(codec)_id_set (client->reply, $(CODEC)_$(MESSAGE:C));
+.if switches.trace ?= 1
+                    puts ("Send message to client");
+                    $(codec)_dump (client->reply);
+.endif
+                    $(codec)_send (&client->reply, client->router);
+                    client->reply = $(codec)_new (0);
+                    $(codec)_address_set (client->reply, client->address);
 .           else
 .               if switches.animate ?= 1
                     zclock_log ("S:    + $(name)");
@@ -601,18 +610,6 @@ server_client_execute (server_t *self, client_t *client, int event)
 .if switches.animate ?= 1
         zclock_log ("S:      -------------------> %s", s_state_name [client->state]);
 .endif
-        if ($(codec)_id (client->reply)) {
-.if switches.trace ?= 1
-            puts ("Send message to client");
-            $(codec)_dump (client->reply);
-.endif
-            $(codec)_send (&client->reply, client->router);
-            client->reply = $(codec)_new (0);
-            $(codec)_address_set (client->reply, client->address);
-            
-            //  Any output from client counts as heartbeat
-            client->heartbeat_at = zclock_time () + client->heartbeat;
-        }
         if (client->next_event == terminate_event) {
             //  Automatically calls client_destroy
             zhash_delete (self->clients, client->hashkey);
@@ -751,11 +748,13 @@ $(class.name)_test (bool verbose)
 
 .   endfor
     $(class.name)_destroy (&self);
+.endfor
+
+    zctx_destroy (&ctx);
     //  No clean way to wait for a background thread to exit
     //  Under valgrind this will randomly show as leakage
-    zclock_sleep (500);
-.endfor
-    zctx_destroy (&ctx);
+    //  Reduce this by giving server thread time to exit
+    zclock_sleep (200);
     printf ("OK\\n");
     return 0;
 }

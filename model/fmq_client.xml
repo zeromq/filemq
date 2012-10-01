@@ -110,7 +110,6 @@ self->connected = true;
 sub_t *sub = (sub_t *) zlist_first (self->subs);
 if (sub) {
     fmq_msg_path_set (self->request, sub->path);
-    puts (sub->path);
     self->next_event = ok_event;
 }
 else
@@ -121,7 +120,6 @@ else
 sub_t *sub = (sub_t *) zlist_next (self->subs);
 if (sub) {
     fmq_msg_path_set (self->request, sub->path);
-    puts (sub->path);
     self->next_event = ok_event;
 }
 else

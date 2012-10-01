@@ -156,18 +156,6 @@ fmq_chunk_data (fmq_chunk_t *self)
 
 
 //  --------------------------------------------------------------------------
-//  Write chunk to an open file descriptor
-
-int
-fmq_chunk_write (fmq_chunk_t *self, FILE *handle)
-{
-    size_t items = fwrite (self->data, 1, self->cur_size, handle);
-    int rc = (items < self->cur_size)? -1: 0;
-    return rc;
-}
-
-
-//  --------------------------------------------------------------------------
 //  Read chunk to an open file descriptor
 
 fmq_chunk_t *
@@ -176,6 +164,18 @@ fmq_chunk_read (FILE *handle, size_t bytes)
     fmq_chunk_t *self = fmq_chunk_new (NULL, bytes);
     self->cur_size = fread (self->data, 1, bytes, handle);
     return self;
+}
+
+
+//  --------------------------------------------------------------------------
+//  Write chunk to an open file descriptor
+
+int
+fmq_chunk_write (fmq_chunk_t *self, FILE *handle)
+{
+    size_t items = fwrite (self->data, 1, self->cur_size, handle);
+    int rc = (items < self->cur_size)? -1: 0;
+    return rc;
 }
 
 

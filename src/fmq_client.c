@@ -317,7 +317,6 @@ get_first_subscription (client_t *self)
     sub_t *sub = (sub_t *) zlist_first (self->subs);
     if (sub) {                                      
         fmq_msg_path_set (self->request, sub->path);
-        puts (sub->path);                           
         self->next_event = ok_event;                
     }                                               
     else                                            
@@ -330,7 +329,6 @@ get_next_subscription (client_t *self)
     sub_t *sub = (sub_t *) zlist_next (self->subs); 
     if (sub) {                                      
         fmq_msg_path_set (self->request, sub->path);
-        puts (sub->path);                           
         self->next_event = ok_event;                
     }                                               
     else                                            
@@ -396,6 +394,8 @@ client_execute (client_t *self, int event)
             case start_state:
                 if (self->event == ready_event) {
                     fmq_msg_id_set (self->request, FMQ_MSG_OHAI);
+                    fmq_msg_send (&self->request, self->dealer);
+                    self->request = fmq_msg_new (0);
                     self->state = requesting_access_state;
                 }
                 else
@@ -419,6 +419,8 @@ client_execute (client_t *self, int event)
                 if (self->event == orly_event) {
                     try_security_mechanism (self);
                     fmq_msg_id_set (self->request, FMQ_MSG_YARLY);
+                    fmq_msg_send (&self->request, self->dealer);
+                    self->request = fmq_msg_new (0);
                     self->state = requesting_access_state;
                 }
                 else
@@ -447,6 +449,8 @@ client_execute (client_t *self, int event)
             case subscribing_state:
                 if (self->event == ok_event) {
                     fmq_msg_id_set (self->request, FMQ_MSG_ICANHAZ);
+                    fmq_msg_send (&self->request, self->dealer);
+                    self->request = fmq_msg_new (0);
                     get_next_subscription (self);
                     self->state = subscribing_state;
                 }
@@ -480,10 +484,14 @@ client_execute (client_t *self, int event)
                 else
                 if (self->event == hugz_event) {
                     fmq_msg_id_set (self->request, FMQ_MSG_HUGZ_OK);
+                    fmq_msg_send (&self->request, self->dealer);
+                    self->request = fmq_msg_new (0);
                 }
                 else
                 if (self->event == subscribe_event) {
                     fmq_msg_id_set (self->request, FMQ_MSG_ICANHAZ);
+                    fmq_msg_send (&self->request, self->dealer);
+                    self->request = fmq_msg_new (0);
                 }
                 else
                 if (self->event == icanhaz_ok_event) {
@@ -505,10 +513,6 @@ client_execute (client_t *self, int event)
                 }
                 break;
 
-        }
-        if (fmq_msg_id (self->request)) {
-            fmq_msg_send (&self->request, self->dealer);
-            self->request = fmq_msg_new (0);
         }
         if (self->next_event == terminate_event) {
             self->stopped = true;

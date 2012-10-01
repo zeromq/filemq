@@ -37,15 +37,18 @@ int main (int argc, char *argv [])
     puts (COPYRIGHT);
     puts (NOWARRANTY);
 
-    fmq_server_t *server = fmq_server_new ();
+    fmq_server_t *server = NULL;
+    fmq_client_t *client = NULL;
+
     if (argc < 2 || streq (argv [1], "-s")) {
+        server = fmq_server_new ();
         fmq_server_configure (server, "server_test.cfg");
         fmq_server_setoption (server, "server/root", "./fmqroot/send");
         fmq_server_bind (server, "tcp://*:6000");
         fmq_server_mount (server, "/photos");
     }
-    fmq_client_t *client = fmq_client_new ();
     if (argc < 2 || streq (argv [1], "-c")) {
+        client = fmq_client_new ();
         fmq_client_configure (client, "client_test.cfg");
         fmq_client_setoption (client, "client/root", "./fmqroot/recv");
         fmq_client_connect   (client, "tcp://localhost:6000");

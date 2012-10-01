@@ -3,18 +3,6 @@ cd ../model
 ./generate
 cd ../src
 
-gcc -g -o filemq filemq.c \
-    fmq_chunk.c \
-    fmq_client.c \
-    fmq_config.c \
-    fmq_dir.c \
-    fmq_file.c \
-    fmq_msg.c \
-    fmq_patch.c \
-    fmq_sasl.c \
-    fmq_server.c \
-    ${CFLAGS} ${LDFLAGS} -lczmq -lzmq
-
 gcc -g -o fmq_selftest fmq_selftest.c  \
     fmq_chunk.c \
     fmq_client.c \

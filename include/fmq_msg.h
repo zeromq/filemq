@@ -77,7 +77,6 @@
 #define FMQ_MSG_VERSION                     1
 #define FMQ_MSG_FILE_CREATE                 1
 #define FMQ_MSG_FILE_DELETE                 2
-#define FMQ_MSG_FILE_UPDATE                 3
 
 #define FMQ_MSG_OHAI                        1
 #define FMQ_MSG_ORLY                        2

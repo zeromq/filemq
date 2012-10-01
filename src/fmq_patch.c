@@ -126,15 +126,12 @@ fmq_patch_test (bool verbose)
 {
     printf (" * fmq_patch: ");
 
-    fmq_file_t *file = fmq_file_new (".", "bilbo", 123456, 100, 0);
+    fmq_file_t *file = fmq_file_new (".", "bilbo");
     fmq_patch_t *patch = fmq_patch_new (file, patch_create, 123);
     fmq_file_destroy (&file);
     
     file = fmq_patch_file (patch);
     assert (streq (fmq_file_name (file), "./bilbo"));
-    assert (fmq_file_time (file) == 123456);
-    assert (fmq_file_size (file) == 100);
-    assert (fmq_file_mode (file) == 0);
     assert (fmq_patch_number (patch) == 123);
     
     fmq_patch_destroy (&patch);

@@ -64,14 +64,14 @@ size_t
 size_t
     fmq_chunk_fill (fmq_chunk_t *self, byte filler, size_t size);
 
-//  Write chunk to an open file descriptor
-int
-    fmq_chunk_write (fmq_chunk_t *self, FILE *handle);
-    
 //  Read chunk to an open file descriptor
 fmq_chunk_t *
     fmq_chunk_read (FILE *handle, size_t bytes);
     
+//  Write chunk to an open file descriptor
+int
+    fmq_chunk_write (fmq_chunk_t *self, FILE *handle);
+
 //  Self test of this class
 int
     fmq_chunk_test (bool verbose);

@@ -28,26 +28,61 @@
 //  Structure of our class
 
 struct _fmq_file_t {
-    char  *name;            //  File name with path
+    char *name;             //  File name with path
+
+    //  Properties from file system
     time_t time;            //  Modification time
     off_t  size;            //  Size of the file
     mode_t mode;            //  POSIX permission bits
+    
+    //  Other properties
+    bool exists;            //  true if file exists
+    bool stable;            //  true if file is stable
     FILE *handle;           //  Read/write handle
 };
+
+//  Return POSIX file mode or -1 if file doesn't exist
+
+static mode_t
+s_file_mode (const char *filename)
+{
+#if (defined (WIN32))
+    DWORD dwfa = GetFileAttributes (filename);
+    if (dwfa == 0xffffffff)
+        return -1;
+
+    dbyte mode = 0;
+    if (dwfa & FILE_ATTRIBUTE_DIRECTORY)
+        mode |= S_IFDIR;
+    else
+        mode |= S_IFREG;
+    if (!(dwfa & FILE_ATTRIBUTE_HIDDEN))
+        mode |= S_IREAD;
+    if (!(dwfa & FILE_ATTRIBUTE_READONLY))
+        mode |= S_IWRITE;
+
+    return mode;
+#else
+    struct stat stat_buf;
+    if (stat ((char *) filename, &stat_buf) == 0)
+        return stat_buf.st_mode;
+    else
+        return -1;
+#endif
+}
 
 
 //  --------------------------------------------------------------------------
 //  Constructor
+//  If file exists, populates properties
 
 fmq_file_t *
-fmq_file_new (const char *path, const char *name, time_t time, off_t size, mode_t mode)
+fmq_file_new (const char *path, const char *name)
 {
     fmq_file_t *self = (fmq_file_t *) zmalloc (sizeof (fmq_file_t));
     self->name = malloc (strlen (path) + strlen (name) + 2);
     sprintf (self->name, "%s/%s", path, name);
-    self->time = time;
-    self->size = size;
-    self->mode = mode;
+    fmq_file_restat (self);
     return self;
 }
 
@@ -98,6 +133,33 @@ fmq_file_name (fmq_file_t *self)
 
 
 //  --------------------------------------------------------------------------
+//  Refreshes file properties from file system
+
+void
+fmq_file_restat (fmq_file_t *self)
+{
+    assert (self);
+    struct stat stat_buf;
+    if (stat (self->name, &stat_buf) == 0) {
+        //  Not sure if stat mtime is fully portable
+        self->exists = true;
+        self->size = stat_buf.st_size;
+        self->time = stat_buf.st_mtime;
+#if (defined (WIN32))
+        self->mode = s_file_mode (self->name);
+#else
+        self->mode = stat_buf.st_mode;
+#endif
+        //  File is 'stable' if more than 1 second old
+        long age = (long) (zclock_time () - (self->time * 1000));
+        self->stable = age > 1000;
+    }
+    else
+        self->exists = false;
+}
+
+
+//  --------------------------------------------------------------------------
 //  Return file time
 
 time_t
@@ -130,34 +192,25 @@ fmq_file_mode (fmq_file_t *self)
 }
 
 
-//  Return POSIX file mode or -1 if file doesn't exist
+//  --------------------------------------------------------------------------
+//  Check if file exists/ed; does not restat file
 
-static mode_t
-s_file_mode (const char *filename)
+bool
+fmq_file_exists (fmq_file_t *self)
 {
-#if (defined (WIN32))
-    DWORD dwfa = GetFileAttributes (filename);
-    if (dwfa == 0xffffffff)
-        return -1;
+    assert (self);
+    return self->exists;
+}
 
-    dbyte mode = 0;
-    if (dwfa & FILE_ATTRIBUTE_DIRECTORY)
-        mode |= S_IFDIR;
-    else
-        mode |= S_IFREG;
-    if (!(dwfa & FILE_ATTRIBUTE_HIDDEN))
-        mode |= S_IREAD;
-    if (!(dwfa & FILE_ATTRIBUTE_READONLY))
-        mode |= S_IWRITE;
 
-    return mode;
-#else
-    struct stat stat_buf;
-    if (stat ((char *) filename, &stat_buf) == 0)
-        return stat_buf.st_mode;
-    else
-        return -1;
-#endif
+//  --------------------------------------------------------------------------
+//  Check if file is/was stable; does not restat file
+
+bool
+fmq_file_stable (fmq_file_t *self)
+{
+    assert (self);
+    return self->stable;
 }
 
 
@@ -301,8 +354,10 @@ void
 fmq_file_close (fmq_file_t *self)
 {
     assert (self);
-    if (self->handle)
+    if (self->handle) {
         fclose (self->handle);
+        fmq_file_restat (self);
+    }
     self->handle = 0;
 }
 
@@ -315,15 +370,13 @@ fmq_file_test (bool verbose)
 {
     printf (" * fmq_file: ");
 
-    fmq_file_t *file = fmq_file_new (".", "bilbo", 123456, 100, 0);
+    fmq_file_t *file = fmq_file_new (".", "bilbo");
     assert (streq (fmq_file_name (file), "./bilbo"));
-    assert (fmq_file_time (file) == 123456);
-    assert (fmq_file_size (file) == 100);
-    assert (fmq_file_mode (file) == 0);
+    assert (fmq_file_exists (file) == false);
     fmq_file_destroy (&file);
 
     //  Create a test file in some random subdirectory
-    file = fmq_file_new ("./this/is/a/test", "bilbo", 0, 0, 0);
+    file = fmq_file_new ("./this/is/a/test", "bilbo");
     int rc = fmq_file_output (file);
     assert (rc == 0);
     fmq_chunk_t *chunk = fmq_chunk_new (NULL, 100);
@@ -332,7 +385,13 @@ fmq_file_test (bool verbose)
     rc = fmq_file_write (file, chunk, 1000000);
     assert (rc == 0);
     fmq_file_close (file);
+    assert (fmq_file_exists (file));
+    assert (fmq_file_size (file) == 1000100);
+    assert (!fmq_file_stable (file));
     fmq_chunk_destroy (&chunk);
+    zclock_sleep (1001);
+    fmq_file_restat (file);
+    assert (fmq_file_stable (file));
 
     //  Check we can read from file
     rc = fmq_file_input (file);
@@ -350,6 +409,9 @@ fmq_file_test (bool verbose)
     fmq_dir_destroy (&dir);
 
     //  Check we can no longer read from file
+    assert (fmq_file_exists (file));
+    fmq_file_restat (file);
+    assert (!fmq_file_exists (file));
     rc = fmq_file_input (file);
     assert (rc == -1);
     fmq_file_destroy (&file);

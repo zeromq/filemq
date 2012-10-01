@@ -41,44 +41,17 @@ struct _fmq_dir_t {
 static void
 s_win32_populate_entry (fmq_dir_t *self, WIN32_FIND_DATA *entry)
 {
-    //  Calculate file time (I suspect this old code is over-complex)
-    //  Also it appears to return wrong values depending on DST
-    unsigned long thi, tlo;
-    double dthi, dtlo;
-    double secs_since_1601;
-    double delta = 11644473600.;
-    double two_to_32 = 4294967296.;
-    thi = entry->ftLastWriteTime.dwHighDateTime;
-    tlo = entry->ftLastWriteTime.dwLowDateTime;
-    dthi = (double) thi;
-    dtlo = (double) tlo;
-    secs_since_1601 = (dthi * two_to_32 + dtlo) / 1.0e7;
-    time_t file_time = (unsigned long) (secs_since_1601 - delta);
-    
-    //  Calculate file mode
-    mode_t file_mode = 0;
-    if (entry->dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
-        file_mode |= S_IFDIR;
-    else
-        file_mode |= S_IFREG;
-    if (!(entry->dwFileAttributes & FILE_ATTRIBUTE_HIDDEN))
-        file_mode |= S_IREAD;
-    if (!(entry->dwFileAttributes & FILE_ATTRIBUTE_READONLY))
-        file_mode |= S_IWRITE;
-
     if (entry->cFileName [0] == '.')
         ; //  Skip hidden files
     else
     //  If we have a subdirectory, go load that
-    if (file_mode & S_IFDIR) {
+    if (entry->dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
         fmq_dir_t *subdir = fmq_dir_new (entry->cFileName, self->path);
         zlist_append (self->subdirs, subdir);
     }
     else {
         //  Add file entry to directory list
-        fmq_file_t *file = fmq_file_new (
-            self->path, entry->cFileName, file_time,
-            entry->nFileSizeLow, file_mode);
+        fmq_file_t *file = fmq_file_new (self->path, entry->cFileName);
         zlist_append (self->files, file);
     }
 }
@@ -108,9 +81,7 @@ s_posix_populate_entry (fmq_dir_t *self, struct dirent *entry)
     }
     else {
         //  Add file entry to directory list
-        fmq_file_t *file = fmq_file_new (
-            self->path, entry->d_name, stat_buf.st_mtime,
-            stat_buf.st_size, stat_buf.st_mode);
+        fmq_file_t *file = fmq_file_new (self->path, entry->d_name);
         zlist_append (self->files, file);
     }
 }
@@ -306,21 +277,31 @@ fmq_dir_diff (fmq_dir_t *older, fmq_dir_t *newer)
             cmp = strcmp (fmq_file_name (old), fmq_file_name (new));
 
         if (cmp > 0) {
-            //  new file was added
-            zlist_append (patches, fmq_patch_new (new, patch_create, 0));
+            //  New file was created
+            if (fmq_file_stable (new))
+                zlist_append (patches, fmq_patch_new (new, patch_create, 0));
             old_index--;
         }
         else
         if (cmp < 0) {
-            //  old file was deleted
-            zlist_append (patches, fmq_patch_new (old, patch_delete, 0));
+            //  Old file was deleted
+            if (fmq_file_stable (old))
+                zlist_append (patches, fmq_patch_new (old, patch_delete, 0));
             new_index--;
         }
         else
-        if (fmq_file_size (old) != fmq_file_size (new)
-        ||  fmq_file_time (old) != fmq_file_time (new))
-            zlist_append (patches, fmq_patch_new (new, patch_update, 0));
-        
+        if (cmp == 0 && fmq_file_stable (new)) {
+            if (fmq_file_stable (old)) {
+                //  Old file was modified or replaced
+                //  Since we don't check file contents, treat as created
+                if (fmq_file_time (new) != fmq_file_time (old)
+                ||  fmq_file_size (new) != fmq_file_size (old))
+                    zlist_append (patches, fmq_patch_new (new, patch_create, 0));
+            }
+            else
+                //  File was created over some period of time
+                zlist_append (patches, fmq_patch_new (new, patch_create, 0));
+        }
         old_index++;
         new_index++;
     }
@@ -384,7 +365,7 @@ fmq_dir_flatten (fmq_dir_t *self)
         flat_size = self->count + 1;
     else
         flat_size = 1;      //  Just null terminator
-    
+
     fmq_file_t **files = (fmq_file_t **) zmalloc (sizeof (fmq_file_t *) * flat_size);
     uint index = 0;
     if (self)

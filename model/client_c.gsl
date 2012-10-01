@@ -412,6 +412,12 @@ client_execute (client_t *self, int event)
                     zclock_log ("C:    + send $(MESSAGE:C)");
 .               endif
                     $(codec)_id_set (self->request, $(CODEC)_$(MESSAGE:C));
+.if switches.trace ?= 1
+                    puts ("Send request to server");
+                    $(codec)_dump (self->request);
+.endif
+                    $(codec)_send (&self->request, self->dealer);
+                    self->request = $(codec)_new (0);
 .           else
 .               if switches.animate ?= 1
                     zclock_log ("C:    + $(name)");
@@ -434,14 +440,6 @@ client_execute (client_t *self, int event)
 .if switches.animate ?= 1
         zclock_log ("C:      -------------------> %s", s_state_name [self->state]);
 .endif
-        if ($(codec)_id (self->request)) {
-.if switches.trace ?= 1
-            puts ("Send request to server");
-            $(codec)_dump (self->request);
-.endif
-            $(codec)_send (&self->request, self->dealer);
-            self->request = $(codec)_new (0);
-        }
         if (self->next_event == terminate_event) {
             self->stopped = true;
             break;

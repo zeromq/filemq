@@ -34,11 +34,15 @@ typedef struct _fmq_file_t fmq_file_t;
 
 //  Create new file item
 fmq_file_t *
-    fmq_file_new (const char *path, const char *name, time_t time, off_t size, mode_t mode);
+    fmq_file_new (const char *path, const char *name);
 
 //  Destroy a file item
 void
     fmq_file_destroy (fmq_file_t **self_p);
+
+//  Refreshes file properties from file system
+void
+    fmq_file_restat (fmq_file_t *self);
 
 //  Duplicate a file item
 fmq_file_t *
@@ -60,6 +64,14 @@ off_t
 mode_t
     fmq_file_mode (fmq_file_t *self);
     
+//  Check if file exists/ed; does not restat file
+bool
+    fmq_file_exists (fmq_file_t *self);
+
+//  Check if file is/was stable; does not restat file
+bool
+    fmq_file_stable (fmq_file_t *self);
+
 //  Remove the file
 void
     fmq_file_remove (fmq_file_t *self);
