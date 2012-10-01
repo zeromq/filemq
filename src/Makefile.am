@@ -28,6 +28,5 @@ else
 libfmq_la_LDFLAGS = -version-info @LTVER@
 endif
 
-TESTS = 
-
+TESTS = fmq_selftest
 
