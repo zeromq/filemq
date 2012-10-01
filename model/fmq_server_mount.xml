@@ -25,6 +25,8 @@ mount_new (char *root, char *path)
     sprintf (self->fullpath, "%s%s", root, path);
     self->path = strdup (path);
     self->dir = fmq_dir_new (self->fullpath, NULL);
+//XXX
+printf ("MOUNT DIR=%s\n", self->fullpath);
     return self;
 }
 
@@ -58,6 +60,8 @@ mount_refresh (mount_t *self, server_t *server)
     //  Get latest snapshot and build a patches list if it's changed
     fmq_dir_t *latest = fmq_dir_new (self->fullpath, NULL);
     zlist_t *patches = fmq_dir_diff (self->dir, latest);
+//XXX
+printf ("CHECK DIR=%s\n", self->fullpath);
 
     //  Drop old directory and replace with latest version
     fmq_dir_destroy (&self->dir);
@@ -70,6 +74,8 @@ mount_refresh (mount_t *self, server_t *server)
         if (strncmp (self->path, sub->path, strlen (sub->path)) == 0) {
             fmq_patch_t *patch = (fmq_patch_t *) zlist_first (patches);
             while (patch) {
+//XXX
+puts ("HAVE PATCH");
                 zlist_append (sub->client->patches, fmq_patch_dup (patch));
                 patch = (fmq_patch_t *) zlist_next (patches);
                 changed = true;

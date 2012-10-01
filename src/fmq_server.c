@@ -285,6 +285,8 @@ mount_new (char *root, char *path)
     sprintf (self->fullpath, "%s%s", root, path);
     self->path = strdup (path);
     self->dir = fmq_dir_new (self->fullpath, NULL);
+//XXX
+printf ("MOUNT DIR=%s\n", self->fullpath);
     return self;
 }
 
@@ -318,6 +320,8 @@ mount_refresh (mount_t *self, server_t *server)
     //  Get latest snapshot and build a patches list if it's changed
     fmq_dir_t *latest = fmq_dir_new (self->fullpath, NULL);
     zlist_t *patches = fmq_dir_diff (self->dir, latest);
+//XXX
+printf ("CHECK DIR=%s\n", self->fullpath);
 
     //  Drop old directory and replace with latest version
     fmq_dir_destroy (&self->dir);
@@ -330,6 +334,8 @@ mount_refresh (mount_t *self, server_t *server)
         if (strncmp (self->path, sub->path, strlen (sub->path)) == 0) {
             fmq_patch_t *patch = (fmq_patch_t *) zlist_first (patches);
             while (patch) {
+//XXX
+puts ("HAVE PATCH");
                 zlist_append (sub->client->patches, fmq_patch_dup (patch));
                 patch = (fmq_patch_t *) zlist_next (patches);
                 changed = true;
@@ -519,9 +525,22 @@ server_apply_config (server_t *self)
         else
         if (streq (fmq_config_name (section), "publish")) {
             char *path = fmq_config_resolve (section, "path", "?");
-            mount_t *mount = mount_new (                                             
-                fmq_config_resolve (self->config, "server/root", "./fmqroot"), path);
-            zlist_append (self->mounts, mount);                                      
+            //  Discard any mounts that have overlapping paths                           
+            mount_t *mount = (mount_t *) zlist_first (self->mounts);                     
+            while (mount) {                                                              
+                if (strncmp (mount->path, path, strlen (path)) == 0                      
+                ||  strncmp (mount->path, path, strlen (mount->path)) == 0) {            
+                    zclock_log ("W: overlapping mount point '%s' - ignored\n", path);    
+                    break;                                                               
+                }                                                                        
+                mount = (mount_t *) zlist_next (self->mounts);                           
+            }                                                                            
+            //  Only create new mount if we didn't hit a duplicate                       
+            if (!mount) {                                                                
+                mount = mount_new (                                                      
+                    fmq_config_resolve (self->config, "server/root", "./fmqroot"), path);
+                zlist_append (self->mounts, mount);                                      
+            }                                                                            
         }
         section = fmq_config_next (section);
     }
@@ -546,9 +565,22 @@ server_control_message (server_t *self)
     else
     if (streq (method, "PUBLISH")) {
         char *path = zmsg_popstr (msg);
-        mount_t *mount = mount_new (                                             
-            fmq_config_resolve (self->config, "server/root", "./fmqroot"), path);
-        zlist_append (self->mounts, mount);                                      
+        //  Discard any mounts that have overlapping paths                           
+        mount_t *mount = (mount_t *) zlist_first (self->mounts);                     
+        while (mount) {                                                              
+            if (strncmp (mount->path, path, strlen (path)) == 0                      
+            ||  strncmp (mount->path, path, strlen (mount->path)) == 0) {            
+                zclock_log ("W: overlapping mount point '%s' - ignored\n", path);    
+                break;                                                               
+            }                                                                        
+            mount = (mount_t *) zlist_next (self->mounts);                           
+        }                                                                            
+        //  Only create new mount if we didn't hit a duplicate                       
+        if (!mount) {                                                                
+            mount = mount_new (                                                      
+                fmq_config_resolve (self->config, "server/root", "./fmqroot"), path);
+            zlist_append (self->mounts, mount);                                      
+        }                                                                            
         free (path);
     }
     else

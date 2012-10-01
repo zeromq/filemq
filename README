@@ -8,17 +8,9 @@ Work in progress
 
 To build:
 
-   ./autogen.sh
-   ./configure
-   make
-
-To try:
-
-   cd src
-   ./filemq
-
-To test
-
-   cd src
-   ./fmq_selftest
+    git clone git://github.com/hintjens/filemq.git
+    cd filemq
+    ./autogen.sh
+    ./configure
+    make check
 

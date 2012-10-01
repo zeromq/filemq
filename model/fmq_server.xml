@@ -320,9 +320,22 @@ zmq_connect (self->router, endpoint);
 
 <method name = "publish">
 <argument name = "path" type = "string" />
-mount_t *mount = mount_new (
-    fmq_config_resolve (self->config, "server/root", "./fmqroot"), path);
-zlist_append (self->mounts, mount);
+//  Discard any mounts that have overlapping paths
+mount_t *mount = (mount_t *) zlist_first (self->mounts);
+while (mount) {
+    if (strncmp (mount->path, path, strlen (path)) == 0
+    ||  strncmp (mount->path, path, strlen (mount->path)) == 0) {
+        zclock_log ("W: overlapping mount point '%s' - ignored\n", path);
+        break;
+    }
+    mount = (mount_t *) zlist_next (self->mounts);
+}
+//  Only create new mount if we didn't hit a duplicate
+if (!mount) {
+    mount = mount_new (
+        fmq_config_resolve (self->config, "server/root", "./fmqroot"), path);
+    zlist_append (self->mounts, mount);
+}
 </method>
 
 <include filename = "fmq_server_selftest.xml" />
