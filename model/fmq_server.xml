@@ -313,11 +313,6 @@ else {
 zmq_bind (self->router, endpoint);
 </method>
 
-<method name = "connect">
-<argument name = "endpoint" type = "string" />
-zmq_connect (self->router, endpoint);
-</method>
-
 <method name = "publish">
 <argument name = "path" type = "string" />
 //  Discard any mounts that have overlapping paths
@@ -341,14 +336,6 @@ if (!mount) {
 <include filename = "fmq_server_selftest.xml" />
 
 <!-- TODO
-    server:
-    - push patches to clients
-    - patch id is sequence number
-    - remove old patches on same file
-
-    client:
-    - confirm applied patches
-
     store patch list per client
         use client identifier, not real id
         test client disconnect & reconnect
