@@ -48,14 +48,14 @@ mount_destroy (mount_t **self_p)
 
 
 //  --------------------------------------------------------------------------
-//  Reloads directory tree and returns true if changed, false if the same
+//  Reloads directory tree and returns true if activity, false if the same
 
 static bool
 mount_refresh (mount_t *self, server_t *server)
 {
-    bool changed = false;
+    bool activity = false;
 
-    //  Get latest snapshot and build a patches list if it's changed
+    //  Get latest snapshot and build a patches list if it's activity
     fmq_dir_t *latest = fmq_dir_new (self->fullpath, NULL);
     zlist_t *patches = fmq_dir_diff (self->dir, latest);
 
@@ -70,14 +70,14 @@ mount_refresh (mount_t *self, server_t *server)
         if (strncmp (self->path, sub->path, strlen (sub->path)) == 0) {
             fmq_patch_t *patch = (fmq_patch_t *) zlist_first (patches);
             while (patch) {
-                zlist_append (sub->client->patches, fmq_patch_dup (patch));
+                sub_patch_add (sub, patch);
                 patch = (fmq_patch_t *) zlist_next (patches);
-                changed = true;
+                activity = true;
             }
         }
         sub = (sub_t *) zlist_next (server->subs);
     }
     zlist_destroy (&patches);
-    return changed;
+    return activity;
 }
 </declare>

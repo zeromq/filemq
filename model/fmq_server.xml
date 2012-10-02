@@ -204,16 +204,29 @@ free (password);
 
 <action name = "store client subscription">
 //  Store subscription along with any previous ones
-//  Check we don't already have a subscription for this client/path
+//  Coalesce subscriptions that are on same path
+
 sub_t *sub = (sub_t *) zlist_first (self->subs);
 char *path = fmq_msg_path (client->request);
 while (sub) {
-    if (client == sub->client && streq (path, sub->path))
-        return;
-    sub = (sub_t *) zlist_next (self->subs);
+    if (client == sub->client) {
+        //  If old subscription is parent/same as new, ignore new
+        if (strncmp (path, sub->path, strlen (sub->path)) == 0)
+            return;
+        else
+        //  If new subscription is parent of old, remove old
+        if (strncmp (sub->path, path, strlen (path)) == 0) {
+            zlist_remove (self->subs, sub);
+            sub = (sub_t *) zlist_first (self->subs);
+        }
+        else
+            sub = (sub_t *) zlist_next (self->subs);
+    }
+    else
+        sub = (sub_t *) zlist_next (self->subs);
 }
 //  New subscription for this client, append to our list
-sub = sub_new (client, fmq_msg_path (client->request));
+sub = sub_new (client, path);
 zlist_append (self->subs, sub);
 </action>
 
@@ -233,12 +246,15 @@ client_dispatch (const char *key, void *client, void *server)
 </declare>
 
 <action name = "monitor the server">
+bool activity = false;
 mount_t *mount = (mount_t *) zlist_first (self->mounts);
 while (mount) {
     if (mount_refresh (mount, self))
-        zhash_foreach (self->clients, client_dispatch, self);
+        activity = true;
     mount = (mount_t *) zlist_next (self->mounts);
 }
+if (activity)
+    zhash_foreach (self->clients, client_dispatch, self);
 </action>
 
 <action name = "get next patch for client">
@@ -315,22 +331,9 @@ zmq_bind (self->router, endpoint);
 
 <method name = "publish">
 <argument name = "path" type = "string" />
-//  Discard any mounts that have overlapping paths
-mount_t *mount = (mount_t *) zlist_first (self->mounts);
-while (mount) {
-    if (strncmp (mount->path, path, strlen (path)) == 0
-    ||  strncmp (mount->path, path, strlen (mount->path)) == 0) {
-        zclock_log ("W: overlapping mount point '%s' - ignored\n", path);
-        break;
-    }
-    mount = (mount_t *) zlist_next (self->mounts);
-}
-//  Only create new mount if we didn't hit a duplicate
-if (!mount) {
-    mount = mount_new (
-        fmq_config_resolve (self->config, "server/root", "./fmqroot"), path);
-    zlist_append (self->mounts, mount);
-}
+mount_t *mount = mount_new (
+    fmq_config_resolve (self->config, "server/root", "./fmqroot"), path);
+zlist_append (self->mounts, mount);
 </method>
 
 <include filename = "fmq_server_selftest.xml" />

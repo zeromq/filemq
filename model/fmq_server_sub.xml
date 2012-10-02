@@ -35,4 +35,23 @@ sub_destroy (sub_t **self_p)
         *self_p = NULL;
     }
 }
+
+//  --------------------------------------------------------------------------
+//  Add patch to sub client patches list
+
+static void
+sub_patch_add (sub_t *self, fmq_patch_t *patch)
+{
+    //  Delete duplicate patches
+    fmq_patch_t *existing = (fmq_patch_t *) zlist_first (self->client->patches);
+    while (existing) {
+        if (streq (fmq_file_name (fmq_patch_file (patch), NULL),
+                    fmq_file_name (fmq_patch_file (existing), NULL))) {
+            zlist_remove (self->client->patches, existing);
+            break;
+        }
+        existing = (fmq_patch_t *) zlist_next (self->client->patches);
+    }
+    zlist_append (self->client->patches, fmq_patch_dup (patch));
+}
 </declare>

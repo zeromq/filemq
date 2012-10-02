@@ -155,40 +155,6 @@ typedef enum {
     finished_event = 18
 } event_t;
 
-//  Names for animation
-static char *
-s_state_name [] = {
-    "",
-    "Start",
-    "Checking Client",
-    "Challenging Client",
-    "Ready",
-    "Dispatching"
-};
-
-static char *
-s_event_name [] = {
-    "",
-    "OHAI",
-    "heartbeat",
-    "expired",
-    "$other",
-    "friend",
-    "foe",
-    "maybe",
-    "YARLY",
-    "ICANHAZ",
-    "NOM",
-    "HUGZ",
-    "KTHXBAI",
-    "dispatch",
-    "send chunk",
-    "send delete",
-    "next patch",
-    "no credit",
-    "finished"
-};
-
 
 //  ---------------------------------------------------------------------
 //  Context for the server thread
@@ -282,6 +248,25 @@ sub_destroy (sub_t **self_p)
 }
 
 //  --------------------------------------------------------------------------
+//  Add patch to sub client patches list
+
+static void
+sub_patch_add (sub_t *self, fmq_patch_t *patch)
+{
+    //  Delete duplicate patches
+    fmq_patch_t *existing = (fmq_patch_t *) zlist_first (self->client->patches);
+    while (existing) {
+        if (streq (fmq_file_name (fmq_patch_file (patch), NULL),
+                    fmq_file_name (fmq_patch_file (existing), NULL))) {
+            zlist_remove (self->client->patches, existing);
+            break;
+        }
+        existing = (fmq_patch_t *) zlist_next (self->client->patches);
+    }
+    zlist_append (self->client->patches, fmq_patch_dup (patch));
+}
+
+//  --------------------------------------------------------------------------
 //  Mount point in memory
 
 typedef struct {
@@ -307,8 +292,6 @@ mount_new (char *root, char *path)
     sprintf (self->fullpath, "%s%s", root, path);
     self->path = strdup (path);
     self->dir = fmq_dir_new (self->fullpath, NULL);
-//XXX
-printf ("MOUNT DIR=%s\n", self->fullpath);
     return self;
 }
 
@@ -332,18 +315,16 @@ mount_destroy (mount_t **self_p)
 
 
 //  --------------------------------------------------------------------------
-//  Reloads directory tree and returns true if changed, false if the same
+//  Reloads directory tree and returns true if activity, false if the same
 
 static bool
 mount_refresh (mount_t *self, server_t *server)
 {
-    bool changed = false;
+    bool activity = false;
 
-    //  Get latest snapshot and build a patches list if it's changed
+    //  Get latest snapshot and build a patches list if it's activity
     fmq_dir_t *latest = fmq_dir_new (self->fullpath, NULL);
     zlist_t *patches = fmq_dir_diff (self->dir, latest);
-//XXX
-printf ("CHECK DIR=%s\n", self->fullpath);
 
     //  Drop old directory and replace with latest version
     fmq_dir_destroy (&self->dir);
@@ -356,17 +337,15 @@ printf ("CHECK DIR=%s\n", self->fullpath);
         if (strncmp (self->path, sub->path, strlen (sub->path)) == 0) {
             fmq_patch_t *patch = (fmq_patch_t *) zlist_first (patches);
             while (patch) {
-//XXX
-puts ("HAVE PATCH");
-                zlist_append (sub->client->patches, fmq_patch_dup (patch));
+                sub_patch_add (sub, patch);
                 patch = (fmq_patch_t *) zlist_next (patches);
-                changed = true;
+                activity = true;
             }
         }
         sub = (sub_t *) zlist_next (server->subs);
     }
     zlist_destroy (&patches);
-    return changed;
+    return activity;
 }
 
 //  Client hash function that checks if client is alive
@@ -542,22 +521,9 @@ server_apply_config (server_t *self)
         else
         if (streq (fmq_config_name (section), "publish")) {
             char *path = fmq_config_resolve (section, "path", "?");
-            //  Discard any mounts that have overlapping paths                           
-            mount_t *mount = (mount_t *) zlist_first (self->mounts);                     
-            while (mount) {                                                              
-                if (strncmp (mount->path, path, strlen (path)) == 0                      
-                ||  strncmp (mount->path, path, strlen (mount->path)) == 0) {            
-                    zclock_log ("W: overlapping mount point '%s' - ignored\n", path);    
-                    break;                                                               
-                }                                                                        
-                mount = (mount_t *) zlist_next (self->mounts);                           
-            }                                                                            
-            //  Only create new mount if we didn't hit a duplicate                       
-            if (!mount) {                                                                
-                mount = mount_new (                                                      
-                    fmq_config_resolve (self->config, "server/root", "./fmqroot"), path);
-                zlist_append (self->mounts, mount);                                      
-            }                                                                            
+            mount_t *mount = mount_new (                                             
+                fmq_config_resolve (self->config, "server/root", "./fmqroot"), path);
+            zlist_append (self->mounts, mount);                                      
         }
         section = fmq_config_next (section);
     }
@@ -576,22 +542,9 @@ server_control_message (server_t *self)
     else
     if (streq (method, "PUBLISH")) {
         char *path = zmsg_popstr (msg);
-        //  Discard any mounts that have overlapping paths                           
-        mount_t *mount = (mount_t *) zlist_first (self->mounts);                     
-        while (mount) {                                                              
-            if (strncmp (mount->path, path, strlen (path)) == 0                      
-            ||  strncmp (mount->path, path, strlen (mount->path)) == 0) {            
-                zclock_log ("W: overlapping mount point '%s' - ignored\n", path);    
-                break;                                                               
-            }                                                                        
-            mount = (mount_t *) zlist_next (self->mounts);                           
-        }                                                                            
-        //  Only create new mount if we didn't hit a duplicate                       
-        if (!mount) {                                                                
-            mount = mount_new (                                                      
-                fmq_config_resolve (self->config, "server/root", "./fmqroot"), path);
-            zlist_append (self->mounts, mount);                                      
-        }                                                                            
+        mount_t *mount = mount_new (                                             
+            fmq_config_resolve (self->config, "server/root", "./fmqroot"), path);
+        zlist_append (self->mounts, mount);                                      
         free (path);
     }
     else
@@ -695,18 +648,31 @@ try_security_mechanism (server_t *self, client_t *client)
 static void
 store_client_subscription (server_t *self, client_t *client)
 {
-    //  Store subscription along with any previous ones                
-    //  Check we don't already have a subscription for this client/path
-    sub_t *sub = (sub_t *) zlist_first (self->subs);                   
-    char *path = fmq_msg_path (client->request);                       
-    while (sub) {                                                      
-        if (client == sub->client && streq (path, sub->path))          
-            return;                                                    
-        sub = (sub_t *) zlist_next (self->subs);                       
-    }                                                                  
-    //  New subscription for this client, append to our list           
-    sub = sub_new (client, fmq_msg_path (client->request));            
-    zlist_append (self->subs, sub);                                    
+    //  Store subscription along with any previous ones              
+    //  Coalesce subscriptions that are on same path                 
+                                                                     
+    sub_t *sub = (sub_t *) zlist_first (self->subs);                 
+    char *path = fmq_msg_path (client->request);                     
+    while (sub) {                                                    
+        if (client == sub->client) {                                 
+            //  If old subscription is parent/same as new, ignore new
+            if (strncmp (path, sub->path, strlen (sub->path)) == 0)  
+                return;                                              
+            else                                                     
+            //  If new subscription is parent of old, remove old     
+            if (strncmp (sub->path, path, strlen (path)) == 0) {     
+                zlist_remove (self->subs, sub);                      
+                sub = (sub_t *) zlist_first (self->subs);            
+            }                                                        
+            else                                                     
+                sub = (sub_t *) zlist_next (self->subs);             
+        }                                                            
+        else                                                         
+            sub = (sub_t *) zlist_next (self->subs);                 
+    }                                                                
+    //  New subscription for this client, append to our list         
+    sub = sub_new (client, path);                                    
+    zlist_append (self->subs, sub);                                  
 }
 
 static void
@@ -718,12 +684,15 @@ store_client_credit (server_t *self, client_t *client)
 static void
 monitor_the_server (server_t *self, client_t *client)
 {
-    mount_t *mount = (mount_t *) zlist_first (self->mounts);     
-    while (mount) {                                              
-        if (mount_refresh (mount, self))                         
-            zhash_foreach (self->clients, client_dispatch, self);
-        mount = (mount_t *) zlist_next (self->mounts);           
-    }                                                            
+    bool activity = false;                                   
+    mount_t *mount = (mount_t *) zlist_first (self->mounts); 
+    while (mount) {                                          
+        if (mount_refresh (mount, self))                     
+            activity = true;                                 
+        mount = (mount_t *) zlist_next (self->mounts);       
+    }                                                        
+    if (activity)                                            
+        zhash_foreach (self->clients, client_dispatch, self);
 }
 
 static void
@@ -802,14 +771,10 @@ server_client_execute (server_t *self, client_t *client, int event)
     while (client->next_event) {
         client->event = client->next_event;
         client->next_event = 0;
-        zclock_log ("S: %s:", s_state_name [client->state]);
-        zclock_log ("S: (%s)", s_event_name [client->event]);
         switch (client->state) {
             case start_state:
                 if (client->event == ohai_event) {
-                    zclock_log ("S:    + track client identity");
                     track_client_identity (self, client);
-                    zclock_log ("S:    + try anonymous access");
                     try_anonymous_access (self, client);
                     client->state = checking_client_state;
                 }
@@ -818,23 +783,19 @@ server_client_execute (server_t *self, client_t *client, int event)
                 }
                 else
                 if (client->event == expired_event) {
-                    zclock_log ("S:    + terminate the client");
                     terminate_the_client (self, client);
                 }
                 else {
-                    zclock_log ("S:    + send RTFM");
                     fmq_msg_id_set (client->reply, FMQ_MSG_RTFM);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
                     fmq_msg_address_set (client->reply, client->address);
-                    zclock_log ("S:    + terminate the client");
                     terminate_the_client (self, client);
                 }
                 break;
 
             case checking_client_state:
                 if (client->event == friend_event) {
-                    zclock_log ("S:    + send OHAI_OK");
                     fmq_msg_id_set (client->reply, FMQ_MSG_OHAI_OK);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
@@ -843,19 +804,15 @@ server_client_execute (server_t *self, client_t *client, int event)
                 }
                 else
                 if (client->event == foe_event) {
-                    zclock_log ("S:    + send SRSLY");
                     fmq_msg_id_set (client->reply, FMQ_MSG_SRSLY);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
                     fmq_msg_address_set (client->reply, client->address);
-                    zclock_log ("S:    + terminate the client");
                     terminate_the_client (self, client);
                 }
                 else
                 if (client->event == maybe_event) {
-                    zclock_log ("S:    + list security mechanisms");
                     list_security_mechanisms (self, client);
-                    zclock_log ("S:    + send ORLY");
                     fmq_msg_id_set (client->reply, FMQ_MSG_ORLY);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
@@ -867,23 +824,19 @@ server_client_execute (server_t *self, client_t *client, int event)
                 }
                 else
                 if (client->event == expired_event) {
-                    zclock_log ("S:    + terminate the client");
                     terminate_the_client (self, client);
                 }
                 else {
-                    zclock_log ("S:    + send RTFM");
                     fmq_msg_id_set (client->reply, FMQ_MSG_RTFM);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
                     fmq_msg_address_set (client->reply, client->address);
-                    zclock_log ("S:    + terminate the client");
                     terminate_the_client (self, client);
                 }
                 break;
 
             case challenging_client_state:
                 if (client->event == yarly_event) {
-                    zclock_log ("S:    + try security mechanism");
                     try_security_mechanism (self, client);
                     client->state = checking_client_state;
                 }
@@ -892,25 +845,20 @@ server_client_execute (server_t *self, client_t *client, int event)
                 }
                 else
                 if (client->event == expired_event) {
-                    zclock_log ("S:    + terminate the client");
                     terminate_the_client (self, client);
                 }
                 else {
-                    zclock_log ("S:    + send RTFM");
                     fmq_msg_id_set (client->reply, FMQ_MSG_RTFM);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
                     fmq_msg_address_set (client->reply, client->address);
-                    zclock_log ("S:    + terminate the client");
                     terminate_the_client (self, client);
                 }
                 break;
 
             case ready_state:
                 if (client->event == icanhaz_event) {
-                    zclock_log ("S:    + store client subscription");
                     store_client_subscription (self, client);
-                    zclock_log ("S:    + send ICANHAZ_OK");
                     fmq_msg_id_set (client->reply, FMQ_MSG_ICANHAZ_OK);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
@@ -918,15 +866,12 @@ server_client_execute (server_t *self, client_t *client, int event)
                 }
                 else
                 if (client->event == nom_event) {
-                    zclock_log ("S:    + store client credit");
                     store_client_credit (self, client);
-                    zclock_log ("S:    + get next patch for client");
                     get_next_patch_for_client (self, client);
                     client->state = dispatching_state;
                 }
                 else
                 if (client->event == hugz_event) {
-                    zclock_log ("S:    + send HUGZ_OK");
                     fmq_msg_id_set (client->reply, FMQ_MSG_HUGZ_OK);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
@@ -934,18 +879,15 @@ server_client_execute (server_t *self, client_t *client, int event)
                 }
                 else
                 if (client->event == kthxbai_event) {
-                    zclock_log ("S:    + terminate the client");
                     terminate_the_client (self, client);
                 }
                 else
                 if (client->event == dispatch_event) {
-                    zclock_log ("S:    + get next patch for client");
                     get_next_patch_for_client (self, client);
                     client->state = dispatching_state;
                 }
                 else
                 if (client->event == heartbeat_event) {
-                    zclock_log ("S:    + send HUGZ");
                     fmq_msg_id_set (client->reply, FMQ_MSG_HUGZ);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
@@ -953,43 +895,35 @@ server_client_execute (server_t *self, client_t *client, int event)
                 }
                 else
                 if (client->event == expired_event) {
-                    zclock_log ("S:    + terminate the client");
                     terminate_the_client (self, client);
                 }
                 else {
-                    zclock_log ("S:    + send RTFM");
                     fmq_msg_id_set (client->reply, FMQ_MSG_RTFM);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
                     fmq_msg_address_set (client->reply, client->address);
-                    zclock_log ("S:    + terminate the client");
                     terminate_the_client (self, client);
                 }
                 break;
 
             case dispatching_state:
                 if (client->event == send_chunk_event) {
-                    zclock_log ("S:    + send CHEEZBURGER");
                     fmq_msg_id_set (client->reply, FMQ_MSG_CHEEZBURGER);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
                     fmq_msg_address_set (client->reply, client->address);
-                    zclock_log ("S:    + get next patch for client");
                     get_next_patch_for_client (self, client);
                 }
                 else
                 if (client->event == send_delete_event) {
-                    zclock_log ("S:    + send CHEEZBURGER");
                     fmq_msg_id_set (client->reply, FMQ_MSG_CHEEZBURGER);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
                     fmq_msg_address_set (client->reply, client->address);
-                    zclock_log ("S:    + get next patch for client");
                     get_next_patch_for_client (self, client);
                 }
                 else
                 if (client->event == next_patch_event) {
-                    zclock_log ("S:    + get next patch for client");
                     get_next_patch_for_client (self, client);
                 }
                 else
@@ -1005,22 +939,18 @@ server_client_execute (server_t *self, client_t *client, int event)
                 }
                 else
                 if (client->event == expired_event) {
-                    zclock_log ("S:    + terminate the client");
                     terminate_the_client (self, client);
                 }
                 else {
-                    zclock_log ("S:    + send RTFM");
                     fmq_msg_id_set (client->reply, FMQ_MSG_RTFM);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
                     fmq_msg_address_set (client->reply, client->address);
-                    zclock_log ("S:    + terminate the client");
                     terminate_the_client (self, client);
                 }
                 break;
 
         }
-        zclock_log ("S:      -------------------> %s", s_state_name [client->state]);
         if (client->next_event == terminate_event) {
             //  Automatically calls client_destroy
             zhash_delete (self->clients, client->hashkey);
@@ -1119,7 +1049,7 @@ int
 fmq_server_test (bool verbose)
 {
     printf (" * fmq_server: ");
-    printf ("\n");
+    fflush (stdout);
     zctx_t *ctx = zctx_new ();
     
     fmq_server_t *self;

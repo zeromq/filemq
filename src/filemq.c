@@ -25,7 +25,7 @@
 #include "czmq.h"
 #include "../include/fmq.h"
 
-#define PRODUCT         "FileMQ service/0.1a0"
+#define PRODUCT         "FileMQ service/1.0a1"
 #define COPYRIGHT       "Copyright (c) 2012 iMatix Corporation"
 #define NOWARRANTY \
 "This is free software; see the source for copying conditions.  There is NO\n" \
