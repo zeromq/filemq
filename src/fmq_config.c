@@ -531,6 +531,7 @@ fmq_config_load (const char *filename)
     //  Either the whole ZPL file is valid or none of it is
     if (!valid)
         fmq_config_destroy (&self);
+    fclose (file);
     return self;
 }
 

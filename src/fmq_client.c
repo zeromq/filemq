@@ -355,13 +355,13 @@ refill_credit_as_needed (client_t *self)
 static void
 process_the_patch (client_t *self)
 {
-    char *rootdir = fmq_config_resolve (self->config, "client/root", "fmqroot");      
+    char *inbox = fmq_config_resolve (self->config, "client/inbox", ".inbox");        
     char *filename = fmq_msg_filename (self->reply);                                  
                                                                                       
     if (fmq_msg_operation (self->reply) == FMQ_MSG_FILE_CREATE) {                     
         if (self->file == NULL) {                                                     
             zclock_log ("I: create %s", filename);                                    
-            self->file = fmq_file_new (rootdir, filename);                            
+            self->file = fmq_file_new (inbox, filename);                              
             if (fmq_file_output (self->file)) {                                       
                 //  File not writeable, skip patch                                    
                 fmq_file_destroy (&self->file);                                       
@@ -383,7 +383,7 @@ process_the_patch (client_t *self)
     else                                                                              
     if (fmq_msg_operation (self->reply) == FMQ_MSG_FILE_DELETE) {                     
         zclock_log ("I: delete %s", filename);                                        
-        fmq_file_t *file = fmq_file_new (rootdir, filename);                          
+        fmq_file_t *file = fmq_file_new (inbox, filename);                            
         fmq_file_remove (file);                                                       
         fmq_file_destroy (&file);                                                     
     }                                                                                 

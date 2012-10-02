@@ -113,12 +113,14 @@ fmq_server_bind (fmq_server_t *self, const char *endpoint)
 //  --------------------------------------------------------------------------
 
 void
-fmq_server_publish (fmq_server_t *self, const char *path)
+fmq_server_publish (fmq_server_t *self, const char *location, const char *alias)
 {
     assert (self);
-    assert (path);
+    assert (location);
+    assert (alias);
     zstr_sendm (self->pipe, "PUBLISH");
-    zstr_send (self->pipe, path);
+    zstr_sendm (self->pipe, location);
+    zstr_send (self->pipe, alias);
 }
 
 
@@ -161,8 +163,7 @@ typedef enum {
 
 typedef struct {
     //  Properties accessible to client actions
-    zlist_t *subs;              //  Client subscriptions
-    zlist_t *mounts;            //  Mount points        
+    zlist_t *mounts;            //  Mount points
 
     //  Properties you should NOT touch
     zctx_t *ctx;                //  Own CZMQ context
@@ -270,9 +271,10 @@ sub_patch_add (sub_t *self, fmq_patch_t *patch)
 //  Mount point in memory
 
 typedef struct {
-    char *fullpath;         //  Root + path
-    char *path;             //  Path (after root)
-    fmq_dir_t *dir;         //  Directory tree
+    char *location;         //  Physical location
+    char *alias;            //  Alias into our tree
+    fmq_dir_t *dir;         //  Directory snapshot
+    zlist_t *subs;          //  Client subscriptions
 } mount_t;
 
 
@@ -281,17 +283,17 @@ typedef struct {
 //  Loads directory tree if possible
 
 static mount_t *
-mount_new (char *root, char *path)
+mount_new (char *location, char *alias)
 {
     //  Mount path must start with '/'
     //  We'll do better error handling later
-    assert (*path == '/');
+    assert (*alias == '/');
     
     mount_t *self = (mount_t *) zmalloc (sizeof (mount_t));
-    self->fullpath = (char *) malloc (strlen (root) + strlen (path) + 1);
-    sprintf (self->fullpath, "%s%s", root, path);
-    self->path = strdup (path);
-    self->dir = fmq_dir_new (self->fullpath, NULL);
+    self->location = strdup (location);
+    self->alias = strdup (alias);
+    self->dir = fmq_dir_new (self->location, NULL);
+    self->subs = zlist_new ();
     return self;
 }
 
@@ -305,8 +307,14 @@ mount_destroy (mount_t **self_p)
     assert (self_p);
     if (*self_p) {
         mount_t *self = *self_p;
-        free (self->fullpath);
-        free (self->path);
+        free (self->location);
+        free (self->alias);
+        //  Destroy subscriptions
+        while (zlist_size (self->subs)) {
+            sub_t *sub = (sub_t *) zlist_pop (self->subs);
+            sub_destroy (&sub);
+        }
+        zlist_destroy (&self->subs);
         fmq_dir_destroy (&self->dir);
         free (self);
         *self_p = NULL;
@@ -323,7 +331,7 @@ mount_refresh (mount_t *self, server_t *server)
     bool activity = false;
 
     //  Get latest snapshot and build a patches list if it's activity
-    fmq_dir_t *latest = fmq_dir_new (self->fullpath, NULL);
+    fmq_dir_t *latest = fmq_dir_new (self->location, NULL);
     zlist_t *patches = fmq_dir_diff (self->dir, latest);
 
     //  Drop old directory and replace with latest version
@@ -331,21 +339,71 @@ mount_refresh (mount_t *self, server_t *server)
     self->dir = latest;
 
     //  Copy new patches to clients' patches list
-    sub_t *sub = (sub_t *) zlist_first (server->subs);
+    sub_t *sub = (sub_t *) zlist_first (self->subs);
     while (sub) {
-        //  Is subscription path a strict prefix of the mount path?
-        if (strncmp (self->path, sub->path, strlen (sub->path)) == 0) {
-            fmq_patch_t *patch = (fmq_patch_t *) zlist_first (patches);
-            while (patch) {
-                sub_patch_add (sub, patch);
-                patch = (fmq_patch_t *) zlist_next (patches);
-                activity = true;
-            }
+        fmq_patch_t *patch = (fmq_patch_t *) zlist_first (patches);
+        while (patch) {
+            sub_patch_add (sub, patch);
+            patch = (fmq_patch_t *) zlist_next (patches);
+            activity = true;
         }
-        sub = (sub_t *) zlist_next (server->subs);
+        sub = (sub_t *) zlist_next (self->subs);
     }
     zlist_destroy (&patches);
     return activity;
+}
+
+
+//  --------------------------------------------------------------------------
+//  Store subscription for mount point
+
+static void
+mount_sub_store (mount_t *self, client_t *client, char *path)
+{
+    //  Store subscription along with any previous ones
+    //  Coalesce subscriptions that are on same path
+
+    sub_t *sub = (sub_t *) zlist_first (self->subs);
+    while (sub) {
+        if (client == sub->client) {
+            //  If old subscription is superset/same as new, ignore new
+            if (strncmp (path, sub->path, strlen (sub->path)) == 0)
+                return;
+            else
+            //  If new subscription is superset of old one, remove old
+            if (strncmp (sub->path, path, strlen (path)) == 0) {
+                zlist_remove (self->subs, sub);
+                sub = (sub_t *) zlist_first (self->subs);
+            }
+            else
+                sub = (sub_t *) zlist_next (self->subs);
+        }
+        else
+            sub = (sub_t *) zlist_next (self->subs);
+    }
+    //  New subscription for this client, append to our list
+    sub = sub_new (client, path);
+    zlist_append (self->subs, sub);
+}
+
+
+//  --------------------------------------------------------------------------
+//  Purge subscriptions for a specified client
+
+static void
+mount_sub_purge (mount_t *self, client_t *client)
+{
+    sub_t *sub = (sub_t *) zlist_first (self->subs);
+    while (sub) {
+        if (sub->client == client) {
+            sub_t *next = (sub_t *) zlist_next (self->subs);
+            zlist_remove (self->subs, sub);
+            sub_destroy (&sub);
+            sub = next;
+        }
+        else
+            sub = (sub_t *) zlist_next (self->subs);
+    }
 }
 
 //  Client hash function that checks if client is alive
@@ -458,8 +516,6 @@ server_new (zctx_t *ctx, void *pipe)
     self->clients = zhash_new ();
     self->config = fmq_config_new ("root", NULL);
     self->monitor = 5000;       //  5 seconds by default
-    //  Default root            
-    self->subs = zlist_new ();  
     self->mounts = zlist_new ();
     return self;
 }
@@ -472,13 +528,6 @@ server_destroy (server_t **self_p)
         server_t *self = *self_p;
         fmq_config_destroy (&self->config);
         zhash_destroy (&self->clients);
-        //  Destroy subscriptions                                 
-        while (zlist_size (self->subs)) {                         
-            sub_t *sub = (sub_t *) zlist_pop (self->subs);        
-            sub_destroy (&sub);                                   
-        }                                                         
-        zlist_destroy (&self->subs);                              
-                                                                  
         //  Destroy mount points                                  
         while (zlist_size (self->mounts)) {                       
             mount_t *mount = (mount_t *) zlist_pop (self->mounts);
@@ -520,10 +569,10 @@ server_apply_config (server_t *self)
         }
         else
         if (streq (fmq_config_name (section), "publish")) {
-            char *path = fmq_config_resolve (section, "path", "?");
-            mount_t *mount = mount_new (                                             
-                fmq_config_resolve (self->config, "server/root", "./fmqroot"), path);
-            zlist_append (self->mounts, mount);                                      
+            char *location = fmq_config_resolve (section, "location", "?");
+            char *alias = fmq_config_resolve (section, "alias", "?");
+            mount_t *mount = mount_new (location, alias);
+            zlist_append (self->mounts, mount);          
         }
         section = fmq_config_next (section);
     }
@@ -541,11 +590,12 @@ server_control_message (server_t *self)
     }
     else
     if (streq (method, "PUBLISH")) {
-        char *path = zmsg_popstr (msg);
-        mount_t *mount = mount_new (                                             
-            fmq_config_resolve (self->config, "server/root", "./fmqroot"), path);
-        zlist_append (self->mounts, mount);                                      
-        free (path);
+        char *location = zmsg_popstr (msg);
+        char *alias = zmsg_popstr (msg);
+        mount_t *mount = mount_new (location, alias);
+        zlist_append (self->mounts, mount);          
+        free (location);
+        free (alias);
     }
     else
     if (streq (method, "CONFIG")) {
@@ -582,17 +632,10 @@ server_control_message (server_t *self)
 static void
 terminate_the_client (server_t *self, client_t *client)
 {
-    //  Remove all subscriptions for this client            
-    sub_t *sub = (sub_t *) zlist_first (self->subs);        
-    while (sub) {                                           
-        if (sub->client == client) {                        
-            sub_t *next = (sub_t *) zlist_next (self->subs);
-            zlist_remove (self->subs, sub);                 
-            sub_destroy (&sub);                             
-            sub = next;                                     
-        }                                                   
-        else                                                
-            sub = (sub_t *) zlist_next (self->subs);        
+    mount_t *mount = (mount_t *) zlist_first (self->mounts);
+    while (mount) {                                         
+        mount_sub_purge (mount, client);                    
+        mount = (mount_t *) zlist_next (self->mounts);      
     }                                                       
     client->next_event = terminate_event;                   
 }
@@ -648,31 +691,19 @@ try_security_mechanism (server_t *self, client_t *client)
 static void
 store_client_subscription (server_t *self, client_t *client)
 {
-    //  Store subscription along with any previous ones              
-    //  Coalesce subscriptions that are on same path                 
-                                                                     
-    sub_t *sub = (sub_t *) zlist_first (self->subs);                 
-    char *path = fmq_msg_path (client->request);                     
-    while (sub) {                                                    
-        if (client == sub->client) {                                 
-            //  If old subscription is parent/same as new, ignore new
-            if (strncmp (path, sub->path, strlen (sub->path)) == 0)  
-                return;                                              
-            else                                                     
-            //  If new subscription is parent of old, remove old     
-            if (strncmp (sub->path, path, strlen (path)) == 0) {     
-                zlist_remove (self->subs, sub);                      
-                sub = (sub_t *) zlist_first (self->subs);            
-            }                                                        
-            else                                                     
-                sub = (sub_t *) zlist_next (self->subs);             
-        }                                                            
-        else                                                         
-            sub = (sub_t *) zlist_next (self->subs);                 
-    }                                                                
-    //  New subscription for this client, append to our list         
-    sub = sub_new (client, path);                                    
-    zlist_append (self->subs, sub);                                  
+    //  Find mount point with longest match to subscription         
+    char *path = fmq_msg_path (client->request);                    
+    mount_t *mount = (mount_t *) zlist_first (self->mounts);        
+    mount_t *match = mount;                                         
+    while (mount) {                                                 
+        //  If mount->alias is prefix of path and alias is          
+        //  longer than previous best then we have a new best       
+        if (strncmp (path, mount->alias, strlen (mount->alias)) == 0
+        &&  strlen (mount->alias) > strlen (match->alias))          
+            match = mount;                                          
+        mount = (mount_t *) zlist_next (self->mounts);              
+    }                                                               
+    mount_sub_store (match, client, path);                          
 }
 
 static void
@@ -1104,13 +1135,6 @@ fmq_server_test (bool verbose)
     assert (fmq_msg_id (reply) == FMQ_MSG_OHAI_OK);
     fmq_msg_destroy (&reply);
 
-    request = fmq_msg_new (FMQ_MSG_ICANHAZ);
-    fmq_msg_send (&request, dealer);
-    reply = fmq_msg_recv (dealer);
-    assert (reply);
-    assert (fmq_msg_id (reply) == FMQ_MSG_ICANHAZ_OK);
-    fmq_msg_destroy (&reply);
-
     request = fmq_msg_new (FMQ_MSG_NOM);
     fmq_msg_send (&request, dealer);
 
@@ -1148,13 +1172,6 @@ fmq_server_test (bool verbose)
     reply = fmq_msg_recv (dealer);
     assert (reply);
     assert (fmq_msg_id (reply) == FMQ_MSG_OHAI_OK);
-    fmq_msg_destroy (&reply);
-
-    request = fmq_msg_new (FMQ_MSG_ICANHAZ);
-    fmq_msg_send (&request, dealer);
-    reply = fmq_msg_recv (dealer);
-    assert (reply);
-    assert (fmq_msg_id (reply) == FMQ_MSG_ICANHAZ_OK);
     fmq_msg_destroy (&reply);
 
     request = fmq_msg_new (FMQ_MSG_NOM);

@@ -88,24 +88,14 @@ FileMQ protocol server
 
 <self>
 <context>
-zlist_t *subs;              //  Client subscriptions
 zlist_t *mounts;            //  Mount points
 </context>
 
 <construct>
-//  Default root
-self->subs = zlist_new ();
 self->mounts = zlist_new ();
 </construct>
 
 <destruct>
-//  Destroy subscriptions
-while (zlist_size (self->subs)) {
-    sub_t *sub = (sub_t *) zlist_pop (self->subs);
-    sub_destroy (&sub);
-}
-zlist_destroy (&self->subs);
-
 //  Destroy mount points
 while (zlist_size (self->mounts)) {
     mount_t *mount = (mount_t *) zlist_pop (self->mounts);
@@ -147,17 +137,10 @@ zlist_destroy (&self->patches);
 
 <!-- Action bodies -->
 <action name = "terminate the client">
-//  Remove all subscriptions for this client
-sub_t *sub = (sub_t *) zlist_first (self->subs);
-while (sub) {
-    if (sub->client == client) {
-        sub_t *next = (sub_t *) zlist_next (self->subs);
-        zlist_remove (self->subs, sub);
-        sub_destroy (&sub);
-        sub = next;
-    }
-    else
-        sub = (sub_t *) zlist_next (self->subs);
+mount_t *mount = (mount_t *) zlist_first (self->mounts);
+while (mount) {
+    mount_sub_purge (mount, client);
+    mount = (mount_t *) zlist_next (self->mounts);
 }
 client->next_event = terminate_event;
 </action>
@@ -203,31 +186,19 @@ free (password);
 </action>
 
 <action name = "store client subscription">
-//  Store subscription along with any previous ones
-//  Coalesce subscriptions that are on same path
-
-sub_t *sub = (sub_t *) zlist_first (self->subs);
+//  Find mount point with longest match to subscription
 char *path = fmq_msg_path (client->request);
-while (sub) {
-    if (client == sub->client) {
-        //  If old subscription is parent/same as new, ignore new
-        if (strncmp (path, sub->path, strlen (sub->path)) == 0)
-            return;
-        else
-        //  If new subscription is parent of old, remove old
-        if (strncmp (sub->path, path, strlen (path)) == 0) {
-            zlist_remove (self->subs, sub);
-            sub = (sub_t *) zlist_first (self->subs);
-        }
-        else
-            sub = (sub_t *) zlist_next (self->subs);
-    }
-    else
-        sub = (sub_t *) zlist_next (self->subs);
+mount_t *mount = (mount_t *) zlist_first (self->mounts);
+mount_t *match = mount;
+while (mount) {
+    //  If mount->alias is prefix of path and alias is
+    //  longer than previous best then we have a new best
+    if (strncmp (path, mount->alias, strlen (mount->alias)) == 0
+    &&  strlen (mount->alias) > strlen (match->alias))
+        match = mount;
+    mount = (mount_t *) zlist_next (self->mounts);
 }
-//  New subscription for this client, append to our list
-sub = sub_new (client, path);
-zlist_append (self->subs, sub);
+mount_sub_store (match, client, path);
 </action>
 
 <action name = "store client credit">
@@ -330,9 +301,9 @@ zmq_bind (self->router, endpoint);
 </method>
 
 <method name = "publish">
-<argument name = "path" type = "string" />
-mount_t *mount = mount_new (
-    fmq_config_resolve (self->config, "server/root", "./fmqroot"), path);
+<argument name = "location" type = "string" />
+<argument name = "alias" type = "string" />
+mount_t *mount = mount_new (location, alias);
 zlist_append (self->mounts, mount);
 </method>
 

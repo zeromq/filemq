@@ -3,9 +3,10 @@
 //  Mount point in memory
 
 typedef struct {
-    char *fullpath;         //  Root + path
-    char *path;             //  Path (after root)
-    fmq_dir_t *dir;         //  Directory tree
+    char *location;         //  Physical location
+    char *alias;            //  Alias into our tree
+    fmq_dir_t *dir;         //  Directory snapshot
+    zlist_t *subs;          //  Client subscriptions
 } mount_t;
 
 
@@ -14,17 +15,17 @@ typedef struct {
 //  Loads directory tree if possible
 
 static mount_t *
-mount_new (char *root, char *path)
+mount_new (char *location, char *alias)
 {
     //  Mount path must start with '/'
     //  We'll do better error handling later
-    assert (*path == '/');
+    assert (*alias == '/');
     
     mount_t *self = (mount_t *) zmalloc (sizeof (mount_t));
-    self->fullpath = (char *) malloc (strlen (root) + strlen (path) + 1);
-    sprintf (self->fullpath, "%s%s", root, path);
-    self->path = strdup (path);
-    self->dir = fmq_dir_new (self->fullpath, NULL);
+    self->location = strdup (location);
+    self->alias = strdup (alias);
+    self->dir = fmq_dir_new (self->location, NULL);
+    self->subs = zlist_new ();
     return self;
 }
 
@@ -38,8 +39,14 @@ mount_destroy (mount_t **self_p)
     assert (self_p);
     if (*self_p) {
         mount_t *self = *self_p;
-        free (self->fullpath);
-        free (self->path);
+        free (self->location);
+        free (self->alias);
+        //  Destroy subscriptions
+        while (zlist_size (self->subs)) {
+            sub_t *sub = (sub_t *) zlist_pop (self->subs);
+            sub_destroy (&sub);
+        }
+        zlist_destroy (&self->subs);
         fmq_dir_destroy (&self->dir);
         free (self);
         *self_p = NULL;
@@ -56,7 +63,7 @@ mount_refresh (mount_t *self, server_t *server)
     bool activity = false;
 
     //  Get latest snapshot and build a patches list if it's activity
-    fmq_dir_t *latest = fmq_dir_new (self->fullpath, NULL);
+    fmq_dir_t *latest = fmq_dir_new (self->location, NULL);
     zlist_t *patches = fmq_dir_diff (self->dir, latest);
 
     //  Drop old directory and replace with latest version
@@ -64,20 +71,70 @@ mount_refresh (mount_t *self, server_t *server)
     self->dir = latest;
 
     //  Copy new patches to clients' patches list
-    sub_t *sub = (sub_t *) zlist_first (server->subs);
+    sub_t *sub = (sub_t *) zlist_first (self->subs);
     while (sub) {
-        //  Is subscription path a strict prefix of the mount path?
-        if (strncmp (self->path, sub->path, strlen (sub->path)) == 0) {
-            fmq_patch_t *patch = (fmq_patch_t *) zlist_first (patches);
-            while (patch) {
-                sub_patch_add (sub, patch);
-                patch = (fmq_patch_t *) zlist_next (patches);
-                activity = true;
-            }
+        fmq_patch_t *patch = (fmq_patch_t *) zlist_first (patches);
+        while (patch) {
+            sub_patch_add (sub, patch);
+            patch = (fmq_patch_t *) zlist_next (patches);
+            activity = true;
         }
-        sub = (sub_t *) zlist_next (server->subs);
+        sub = (sub_t *) zlist_next (self->subs);
     }
     zlist_destroy (&patches);
     return activity;
+}
+
+
+//  --------------------------------------------------------------------------
+//  Store subscription for mount point
+
+static void
+mount_sub_store (mount_t *self, client_t *client, char *path)
+{
+    //  Store subscription along with any previous ones
+    //  Coalesce subscriptions that are on same path
+
+    sub_t *sub = (sub_t *) zlist_first (self->subs);
+    while (sub) {
+        if (client == sub->client) {
+            //  If old subscription is superset/same as new, ignore new
+            if (strncmp (path, sub->path, strlen (sub->path)) == 0)
+                return;
+            else
+            //  If new subscription is superset of old one, remove old
+            if (strncmp (sub->path, path, strlen (path)) == 0) {
+                zlist_remove (self->subs, sub);
+                sub = (sub_t *) zlist_first (self->subs);
+            }
+            else
+                sub = (sub_t *) zlist_next (self->subs);
+        }
+        else
+            sub = (sub_t *) zlist_next (self->subs);
+    }
+    //  New subscription for this client, append to our list
+    sub = sub_new (client, path);
+    zlist_append (self->subs, sub);
+}
+
+
+//  --------------------------------------------------------------------------
+//  Purge subscriptions for a specified client
+
+static void
+mount_sub_purge (mount_t *self, client_t *client)
+{
+    sub_t *sub = (sub_t *) zlist_first (self->subs);
+    while (sub) {
+        if (sub->client == client) {
+            sub_t *next = (sub_t *) zlist_next (self->subs);
+            zlist_remove (self->subs, sub);
+            sub_destroy (&sub);
+            sub = next;
+        }
+        else
+            sub = (sub_t *) zlist_next (self->subs);
+    }
 }
 </declare>
