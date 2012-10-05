@@ -6,11 +6,31 @@ Protocol spec is at http://rfc.zeromq.org/spec:19
 
 Work in progress
 
+Prerequisites:
+
+ * libzmq master
+ * czmq master
+ 
 To build:
+
+    git clone git://github.com/zeromq/libzmq.git
+    cd libzmq
+    ./autogen.sh
+    ./configure
+    make check install
+    cd ..
+
+    git clone git://github.com/zeromq/czmq.git
+    cd czmq
+    ./autogen.sh
+    ./configure
+    make check install
+    cd ..
 
     git clone git://github.com/hintjens/filemq.git
     cd filemq
     ./autogen.sh
     ./configure
     make check
+    cd ..
 
