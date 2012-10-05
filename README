@@ -34,3 +34,8 @@ To build:
     make check
     cd ..
 
+Contribution process:
+
+    http://rfc.zeromq.org/spec:16
+
+    
