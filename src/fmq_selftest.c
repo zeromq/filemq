@@ -28,21 +28,56 @@
 int main (int argc, char *argv [])
 {
     Bool verbose;
-    if (argc == 2 && streq (argv [1], "-v"))
+    if (argc == 2 && streq (argv [1], "-v")) {
+        argc--;
         verbose = TRUE;
+    }
     else
         verbose = FALSE;
 
-    printf ("Running self tests...\n");
-    fmq_patch_test (verbose);
-    fmq_chunk_test (verbose);
-    fmq_file_test (verbose);
-    fmq_dir_test (verbose);
-    fmq_msg_test (verbose);
-    fmq_sasl_test (verbose);
-    fmq_config_test (verbose);
-    fmq_server_test (verbose);
-    fmq_client_test (verbose);
-    printf ("Tests passed OK\n");
+    //  Do normal checks if run without arguments
+    if (argc < 2) {
+        printf ("Running self tests...\n");
+        fmq_patch_test (verbose);
+        fmq_chunk_test (verbose);
+        fmq_file_test (verbose);
+        fmq_dir_test (verbose);
+        fmq_msg_test (verbose);
+        fmq_sasl_test (verbose);
+        fmq_config_test (verbose);
+        fmq_server_test (verbose);
+        fmq_client_test (verbose);
+        printf ("Tests passed OK\n");
+        return 0;
+    }
+
+    //  Else run as FILEMQ server or client
+    fmq_client_t *client = NULL;
+    fmq_server_t *server = NULL;
+
+    if (streq (argv [1], "-s")) {
+        server = fmq_server_new ();
+        fmq_server_configure (server, "server_test.cfg");
+        fmq_server_publish (server, "./fmqroot/send", "/");
+        fmq_server_publish (server, "./fmqroot/logs", "/logs");
+        //  We do this last
+        fmq_server_bind (server, "tcp://*:6000");
+    }
+    else
+    if (streq (argv [1], "-c")) {
+        client = fmq_client_new ();
+        fmq_client_configure (client, "client_test.cfg");
+        fmq_client_setoption (client, "client/inbox", "./fmqroot/recv");
+        fmq_client_connect   (client, "tcp://localhost:6000");
+        fmq_client_subscribe (client, "/");
+        fmq_client_subscribe (client, "/photos");
+        fmq_client_subscribe (client, "/logs");
+    }
+    while (!zctx_interrupted)
+        sleep (1);
+    puts ("interrupted");
+
+    fmq_server_destroy (&server);
+    fmq_client_destroy (&client);
     return 0;
 }

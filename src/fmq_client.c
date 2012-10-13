@@ -215,6 +215,7 @@ client_new (zctx_t *ctx, void *pipe)
     self->ctx = ctx;
     self->pipe = pipe;
     self->config = fmq_config_new ("root", NULL);
+    self->heartbeat = 1000;     //  1 second by default
     self->subs = zlist_new ();
     self->connected = false;  
     return self;
@@ -258,32 +259,34 @@ client_apply_config (client_t *self)
         fmq_config_t *entry = fmq_config_child (section);
         while (entry) {
             if (streq (fmq_config_name (entry), "echo"))
-                puts (fmq_config_value (entry));
+                zclock_log (fmq_config_value (entry));
             entry = fmq_config_next (entry);
         }
         if (streq (fmq_config_name (section), "subscribe")) {
             char *path = fmq_config_resolve (section, "path", "?");
-            //  Store subscription along with any previous ones         
-            //  Check we don't already have a subscription for this path
-            sub_t *sub = (sub_t *) zlist_first (self->subs);            
-            while (sub) {                                               
-                if (streq (path, sub->path))                            
-                    return;                                             
-                sub = (sub_t *) zlist_next (self->subs);                
-            }                                                           
-            //  Subscription path must start with '/'                   
-            //  We'll do better error handling later                    
-            assert (*path == '/');                                      
-                                                                        
-            //  New subscription, so store it for later replay          
-            sub = sub_new (self, path);                                 
-            zlist_append (self->subs, sub);                             
-                                                                        
-            //  If we're connected, then also send to server            
-            if (self->connected) {                                      
-                fmq_msg_path_set (self->request, path);                 
-                self->next_event = subscribe_event;                     
-            }                                                           
+            //  Store subscription along with any previous ones                          
+            //  Check we don't already have a subscription for this path                 
+            sub_t *sub = (sub_t *) zlist_first (self->subs);                             
+            while (sub) {                                                                
+                if (streq (path, sub->path))                                             
+                    return;                                                              
+                sub = (sub_t *) zlist_next (self->subs);                                 
+            }                                                                            
+            //  Subscription path must start with '/'                                    
+            //  We'll do better error handling later                                     
+            assert (*path == '/');                                                       
+                                                                                         
+            //  New subscription, so store it for later replay                           
+            sub = sub_new (self, path);                                                  
+            zlist_append (self->subs, sub);                                              
+            zclock_log ("I: subscribing directory %s as '%s'",                           
+                fmq_config_resolve (self->config, "client/inbox", ".inbox"), path, path);
+                                                                                         
+            //  If we're connected, then also send to server                             
+            if (self->connected) {                                                       
+                fmq_msg_path_set (self->request, path);                                  
+                self->next_event = subscribe_event;                                      
+            }                                                                            
         }
         section = fmq_config_next (section);
     }
@@ -443,6 +446,7 @@ client_execute (client_t *self, int event)
                     terminate_the_client (self);
                 }
                 else {
+                    //  Process all other events
                     log_protocol_error (self);
                     terminate_the_client (self);
                 }
@@ -474,8 +478,7 @@ client_execute (client_t *self, int event)
                     terminate_the_client (self);
                 }
                 else {
-                    log_protocol_error (self);
-                    terminate_the_client (self);
+                    //  Process all other events
                 }
                 break;
 
@@ -504,6 +507,7 @@ client_execute (client_t *self, int event)
                     terminate_the_client (self);
                 }
                 else {
+                    //  Process all other events
                     log_protocol_error (self);
                     terminate_the_client (self);
                 }
@@ -547,6 +551,7 @@ client_execute (client_t *self, int event)
                     terminate_the_client (self);
                 }
                 else {
+                    //  Process all other events
                     log_protocol_error (self);
                     terminate_the_client (self);
                 }
@@ -593,27 +598,29 @@ control_message (client_t *self)
     char *method = zmsg_popstr (msg);
     if (streq (method, "SUBSCRIBE")) {
         char *path = zmsg_popstr (msg);
-        //  Store subscription along with any previous ones         
-        //  Check we don't already have a subscription for this path
-        sub_t *sub = (sub_t *) zlist_first (self->subs);            
-        while (sub) {                                               
-            if (streq (path, sub->path))                            
-                return;                                             
-            sub = (sub_t *) zlist_next (self->subs);                
-        }                                                           
-        //  Subscription path must start with '/'                   
-        //  We'll do better error handling later                    
-        assert (*path == '/');                                      
-                                                                    
-        //  New subscription, so store it for later replay          
-        sub = sub_new (self, path);                                 
-        zlist_append (self->subs, sub);                             
-                                                                    
-        //  If we're connected, then also send to server            
-        if (self->connected) {                                      
-            fmq_msg_path_set (self->request, path);                 
-            self->next_event = subscribe_event;                     
-        }                                                           
+        //  Store subscription along with any previous ones                          
+        //  Check we don't already have a subscription for this path                 
+        sub_t *sub = (sub_t *) zlist_first (self->subs);                             
+        while (sub) {                                                                
+            if (streq (path, sub->path))                                             
+                return;                                                              
+            sub = (sub_t *) zlist_next (self->subs);                                 
+        }                                                                            
+        //  Subscription path must start with '/'                                    
+        //  We'll do better error handling later                                     
+        assert (*path == '/');                                                       
+                                                                                     
+        //  New subscription, so store it for later replay                           
+        sub = sub_new (self, path);                                                  
+        zlist_append (self->subs, sub);                                              
+        zclock_log ("I: subscribing directory %s as '%s'",                           
+            fmq_config_resolve (self->config, "client/inbox", ".inbox"), path, path);
+                                                                                     
+        //  If we're connected, then also send to server                             
+        if (self->connected) {                                                       
+            fmq_msg_path_set (self->request, path);                                  
+            self->next_event = subscribe_event;                                      
+        }                                                                            
         free (path);
     }
     else
@@ -716,8 +723,9 @@ client_thread (void *args, zctx_t *ctx, void *pipe)
             server_message (self);
 
         //  Check whether server seems dead
-        if (self->expires_at && zclock_time () >= self->expires_at)
+        if (self->expires_at && zclock_time () >= self->expires_at) {
             client_restart (self, NULL);
+        }
     }
     client_destroy (&self);
 }

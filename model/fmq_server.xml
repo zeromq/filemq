@@ -73,6 +73,11 @@ FileMQ protocol server
     <event name = "expired">
         <action name = "terminate the client" />
     </event>
+    <!-- Client can restart connection at any time -->
+    <event name = "OHAI" next = "checking client">
+        <action name = "track client identity" />
+        <action name = "try anonymous access" />
+    </event>
     <event name = "$other">
         <action name = "send" message = "RTFM" />
         <action name = "terminate the client" />
@@ -310,14 +315,9 @@ zlist_append (self->mounts, mount);
 <include filename = "fmq_server_selftest.xml" />
 
 <!-- TODO
-    allow mount points to overlap
-        - allow subscriptions to overlap
-        - filter duplicates to one client
-        
     store patch list per client
         use client identifier, not real id
         test client disconnect & reconnect
-    
     - on exit
         save directory tree to disk
         save patch list to disk
@@ -331,7 +331,6 @@ zlist_append (self->mounts, mount);
         to get all files?
         what if some already exist?
         not rsync protocol... 
-    
 -->
 
 </class>

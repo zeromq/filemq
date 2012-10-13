@@ -17,6 +17,8 @@ This is the FILEMQ/1.0 client protocol handler
         <action name = "connected to server" />
         <action name = "get first subscription" />
     </event>
+    <!-- Server may be sending messages from old connection; ignore -->
+    <event name = "$other" />
 </state>
 
 <state name = "subscribing">
@@ -212,7 +214,9 @@ assert (*path == '/');
 //  New subscription, so store it for later replay
 sub = sub_new (self, path);
 zlist_append (self->subs, sub);
-
+zclock_log ("I: subscribing directory %s as '%s'",
+    fmq_config_resolve (self->config, "client/inbox", ".inbox"), path, path);
+    
 //  If we're connected, then also send to server
 if (self->connected) {
     fmq_msg_path_set (self->request, path);

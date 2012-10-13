@@ -417,6 +417,7 @@ server_new (zctx_t *ctx, void *pipe)
     self->clients = zhash_new ();
     self->config = fmq_config_new ("root", NULL);
     self->monitor = 5000;       //  5 seconds by default
+    self->heartbeat = 1000;     //  1 second by default
 .for class.self
 .   for construct
     $(string.trim (construct.?''):block                                         )
@@ -464,7 +465,7 @@ server_apply_config (server_t *self)
         fmq_config_t *entry = fmq_config_child (section);
         while (entry) {
             if (streq (fmq_config_name (entry), "echo"))
-                puts (fmq_config_value (entry));
+                zclock_log (fmq_config_value (entry));
             entry = fmq_config_next (entry);
         }
 .for class.method
@@ -538,6 +539,35 @@ server_control_message (server_t *self)
     zmsg_destroy (&msg);
 }
 
+.macro output_event_body
+.   for action
+.       if name = "send"
+.           if switches.animate ?= 1
+                    zclock_log ("S:    + send $(MESSAGE:C)");
+.           endif
+                    $(codec)_id_set (client->reply, $(CODEC)_$(MESSAGE:C));
+.if switches.trace ?= 1
+                    zclock_log ("Send message to client");
+                    $(codec)_dump (client->reply);
+.endif
+                    $(codec)_send (&client->reply, client->router);
+                    client->reply = $(codec)_new (0);
+                    $(codec)_address_set (client->reply, client->address);
+.       else
+.           if switches.animate ?= 1
+                    zclock_log ("S:    + $(name)");
+.           endif
+                    $(name:c) (self, client);
+.           if count (class.action, name = -1.name) = 0
+.               echo 'E: you need to add <action name="$(name)">'
+.           endif
+.       endif
+.   endfor
+.   if defined (event.next)
+                    client->state = $(next:c)_state;
+.   endif
+.endmacro
+.#
 .for class.action
 .   if first ()
 //  Custom actions for state machine
@@ -566,41 +596,18 @@ server_client_execute (server_t *self, client_t *client, int event)
         switch (client->state) {
 .for class.state
             case $(name:c)_state:
-.   for event
-.       if name = "$other"
-                else {
-.       else
-.           if index () > 1
+.   for event where name <> "$other"
+.       if index () > 1
                 else
-.           endif
+.       endif
                 if (client->event == $(name:c)_event) {
-.       endif
-.       for action
-.           if name = "send"
-.               if switches.animate ?= 1
-                    zclock_log ("S:    + send $(MESSAGE:C)");
-.               endif
-                    $(codec)_id_set (client->reply, $(CODEC)_$(MESSAGE:C));
-.if switches.trace ?= 1
-                    puts ("Send message to client");
-                    $(codec)_dump (client->reply);
-.endif
-                    $(codec)_send (&client->reply, client->router);
-                    client->reply = $(codec)_new (0);
-                    $(codec)_address_set (client->reply, client->address);
-.           else
-.               if switches.animate ?= 1
-                    zclock_log ("S:    + $(name)");
-.               endif
-                    $(name:c) (self, client);
-.               if count (class.action, name = -1.name) = 0
-.                   echo 'E: you need to add <action name="$(name)">'
-.               endif
-.           endif
-.       endfor
-.       if defined (event.next)
-                    client->state = $(next:c)_state;
-.       endif
+.       output_event_body ()
+                }
+.   endfor
+.   for event where name = "$other"
+                else {
+                    //  Process all other events
+.       output_event_body ()
                 }
 .   endfor
                 break;
@@ -626,7 +633,7 @@ server_client_message (server_t *self)
         return;         //  Interrupted; do nothing
 
 .if switches.trace ?= 1
-    puts ("Received message from client");
+    zclock_log ("Received message from client");
     $(codec)_dump (request);
 .endif
     char *hashkey = zframe_strhex ($(codec)_address (request));

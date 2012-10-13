@@ -302,6 +302,7 @@ client_new (zctx_t *ctx, void *pipe)
     self->ctx = ctx;
     self->pipe = pipe;
     self->config = fmq_config_new ("root", NULL);
+    self->heartbeat = 1000;     //  1 second by default
 .for class.self
 .   for construct
     $(string.trim (construct.?''):block                                         )
@@ -347,7 +348,7 @@ client_apply_config (client_t *self)
         fmq_config_t *entry = fmq_config_child (section);
         while (entry) {
             if (streq (fmq_config_name (entry), "echo"))
-                puts (fmq_config_value (entry));
+                zclock_log (fmq_config_value (entry));
             entry = fmq_config_next (entry);
         }
 .for class.method
@@ -369,6 +370,34 @@ client_apply_config (client_t *self)
     }
 }
 
+.macro output_event_body
+.   for action
+.       if name = "send"
+.           if switches.animate ?= 1
+                    zclock_log ("C:    + send $(MESSAGE:C)");
+.           endif
+                    $(codec)_id_set (self->request, $(CODEC)_$(MESSAGE:C));
+.if switches.trace ?= 1
+                    zclock_log ("Send request to server");
+                    $(codec)_dump (self->request);
+.endif
+                    $(codec)_send (&self->request, self->dealer);
+                    self->request = $(codec)_new (0);
+.       else
+.           if switches.animate ?= 1
+                    zclock_log ("C:    + $(name)");
+.           endif
+                    $(name:c) (self);
+.           if count (class.action, name = -1.name) = 0
+.                echo 'E: you need to add <action name="$(name)">'
+.           endif
+.       endif
+.   endfor
+.   if defined (event.next)
+                    self->state = $(next:c)_state;
+.   endif
+.endmacro
+.#
 .for class.action
 .   if first ()
 //  Custom actions for state machine
@@ -397,40 +426,18 @@ client_execute (client_t *self, int event)
         switch (self->state) {
 .for class.state
             case $(name:c)_state:
-.   for event
-.       if name = "$other"
-                else {
-.       else
-.           if index () > 1
+.   for event where name <> "$other"
+.       if index () > 1
                 else
-.           endif
+.       endif
                 if (self->event == $(name:c)_event) {
-.       endif
-.       for action
-.           if name = "send"
-.               if switches.animate ?= 1
-                    zclock_log ("C:    + send $(MESSAGE:C)");
-.               endif
-                    $(codec)_id_set (self->request, $(CODEC)_$(MESSAGE:C));
-.if switches.trace ?= 1
-                    puts ("Send request to server");
-                    $(codec)_dump (self->request);
-.endif
-                    $(codec)_send (&self->request, self->dealer);
-                    self->request = $(codec)_new (0);
-.           else
-.               if switches.animate ?= 1
-                    zclock_log ("C:    + $(name)");
-.               endif
-                    $(name:c) (self);
-.               if count (class.action, name = -1.name) = 0
-.                   echo 'E: you need to add <action name="$(name)">'
-.               endif
-.           endif
-.       endfor
-.       if defined (event.next)
-                    self->state = $(next:c)_state;
-.       endif
+.       output_event_body ()
+                }
+.   endfor
+.   for event where name = "$other"
+                else {
+                    //  Process all other events
+.       output_event_body ()
                 }
 .   endfor
                 break;
@@ -546,7 +553,7 @@ server_message (client_t *self)
         return;         //  Interrupted; do nothing
 .if switches.trace ?= 1
 
-    puts ("Received reply from server");
+    zclock_log ("Received reply from server");
     $(codec)_dump (self->reply);
 .endif
     
@@ -589,8 +596,9 @@ client_thread (void *args, zctx_t *ctx, void *pipe)
             server_message (self);
 
         //  Check whether server seems dead
-        if (self->expires_at && zclock_time () >= self->expires_at)
+        if (self->expires_at && zclock_time () >= self->expires_at) {
             client_restart (self, NULL);
+        }
     }
     client_destroy (&self);
 }

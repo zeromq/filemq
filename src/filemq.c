@@ -1,5 +1,7 @@
 /*  =========================================================================
     filemq - FileMQ command-line service
+    Creates pub-sub connection from one directory to another
+    Syntax: filemq publish-from subscribe-into
 
     -------------------------------------------------------------------------
     Copyright (c) 1991-2012 iMatix Corporation <www.imatix.com>
@@ -37,26 +39,20 @@ int main (int argc, char *argv [])
     puts (COPYRIGHT);
     puts (NOWARRANTY);
 
-    fmq_server_t *server = NULL;
-    fmq_client_t *client = NULL;
+    if (argc < 3) {
+        puts ("usage: filemq publish-from subscribe-into");
+        return 0;
+    }
+    fmq_server_t *server = fmq_server_new ();
+    fmq_server_configure (server, "anonymous.cfg");
+    fmq_server_publish (server, argv [1], "/");
+    fmq_server_bind (server, "tcp://*:6000");
 
-    if (argc < 2 || streq (argv [1], "-s")) {
-        server = fmq_server_new ();
-        fmq_server_configure (server, "server_test.cfg");
-        fmq_server_publish (server, "./fmqroot/send", "/");
-        fmq_server_publish (server, "./fmqroot/logs", "/logs");
-        //  We do this last
-        fmq_server_bind (server, "tcp://*:6000");
-    }
-    if (argc < 2 || streq (argv [1], "-c")) {
-        client = fmq_client_new ();
-        fmq_client_configure (client, "client_test.cfg");
-        fmq_client_setoption (client, "client/inbox", "./fmqroot/recv");
-        fmq_client_connect   (client, "tcp://localhost:6000");
-        fmq_client_subscribe (client, "/");
-        fmq_client_subscribe (client, "/photos");
-        fmq_client_subscribe (client, "/logs");
-    }
+    fmq_client_t *client = fmq_client_new ();
+    fmq_client_setoption (client, "client/inbox", argv [2]);
+    fmq_client_connect   (client, "tcp://localhost:6000");
+    fmq_client_subscribe (client, "/");
+    
     while (!zctx_interrupted)
         sleep (1);
     puts ("interrupted");

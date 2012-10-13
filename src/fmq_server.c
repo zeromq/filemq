@@ -294,6 +294,8 @@ mount_new (char *location, char *alias)
     self->alias = strdup (alias);
     self->dir = fmq_dir_new (self->location, NULL);
     self->subs = zlist_new ();
+    zclock_log ("I: mounted directory %s as '%s' with %zd files",
+        self->location, self->alias, self->dir? fmq_dir_count (self->dir): 0);
     return self;
 }
 
@@ -516,6 +518,7 @@ server_new (zctx_t *ctx, void *pipe)
     self->clients = zhash_new ();
     self->config = fmq_config_new ("root", NULL);
     self->monitor = 5000;       //  5 seconds by default
+    self->heartbeat = 1000;     //  1 second by default
     self->mounts = zlist_new ();
     return self;
 }
@@ -560,7 +563,7 @@ server_apply_config (server_t *self)
         fmq_config_t *entry = fmq_config_child (section);
         while (entry) {
             if (streq (fmq_config_name (entry), "echo"))
-                puts (fmq_config_value (entry));
+                zclock_log (fmq_config_value (entry));
             entry = fmq_config_next (entry);
         }
         if (streq (fmq_config_name (section), "bind")) {
@@ -817,6 +820,7 @@ server_client_execute (server_t *self, client_t *client, int event)
                     terminate_the_client (self, client);
                 }
                 else {
+                    //  Process all other events
                     fmq_msg_id_set (client->reply, FMQ_MSG_RTFM);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
@@ -857,7 +861,14 @@ server_client_execute (server_t *self, client_t *client, int event)
                 if (client->event == expired_event) {
                     terminate_the_client (self, client);
                 }
+                else
+                if (client->event == ohai_event) {
+                    track_client_identity (self, client);
+                    try_anonymous_access (self, client);
+                    client->state = checking_client_state;
+                }
                 else {
+                    //  Process all other events
                     fmq_msg_id_set (client->reply, FMQ_MSG_RTFM);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
@@ -878,7 +889,14 @@ server_client_execute (server_t *self, client_t *client, int event)
                 if (client->event == expired_event) {
                     terminate_the_client (self, client);
                 }
+                else
+                if (client->event == ohai_event) {
+                    track_client_identity (self, client);
+                    try_anonymous_access (self, client);
+                    client->state = checking_client_state;
+                }
                 else {
+                    //  Process all other events
                     fmq_msg_id_set (client->reply, FMQ_MSG_RTFM);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
@@ -928,7 +946,14 @@ server_client_execute (server_t *self, client_t *client, int event)
                 if (client->event == expired_event) {
                     terminate_the_client (self, client);
                 }
+                else
+                if (client->event == ohai_event) {
+                    track_client_identity (self, client);
+                    try_anonymous_access (self, client);
+                    client->state = checking_client_state;
+                }
                 else {
+                    //  Process all other events
                     fmq_msg_id_set (client->reply, FMQ_MSG_RTFM);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
@@ -972,7 +997,14 @@ server_client_execute (server_t *self, client_t *client, int event)
                 if (client->event == expired_event) {
                     terminate_the_client (self, client);
                 }
+                else
+                if (client->event == ohai_event) {
+                    track_client_identity (self, client);
+                    try_anonymous_access (self, client);
+                    client->state = checking_client_state;
+                }
                 else {
+                    //  Process all other events
                     fmq_msg_id_set (client->reply, FMQ_MSG_RTFM);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
