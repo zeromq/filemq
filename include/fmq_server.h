@@ -65,6 +65,10 @@ void
 void
     fmq_server_publish (fmq_server_t *self, const char *location, const char *alias);
 
+//  
+void
+    fmq_server_set_anonymous (fmq_server_t *self, long access);
+
 //  Self test of this class
 int
     fmq_server_test (bool verbose);

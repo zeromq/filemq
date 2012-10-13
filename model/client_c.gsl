@@ -177,13 +177,15 @@ $(class.name)_$(name:c) ($(class.name)_t *self\
 .   for argument
 .       method.send = "sendm"
 .       if last ()
-.           argument.send = "send"
+.           argument.send = "sendf"
 .       else
-.           argument.send = "sendm"
+.           argument.send = "sendfm"
 .       endif
 .       if type = "string"
+.           argument.format = "%s"
 , const char *$(name)\
 .       elsif type = "number"
+.           argument.format = "%ld"
 , long $(name)\
 .       else
 .           echo "E: we didn't add support for $(type)s in methods"
@@ -198,9 +200,9 @@ $(class.name)_$(name:c) ($(class.name)_t *self\
     zstr_$(send) (self->pipe, "$(NAME)");
 .   for argument
 .       if type = "string"
-    zstr_$(send) (self->pipe, $(name));
+    zstr_$(send) (self->pipe, "$(format)", $(name));
 .       elsif type = "number"
-    zstr_$(send) (self->pipe, "%ld", $(name));
+    zstr_$(send) (self->pipe, "$(format)", $(name));
 .       endif
 .   endfor
 }

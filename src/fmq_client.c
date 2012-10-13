@@ -118,7 +118,19 @@ fmq_client_subscribe (fmq_client_t *self, const char *path)
     assert (self);
     assert (path);
     zstr_sendm (self->pipe, "SUBSCRIBE");
-    zstr_send (self->pipe, path);
+    zstr_sendf (self->pipe, "%s", path);
+}
+
+
+//  --------------------------------------------------------------------------
+
+void
+fmq_client_set_inbox (fmq_client_t *self, const char *path)
+{
+    assert (self);
+    assert (path);
+    zstr_sendm (self->pipe, "SET INBOX");
+    zstr_sendf (self->pipe, "%s", path);
 }
 
 
@@ -288,6 +300,11 @@ client_apply_config (client_t *self)
                 self->next_event = subscribe_event;                                      
             }                                                                            
         }
+        else
+        if (streq (fmq_config_name (section), "set inbox")) {
+            char *path = fmq_config_resolve (section, "path", "?");
+            fmq_config_path_set (self->config, "client/inbox", path);
+        }
         section = fmq_config_next (section);
     }
 }
@@ -363,7 +380,7 @@ process_the_patch (client_t *self)
                                                                                       
     if (fmq_msg_operation (self->reply) == FMQ_MSG_FILE_CREATE) {                     
         if (self->file == NULL) {                                                     
-            zclock_log ("I: create %s", filename);                                    
+            zclock_log ("I: create %s/%s", inbox, filename);                          
             self->file = fmq_file_new (inbox, filename);                              
             if (fmq_file_output (self->file)) {                                       
                 //  File not writeable, skip patch                                    
@@ -385,7 +402,7 @@ process_the_patch (client_t *self)
     }                                                                                 
     else                                                                              
     if (fmq_msg_operation (self->reply) == FMQ_MSG_FILE_DELETE) {                     
-        zclock_log ("I: delete %s", filename);                                        
+        zclock_log ("I: delete %s/%s", inbox, filename);                              
         fmq_file_t *file = fmq_file_new (inbox, filename);                            
         fmq_file_remove (file);                                                       
         fmq_file_destroy (&file);                                                     
@@ -621,6 +638,12 @@ control_message (client_t *self)
             fmq_msg_path_set (self->request, path);                                  
             self->next_event = subscribe_event;                                      
         }                                                                            
+        free (path);
+    }
+    else
+    if (streq (method, "SET INBOX")) {
+        char *path = zmsg_popstr (msg);
+        fmq_config_path_set (self->config, "client/inbox", path);
         free (path);
     }
     else

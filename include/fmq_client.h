@@ -57,6 +57,10 @@ void
 void
     fmq_client_subscribe (fmq_client_t *self, const char *path);
 
+//  
+void
+    fmq_client_set_inbox (fmq_client_t *self, const char *path);
+
 //  Self test of this class
 int
     fmq_client_test (bool verbose);

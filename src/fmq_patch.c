@@ -29,6 +29,7 @@
 //  Structure of our class
 
 struct _fmq_patch_t {
+    char *path;                 //  Directory path
     fmq_file_t *file;           //  File we refer to
     fmq_patch_op_t op;          //  Operation
 };
@@ -39,9 +40,10 @@ struct _fmq_patch_t {
 //  Create new patch
 
 fmq_patch_t *
-fmq_patch_new (fmq_file_t *file, fmq_patch_op_t op)
+fmq_patch_new (char *path, fmq_file_t *file, fmq_patch_op_t op)
 {
     fmq_patch_t *self = (fmq_patch_t *) zmalloc (sizeof (fmq_patch_t));
+    self->path = strdup (path);
     self->file = fmq_file_dup (file);
     self->op = op;
     return self;
@@ -56,6 +58,7 @@ fmq_patch_destroy (fmq_patch_t **self_p)
     assert (self_p);
     if (*self_p) {
         fmq_patch_t *self = *self_p;
+        free (self->path);
         fmq_file_destroy (&self->file);
         free (self);
         *self_p = NULL;
@@ -69,7 +72,18 @@ fmq_patch_destroy (fmq_patch_t **self_p)
 fmq_patch_t *
 fmq_patch_dup (fmq_patch_t *self)
 {
-    return fmq_patch_new (self->file, self->op);
+    return fmq_patch_new (self->path, self->file, self->op);
+}
+
+
+//  --------------------------------------------------------------------------
+//  Return patch file directory oatth
+
+char *
+fmq_patch_path (fmq_patch_t *self)
+{
+    assert (self);
+    return self->path;
 }
 
 
@@ -103,7 +117,7 @@ fmq_patch_test (bool verbose)
     printf (" * fmq_patch: ");
 
     fmq_file_t *file = fmq_file_new (".", "bilbo");
-    fmq_patch_t *patch = fmq_patch_new (file, patch_create);
+    fmq_patch_t *patch = fmq_patch_new (".", file, patch_create);
     fmq_file_destroy (&file);
     
     file = fmq_patch_file (patch);

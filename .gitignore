@@ -25,6 +25,7 @@ src/stamp-h1
 *.la
 *.lst
 filemq
+track
 core
 fmq_selftest
 src/fmqroot/send/*

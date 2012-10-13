@@ -18,9 +18,10 @@ libfmq_la_SOURCES = \
     fmq_server.c 
 
 INCLUDES = -I$(top_srcdir)/include
-bin_PROGRAMS = filemq fmq_selftest
+bin_PROGRAMS = filemq track fmq_selftest
 fmq_selftest_LDADD = libfmq.la
 filemq_LDADD = libfmq.la
+track_LDADD = libfmq.la
 
 if ON_MINGW
 libfmq_la_LDFLAGS = -no-undefined -avoid-version -version-info @LTVER@

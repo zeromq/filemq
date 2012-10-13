@@ -241,9 +241,14 @@ if (client->patch == NULL) {
     client->next_event = finished_event;
     return;
 }
-//  Map filename to logical space by removing server root
-char *rootdir = fmq_config_resolve (self->config, "server/root", "./fmqroot");
-char *filename = fmq_file_name (fmq_patch_file (client->patch), rootdir);
+//  Map filename to logical space
+char *filename = fmq_file_name (fmq_patch_file (client->patch), fmq_patch_path (client->patch));
+
+printf ("MAP FILE: \nroot=%s\nname=%s\nresult=%s\n",
+    fmq_patch_path (client->patch),
+    fmq_file_name (fmq_patch_file (client->patch), NULL),
+    filename);
+    
 fmq_msg_filename_set (client->reply, filename);
 
 //  We can process a delete patch right away
@@ -298,8 +303,8 @@ else {
 }
 </action>
 
-
 <!-- API methods -->
+
 <method name = "bind">
 <argument name = "endpoint" type = "string" />
 zmq_bind (self->router, endpoint);
@@ -312,25 +317,12 @@ mount_t *mount = mount_new (location, alias);
 zlist_append (self->mounts, mount);
 </method>
 
-<include filename = "fmq_server_selftest.xml" />
+<method name = "set anonymous">
+<argument name = "access" type = "number" />
+//  Enable anonymous access without a config file
+fmq_config_path_set (self->config, "security/anonymous", access? "1" :"0");
+</method>
 
-<!-- TODO
-    store patch list per client
-        use client identifier, not real id
-        test client disconnect & reconnect
-    - on exit
-        save directory tree to disk
-        save patch list to disk
-    - on startup
-        load directory tree from disk
-        load patch list from disk
-    - list serialization code generator?
-    
-    some protocol for getting initial directory
-    subscribe option
-        to get all files?
-        what if some already exist?
-        not rsync protocol... 
--->
+<include filename = "fmq_server_selftest.xml" />
 
 </class>

@@ -279,14 +279,14 @@ fmq_dir_diff (fmq_dir_t *older, fmq_dir_t *newer)
         if (cmp > 0) {
             //  New file was created
             if (fmq_file_stable (new))
-                zlist_append (patches, fmq_patch_new (new, patch_create));
+                zlist_append (patches, fmq_patch_new (newer->path, new, patch_create));
             old_index--;
         }
         else
         if (cmp < 0) {
             //  Old file was deleted
             if (fmq_file_stable (old))
-                zlist_append (patches, fmq_patch_new (old, patch_delete));
+                zlist_append (patches, fmq_patch_new (older->path, old, patch_delete));
             new_index--;
         }
         else
@@ -296,11 +296,11 @@ fmq_dir_diff (fmq_dir_t *older, fmq_dir_t *newer)
                 //  Since we don't check file contents, treat as created
                 if (fmq_file_time (new) != fmq_file_time (old)
                 ||  fmq_file_size (new) != fmq_file_size (old))
-                    zlist_append (patches, fmq_patch_new (new, patch_create));
+                    zlist_append (patches, fmq_patch_new (newer->path, new, patch_create));
             }
             else
                 //  File was created over some period of time
-                zlist_append (patches, fmq_patch_new (new, patch_create));
+                zlist_append (patches, fmq_patch_new (newer->path, new, patch_create));
         }
         old_index++;
         new_index++;

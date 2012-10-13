@@ -106,7 +106,7 @@ fmq_server_bind (fmq_server_t *self, const char *endpoint)
     assert (self);
     assert (endpoint);
     zstr_sendm (self->pipe, "BIND");
-    zstr_send (self->pipe, endpoint);
+    zstr_sendf (self->pipe, "%s", endpoint);
 }
 
 
@@ -119,8 +119,19 @@ fmq_server_publish (fmq_server_t *self, const char *location, const char *alias)
     assert (location);
     assert (alias);
     zstr_sendm (self->pipe, "PUBLISH");
-    zstr_sendm (self->pipe, location);
-    zstr_send (self->pipe, alias);
+    zstr_sendfm (self->pipe, "%s", location);
+    zstr_sendf (self->pipe, "%s", alias);
+}
+
+
+//  --------------------------------------------------------------------------
+
+void
+fmq_server_set_anonymous (fmq_server_t *self, long access)
+{
+    assert (self);
+    zstr_sendm (self->pipe, "SET ANONYMOUS");
+    zstr_sendf (self->pipe, "%ld", access);
 }
 
 
@@ -577,6 +588,12 @@ server_apply_config (server_t *self)
             mount_t *mount = mount_new (location, alias);
             zlist_append (self->mounts, mount);          
         }
+        else
+        if (streq (fmq_config_name (section), "set anonymous")) {
+            long access = atoi (fmq_config_resolve (section, "access", ""));
+            //  Enable anonymous access without a config file                          
+            fmq_config_path_set (self->config, "security/anonymous", access? "1" :"0");
+        }
         section = fmq_config_next (section);
     }
 }
@@ -599,6 +616,14 @@ server_control_message (server_t *self)
         zlist_append (self->mounts, mount);          
         free (location);
         free (alias);
+    }
+    else
+    if (streq (method, "SET ANONYMOUS")) {
+        char *access_string = zmsg_popstr (msg);
+        long access = atoi (access_string);
+        free (access_string);
+        //  Enable anonymous access without a config file                          
+        fmq_config_path_set (self->config, "security/anonymous", access? "1" :"0");
     }
     else
     if (streq (method, "CONFIG")) {
@@ -732,68 +757,73 @@ monitor_the_server (server_t *self, client_t *client)
 static void
 get_next_patch_for_client (server_t *self, client_t *client)
 {
-    //  Get next patch for client if we're not doing one already                      
-    if (client->patch == NULL)                                                        
-        client->patch = (fmq_patch_t *) zlist_pop (client->patches);                  
-    if (client->patch == NULL) {                                                      
-        client->next_event = finished_event;                                          
-        return;                                                                       
-    }                                                                                 
-    //  Map filename to logical space by removing server root                         
-    char *rootdir = fmq_config_resolve (self->config, "server/root", "./fmqroot");    
-    char *filename = fmq_file_name (fmq_patch_file (client->patch), rootdir);         
-    fmq_msg_filename_set (client->reply, filename);                                   
-                                                                                      
-    //  We can process a delete patch right away                                      
-    if (fmq_patch_op (client->patch) == patch_delete) {                               
-        fmq_msg_sequence_set (client->reply, client->sequence++);                     
-        fmq_msg_operation_set (client->reply, FMQ_MSG_FILE_DELETE);                   
-        client->next_event = send_delete_event;                                       
-                                                                                      
-        //  No reliability in this version, assume patch delivered safely             
-        fmq_patch_destroy (&client->patch);                                           
-    }                                                                                 
-    else {                                                                            
-        //  Create patch refers to file, open that for input if needed                
-        if (client->file == NULL) {                                                   
-            client->file = fmq_file_dup (fmq_patch_file (client->patch));             
-            if (fmq_file_input (client->file)) {                                      
-                //  File no longer available, skip it                                 
-                fmq_patch_destroy (&client->patch);                                   
-                fmq_file_destroy (&client->file);                                     
-                client->next_event = next_patch_event;                                
-                return;                                                               
-            }                                                                         
-            client->offset = 0;                                                       
-        }                                                                             
-        //  Get next chunk for file                                                   
-        fmq_chunk_t *chunk = fmq_file_read (client->file, CHUNK_SIZE, client->offset);
-        assert (chunk);                                                               
-                                                                                      
-        //  Check if we have the credit to send chunk                                 
-        if (fmq_chunk_size (chunk) <= client->credit) {                               
-            fmq_msg_sequence_set (client->reply, client->sequence++);                 
-            fmq_msg_operation_set (client->reply, FMQ_MSG_FILE_CREATE);               
-            fmq_msg_offset_set (client->reply, client->offset);                       
-            fmq_msg_chunk_set (client->reply, zframe_new (                            
-                fmq_chunk_data (chunk),                                               
-                fmq_chunk_size (chunk)));                                             
-                                                                                      
-            client->offset += fmq_chunk_size (chunk);                                 
-            client->credit -= fmq_chunk_size (chunk);                                 
-            client->next_event = send_chunk_event;                                    
-                                                                                      
-            //  Zero-sized chunk means end of file                                    
-            if (fmq_chunk_size (chunk) == 0) {                                        
-                fmq_file_destroy (&client->file);                                     
-                fmq_patch_destroy (&client->patch);                                   
-            }                                                                         
-        }                                                                             
-        else                                                                          
-            client->next_event = no_credit_event;                                     
-                                                                                      
-        fmq_chunk_destroy (&chunk);                                                   
-    }                                                                                 
+    //  Get next patch for client if we're not doing one already                                    
+    if (client->patch == NULL)                                                                      
+        client->patch = (fmq_patch_t *) zlist_pop (client->patches);                                
+    if (client->patch == NULL) {                                                                    
+        client->next_event = finished_event;                                                        
+        return;                                                                                     
+    }                                                                                               
+    //  Map filename to logical space                                                               
+    char *filename = fmq_file_name (fmq_patch_file (client->patch), fmq_patch_path (client->patch));
+                                                                                                    
+    printf ("MAP FILE: \nroot=%s\nname=%s\nresult=%s\n",                                            
+        fmq_patch_path (client->patch),                                                             
+        fmq_file_name (fmq_patch_file (client->patch), NULL),                                       
+        filename);                                                                                  
+                                                                                                    
+    fmq_msg_filename_set (client->reply, filename);                                                 
+                                                                                                    
+    //  We can process a delete patch right away                                                    
+    if (fmq_patch_op (client->patch) == patch_delete) {                                             
+        fmq_msg_sequence_set (client->reply, client->sequence++);                                   
+        fmq_msg_operation_set (client->reply, FMQ_MSG_FILE_DELETE);                                 
+        client->next_event = send_delete_event;                                                     
+                                                                                                    
+        //  No reliability in this version, assume patch delivered safely                           
+        fmq_patch_destroy (&client->patch);                                                         
+    }                                                                                               
+    else {                                                                                          
+        //  Create patch refers to file, open that for input if needed                              
+        if (client->file == NULL) {                                                                 
+            client->file = fmq_file_dup (fmq_patch_file (client->patch));                           
+            if (fmq_file_input (client->file)) {                                                    
+                //  File no longer available, skip it                                               
+                fmq_patch_destroy (&client->patch);                                                 
+                fmq_file_destroy (&client->file);                                                   
+                client->next_event = next_patch_event;                                              
+                return;                                                                             
+            }                                                                                       
+            client->offset = 0;                                                                     
+        }                                                                                           
+        //  Get next chunk for file                                                                 
+        fmq_chunk_t *chunk = fmq_file_read (client->file, CHUNK_SIZE, client->offset);              
+        assert (chunk);                                                                             
+                                                                                                    
+        //  Check if we have the credit to send chunk                                               
+        if (fmq_chunk_size (chunk) <= client->credit) {                                             
+            fmq_msg_sequence_set (client->reply, client->sequence++);                               
+            fmq_msg_operation_set (client->reply, FMQ_MSG_FILE_CREATE);                             
+            fmq_msg_offset_set (client->reply, client->offset);                                     
+            fmq_msg_chunk_set (client->reply, zframe_new (                                          
+                fmq_chunk_data (chunk),                                                             
+                fmq_chunk_size (chunk)));                                                           
+                                                                                                    
+            client->offset += fmq_chunk_size (chunk);                                               
+            client->credit -= fmq_chunk_size (chunk);                                               
+            client->next_event = send_chunk_event;                                                  
+                                                                                                    
+            //  Zero-sized chunk means end of file                                                  
+            if (fmq_chunk_size (chunk) == 0) {                                                      
+                fmq_file_destroy (&client->file);                                                   
+                fmq_patch_destroy (&client->patch);                                                 
+            }                                                                                       
+        }                                                                                           
+        else                                                                                        
+            client->next_event = no_credit_event;                                                   
+                                                                                                    
+        fmq_chunk_destroy (&chunk);                                                                 
+    }                                                                                               
 }
 
 //  Execute state machine as long as we have events

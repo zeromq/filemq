@@ -151,7 +151,7 @@ char *filename = fmq_msg_filename (self->reply);
 
 if (fmq_msg_operation (self->reply) == FMQ_MSG_FILE_CREATE) {
     if (self->file == NULL) {
-        zclock_log ("I: create %s", filename);
+        zclock_log ("I: create %s/%s", inbox, filename);
         self->file = fmq_file_new (inbox, filename);
         if (fmq_file_output (self->file)) {
             //  File not writeable, skip patch
@@ -173,7 +173,7 @@ if (fmq_msg_operation (self->reply) == FMQ_MSG_FILE_CREATE) {
 }
 else
 if (fmq_msg_operation (self->reply) == FMQ_MSG_FILE_DELETE) {
-    zclock_log ("I: delete %s", filename);
+    zclock_log ("I: delete %s/%s", inbox, filename);
     fmq_file_t *file = fmq_file_new (inbox, filename);
     fmq_file_remove (file);
     fmq_file_destroy (&file);
@@ -222,6 +222,11 @@ if (self->connected) {
     fmq_msg_path_set (self->request, path);
     self->next_event = subscribe_event;
 }
+</method>
+
+<method name = "set inbox">
+<argument name = "path" type = "string" />
+fmq_config_path_set (self->config, "client/inbox", path);
 </method>
 
 <selftest config = "client_test.cfg">

@@ -1,8 +1,11 @@
 /*  =========================================================================
-    filemq - FileMQ command-line service
+    track - track one directory with another
     
-    This version works just like the track command. I'll improve filemq to
-    be a more general service over time.
+    Uses FILEMQ API to track one directory (e.g. MP3 player mount) with
+    another (e.g. ~/Music). As you add and remove files in the main directory
+    these are automatically created and removed in the tracked directory.
+    
+    Syntax: filemq original-directory tracking-directory
 
     -------------------------------------------------------------------------
     Copyright (c) 1991-2012 iMatix Corporation <www.imatix.com>
@@ -28,7 +31,7 @@
 #include "czmq.h"
 #include "../include/fmq.h"
 
-#define PRODUCT         "FileMQ service/1.0a1"
+#define PRODUCT         "track v1.0"
 #define COPYRIGHT       "Copyright (c) 2012 iMatix Corporation"
 #define NOWARRANTY \
 "This is free software; see the source for copying conditions.  There is NO\n" \
@@ -41,7 +44,7 @@ int main (int argc, char *argv [])
     puts (NOWARRANTY);
 
     if (argc < 3) {
-        puts ("usage: filemq publish-from subscribe-into");
+        puts ("usage: track original-directory tracking-directory");
         return 0;
     }
     fmq_server_t *server = fmq_server_new ();
