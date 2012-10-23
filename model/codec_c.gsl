@@ -76,6 +76,10 @@ $(class.name)_t *
 void
     $(class.name)_send ($(class.name)_t **self_p, void *socket);
 
+//  Duplicate the $(class.name) message
+$(class.name)_t *
+    $(class.name)_dup ($(class.name)_t *self);
+
 //  Print contents of message to stdout
 void
     $(class.name)_dump ($(class.name)_t *self);
@@ -316,11 +320,8 @@ $(class.name)_destroy ($(class.name)_t **self_p)
 .   if type = "string"
         free (self->$(name));
 .   elsif type = "strings"
-        if (self->$(name)) {
-            while (zlist_size (self->$(name)))
-                free (zlist_pop (self->$(name)));
+        if (self->$(name))
             zlist_destroy (&self->$(name));
-        }
 .   elsif type = "dictionary"
         zhash_destroy (&self->$(name));
 .   elsif type = "frame"
@@ -395,6 +396,7 @@ $(class.name)_recv (void *socket)
 .       elsif type = "strings"
             GET_OCTET (list_size);
             self->$(name) = zlist_new ();
+            zlist_autofree (self->$(name));
             while (list_size--) {
                 char *string;
                 GET_STRING (string);
@@ -613,6 +615,46 @@ s_$(name)_dump (const char *key, void *item, void *argument)
 }
 
 .endfor
+
+//  --------------------------------------------------------------------------
+//  Duplicate the $(class.name) message
+
+$(class.name)_t *
+$(class.name)_dup ($(class.name)_t *self)
+{
+    if (!self)
+        return NULL;
+        
+    $(class.name)_t *copy = $(class.name)_new (self->id);
+    if (self->address)
+        copy->address = zframe_dup (self->address);
+    switch (self->id) {
+.for class.message
+        case $(CLASS.NAME)_$(MESSAGE.NAME):
+.   for field
+.       if type = "octet"
+            copy->$(name) = self->$(name);
+.       elsif type = "octets"
+            memcpy (copy->$(name), self->$(name), $(size));
+.       elsif type = "number"
+            copy->$(name) = self->$(name);
+.       elsif type = "string"
+            copy->$(name) = strdup (self->$(name));
+.       elsif type = "strings"
+            copy->$(name) = zlist_copy (self->$(name));
+.       elsif type = "dictionary"
+            copy->$(name) = zhash_dup (self->$(name));
+.       elsif type = "frame"
+            copy->$(name) = zframe_dup (self->$(name));
+.       endif
+.   endfor
+            break;
+
+.endfor
+    }
+    return dup;
+}
+
 
 //  --------------------------------------------------------------------------
 //  Print contents of message to stdout
@@ -848,8 +890,10 @@ $(class.name)_$(name)_append ($(class.name)_t *self, char *format, ...)
     va_end (argptr);
     
     //  Attach string to list
-    if (!self->$(name))
+    if (!self->$(name)) {
         self->$(name) = zlist_new ();
+        zlist_autofree (self->$(name));
+    }
     zlist_append (self->$(name), string);
     self->$(name)_bytes += strlen (string);
 }
