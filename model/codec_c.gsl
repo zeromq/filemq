@@ -652,7 +652,7 @@ $(class.name)_dup ($(class.name)_t *self)
 
 .endfor
     }
-    return dup;
+    return copy;
 }
 
 
@@ -855,6 +855,24 @@ $(class.name)_$(name)_set ($(class.name)_t *self, char *format, ...)
 
 .   elsif type = "strings"
 //  --------------------------------------------------------------------------
+//  Get/set the $(name) field
+
+zlist_t *
+$(class.name)_$(name) ($(class.name)_t *self)
+{
+    assert (self);
+    return self->$(name);
+}
+
+void
+$(class.name)_$(name)_set ($(class.name)_t *self, zlist_t *$(name))
+{
+    assert (self);
+    zlist_destroy (&self->$(name));
+    self->$(name) = zlist_dup ($(name));
+}
+
+//  --------------------------------------------------------------------------
 //  Iterate through the $(name) field, and append a $(name) value
 
 char *
@@ -905,6 +923,24 @@ $(class.name)_$(name)_size ($(class.name)_t *self)
 }
 
 .   elsif type = "dictionary"
+//  --------------------------------------------------------------------------
+//  Get/set the $(name) field
+
+zhash_t *
+$(class.name)_$(name) ($(class.name)_t *self)
+{
+    assert (self);
+    return self->$(name);
+}
+
+void
+$(class.name)_$(name)_set ($(class.name)_t *self, zhash_t *$(name))
+{
+    assert (self);
+    zhash_destroy (&self->$(name));
+    self->$(name) = zhash_dup ($(name));
+}
+
 //  --------------------------------------------------------------------------
 //  Get/set a value in the $(name) dictionary
 
