@@ -61,14 +61,14 @@ int main (int argc, char *argv [])
         fmq_server_publish (server, "./fmqroot/send", "/");
         fmq_server_publish (server, "./fmqroot/logs", "/logs");
         //  We do this last
-        fmq_server_bind (server, "tcp://*:6000");
+        fmq_server_bind (server, "tcp://*:5670");
     }
     else
     if (streq (argv [1], "-c")) {
         client = fmq_client_new ();
         fmq_client_configure (client, "client_test.cfg");
         fmq_client_setoption (client, "client/inbox", "./fmqroot/recv");
-        fmq_client_connect   (client, "tcp://localhost:6000");
+        fmq_client_connect   (client, "tcp://localhost:5670");
         fmq_client_subscribe (client, "/");
         fmq_client_subscribe (client, "/photos");
         fmq_client_subscribe (client, "/logs");

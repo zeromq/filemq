@@ -35,22 +35,20 @@ struct _fmq_msg_t {
     byte *ceiling;              //  Valid upper limit for read pointer
     char *protocol;
     byte version;
-    byte identity [16];
     zlist_t *mechanisms;
-    size_t mechanisms_bytes;
     zframe_t *challenge;
     char *mechanism;
     zframe_t *response;
     char *path;
     zhash_t *options;
-    size_t options_bytes;
-    int64_t credit;
-    int64_t sequence;
+    size_t options_bytes;       //  Size of dictionary content
+    uint64_t credit;
+    uint64_t sequence;
     byte operation;
     char *filename;
-    int64_t offset;
+    uint64_t offset;
     zhash_t *headers;
-    size_t headers_bytes;
+    size_t headers_bytes;       //  Size of dictionary content
     zframe_t *chunk;
     char *reason;
 };
@@ -60,20 +58,6 @@ struct _fmq_msg_t {
 
 //  Strings are encoded with 1-byte length
 #define STRING_MAX  255
-
-//  Put an octet to the frame
-#define PUT_OCTET(host) { \
-    *(byte *) self->needle = (host); \
-    self->needle++; \
-    }
-
-//  Get an octet from the frame
-#define GET_OCTET(host) { \
-    if (self->needle + 1 > self->ceiling) \
-        goto malformed; \
-    (host) = *(byte *) self->needle; \
-    self->needle++; \
-    }
 
 //  Put a block to the frame
 #define PUT_BLOCK(host,size) { \
@@ -89,8 +73,30 @@ struct _fmq_msg_t {
     self->needle += size; \
     }
 
-//  Put a long long integer to the frame
-#define PUT_NUMBER(host) { \
+//  Put a 1-byte number to the frame
+#define PUT_NUMBER1(host) { \
+    *(byte *) self->needle = (host); \
+    self->needle++; \
+    }
+
+//  Put a 2-byte number to the frame
+#define PUT_NUMBER2(host) { \
+    self->needle [0] = (byte) (((host) >> 8)  & 255); \
+    self->needle [1] = (byte) (((host))       & 255); \
+    self->needle += 2; \
+    }
+
+//  Put a 4-byte number to the frame
+#define PUT_NUMBER4(host) { \
+    self->needle [0] = (byte) (((host) >> 24) & 255); \
+    self->needle [1] = (byte) (((host) >> 16) & 255); \
+    self->needle [2] = (byte) (((host) >> 8)  & 255); \
+    self->needle [3] = (byte) (((host))       & 255); \
+    self->needle += 4; \
+    }
+
+//  Put a 8-byte number to the frame
+#define PUT_NUMBER8(host) { \
     self->needle [0] = (byte) (((host) >> 56) & 255); \
     self->needle [1] = (byte) (((host) >> 48) & 255); \
     self->needle [2] = (byte) (((host) >> 40) & 255); \
@@ -102,32 +108,60 @@ struct _fmq_msg_t {
     self->needle += 8; \
     }
 
-//  Get a number from the frame
-#define GET_NUMBER(host) { \
+//  Get a 1-byte number from the frame
+#define GET_NUMBER1(host) { \
+    if (self->needle + 1 > self->ceiling) \
+        goto malformed; \
+    (host) = *(byte *) self->needle; \
+    self->needle++; \
+    }
+
+//  Get a 2-byte number from the frame
+#define GET_NUMBER2(host) { \
+    if (self->needle + 2 > self->ceiling) \
+        goto malformed; \
+    (host) = ((uint16_t) (self->needle [0]) << 8) \
+           +  (uint16_t) (self->needle [1]); \
+    self->needle += 2; \
+    }
+
+//  Get a 4-byte number from the frame
+#define GET_NUMBER4(host) { \
+    if (self->needle + 4 > self->ceiling) \
+        goto malformed; \
+    (host) = ((uint32_t) (self->needle [0]) << 24) \
+           + ((uint32_t) (self->needle [1]) << 16) \
+           + ((uint32_t) (self->needle [2]) << 8) \
+           +  (uint32_t) (self->needle [3]); \
+    self->needle += 4; \
+    }
+
+//  Get a 8-byte number from the frame
+#define GET_NUMBER8(host) { \
     if (self->needle + 8 > self->ceiling) \
         goto malformed; \
-    (host) = ((int64_t) (self->needle [0]) << 56) \
-           + ((int64_t) (self->needle [1]) << 48) \
-           + ((int64_t) (self->needle [2]) << 40) \
-           + ((int64_t) (self->needle [3]) << 32) \
-           + ((int64_t) (self->needle [4]) << 24) \
-           + ((int64_t) (self->needle [5]) << 16) \
-           + ((int64_t) (self->needle [6]) << 8) \
-           +  (int64_t) (self->needle [7]); \
+    (host) = ((uint64_t) (self->needle [0]) << 56) \
+           + ((uint64_t) (self->needle [1]) << 48) \
+           + ((uint64_t) (self->needle [2]) << 40) \
+           + ((uint64_t) (self->needle [3]) << 32) \
+           + ((uint64_t) (self->needle [4]) << 24) \
+           + ((uint64_t) (self->needle [5]) << 16) \
+           + ((uint64_t) (self->needle [6]) << 8) \
+           +  (uint64_t) (self->needle [7]); \
     self->needle += 8; \
     }
 
 //  Put a string to the frame
 #define PUT_STRING(host) { \
     string_size = strlen (host); \
-    PUT_OCTET (string_size); \
+    PUT_NUMBER1 (string_size); \
     memcpy (self->needle, (host), string_size); \
     self->needle += string_size; \
     }
 
 //  Get a string from the frame
 #define GET_STRING(host) { \
-    GET_OCTET (string_size); \
+    GET_NUMBER1 (string_size); \
     if (self->needle + string_size > (self->ceiling)) \
         goto malformed; \
     (host) = (char *) malloc (string_size + 1); \
@@ -162,11 +196,8 @@ fmq_msg_destroy (fmq_msg_t **self_p)
         //  Free class properties
         zframe_destroy (&self->address);
         free (self->protocol);
-        if (self->mechanisms) {
-            while (zlist_size (self->mechanisms))
-                free (zlist_pop (self->mechanisms));
+        if (self->mechanisms)
             zlist_destroy (&self->mechanisms);
-        }
         zframe_destroy (&self->challenge);
         free (self->mechanism);
         zframe_destroy (&self->response);
@@ -189,32 +220,49 @@ fmq_msg_destroy (fmq_msg_t **self_p)
 //  NULL if error. Will block if there's no message waiting.
 
 fmq_msg_t *
-fmq_msg_recv (void *socket)
+fmq_msg_recv (void *input)
 {
-    assert (socket);
+    assert (input);
     fmq_msg_t *self = fmq_msg_new (0);
     zframe_t *frame = NULL;
-
-    //  If we're reading from a ROUTER socket, get address
-    if (zsockopt_type (socket) == ZMQ_ROUTER) {
-        self->address = zframe_recv (socket);
-        if (!self->address)
-            goto empty;         //  Interrupted
-        if (!zsocket_rcvmore (socket))
-            goto malformed;
-    }
-    //  Read and parse command in frame
-    frame = zframe_recv (socket);
-    if (!frame)
-        goto empty;             //  Interrupted
-    self->needle = zframe_data (frame);
-    self->ceiling = self->needle + zframe_size (frame);
     size_t string_size;
     size_t list_size;
     size_t hash_size;
 
-    //  Get message id, which is first byte in frame
-    GET_OCTET (self->id);
+    //  Read valid message frame from socket; we loop over any
+    //  garbage data we might receive from badly-connected peers
+    while (true) {
+        //  If we're reading from a ROUTER socket, get address
+        if (zsockopt_type (input) == ZMQ_ROUTER) {
+            zframe_destroy (&self->address);
+            self->address = zframe_recv (input);
+            if (!self->address)
+                goto empty;         //  Interrupted
+            if (!zsocket_rcvmore (input))
+                goto malformed;
+        }
+        //  Read and parse command in frame
+        frame = zframe_recv (input);
+        if (!frame)
+            goto empty;             //  Interrupted
+
+        //  Get and check protocol signature
+        self->needle = zframe_data (frame);
+        self->ceiling = self->needle + zframe_size (frame);
+        uint16_t signature;
+        GET_NUMBER2 (signature);
+        if (signature == (0xAAA0 | 3))
+            break;                  //  Valid signature
+
+        //  Protocol assertion, drop message
+        while (zsocket_rcvmore (input)) {
+            zframe_destroy (&frame);
+            frame = zframe_recv (input);
+        }
+        zframe_destroy (&frame);
+    }
+    //  Get message id and parse per message type
+    GET_NUMBER1 (self->id);
 
     switch (self->id) {
         case FMQ_MSG_OHAI:
@@ -222,34 +270,33 @@ fmq_msg_recv (void *socket)
             GET_STRING (self->protocol);
             if (strneq (self->protocol, "FILEMQ"))
                 goto malformed;
-            GET_OCTET (self->version);
+            GET_NUMBER1 (self->version);
             if (self->version != FMQ_MSG_VERSION)
                 goto malformed;
-            GET_BLOCK (self->identity, 16);
             break;
 
         case FMQ_MSG_ORLY:
-            GET_OCTET (list_size);
+            GET_NUMBER1 (list_size);
             self->mechanisms = zlist_new ();
+            zlist_autofree (self->mechanisms);
             while (list_size--) {
                 char *string;
                 GET_STRING (string);
                 zlist_append (self->mechanisms, string);
-                self->mechanisms_bytes += strlen (string);
             }
             //  Get next frame, leave current untouched
-            if (!zsocket_rcvmore (socket))
+            if (!zsocket_rcvmore (input))
                 goto malformed;
-            self->challenge = zframe_recv (socket);
+            self->challenge = zframe_recv (input);
             break;
 
         case FMQ_MSG_YARLY:
             free (self->mechanism);
             GET_STRING (self->mechanism);
             //  Get next frame, leave current untouched
-            if (!zsocket_rcvmore (socket))
+            if (!zsocket_rcvmore (input))
                 goto malformed;
-            self->response = zframe_recv (socket);
+            self->response = zframe_recv (input);
             break;
 
         case FMQ_MSG_OHAI_OK:
@@ -258,7 +305,7 @@ fmq_msg_recv (void *socket)
         case FMQ_MSG_ICANHAZ:
             free (self->path);
             GET_STRING (self->path);
-            GET_OCTET (hash_size);
+            GET_NUMBER1 (hash_size);
             self->options = zhash_new ();
             while (hash_size--) {
                 char *string;
@@ -268,7 +315,6 @@ fmq_msg_recv (void *socket)
                     *value++ = 0;
                 zhash_insert (self->options, string, strdup (value));
                 zhash_freefn (self->options, string, free);
-                self->options_bytes += 1 + strlen (string) + 1 + strlen (value);
                 free (string);
             }
             break;
@@ -277,17 +323,17 @@ fmq_msg_recv (void *socket)
             break;
 
         case FMQ_MSG_NOM:
-            GET_NUMBER (self->credit);
-            GET_NUMBER (self->sequence);
+            GET_NUMBER8 (self->credit);
+            GET_NUMBER8 (self->sequence);
             break;
 
         case FMQ_MSG_CHEEZBURGER:
-            GET_NUMBER (self->sequence);
-            GET_OCTET (self->operation);
+            GET_NUMBER8 (self->sequence);
+            GET_NUMBER1 (self->operation);
             free (self->filename);
             GET_STRING (self->filename);
-            GET_NUMBER (self->offset);
-            GET_OCTET (hash_size);
+            GET_NUMBER8 (self->offset);
+            GET_NUMBER1 (hash_size);
             self->headers = zhash_new ();
             while (hash_size--) {
                 char *string;
@@ -297,13 +343,12 @@ fmq_msg_recv (void *socket)
                     *value++ = 0;
                 zhash_insert (self->headers, string, strdup (value));
                 zhash_freefn (self->headers, string, free);
-                self->headers_bytes += 1 + strlen (string) + 1 + strlen (value);
                 free (string);
             }
             //  Get next frame, leave current untouched
-            if (!zsocket_rcvmore (socket))
+            if (!zsocket_rcvmore (input))
                 goto malformed;
-            self->chunk = zframe_recv (socket);
+            self->chunk = zframe_recv (input);
             break;
 
         case FMQ_MSG_HUGZ:
@@ -341,9 +386,17 @@ fmq_msg_recv (void *socket)
         return (NULL);
 }
 
+//  Count size of key=value pair
+static int
+s_options_count (const char *key, void *item, void *argument)
+{
+    fmq_msg_t *self = (fmq_msg_t *) argument;
+    self->options_bytes += strlen (key) + 1 + strlen ((char *) item) + 1;
+    return 0;
+}
 
 //  Serialize options key=value pair
-int
+static int
 s_options_write (const char *key, void *item, void *argument)
 {
     fmq_msg_t *self = (fmq_msg_t *) argument;
@@ -354,8 +407,17 @@ s_options_write (const char *key, void *item, void *argument)
     return 0;
 }
 
+//  Count size of key=value pair
+static int
+s_headers_count (const char *key, void *item, void *argument)
+{
+    fmq_msg_t *self = (fmq_msg_t *) argument;
+    self->headers_bytes += strlen (key) + 1 + strlen ((char *) item) + 1;
+    return 0;
+}
+
 //  Serialize headers key=value pair
-int
+static int
 s_headers_write (const char *key, void *item, void *argument)
 {
     fmq_msg_t *self = (fmq_msg_t *) argument;
@@ -369,32 +431,37 @@ s_headers_write (const char *key, void *item, void *argument)
 
 //  --------------------------------------------------------------------------
 //  Send the fmq_msg to the socket, and destroy it
+//  Returns 0 if OK, else -1
 
-void
-fmq_msg_send (fmq_msg_t **self_p, void *socket)
+int
+fmq_msg_send (fmq_msg_t **self_p, void *output)
 {
-    assert (socket);
+    assert (output);
     assert (self_p);
     assert (*self_p);
 
     //  Calculate size of serialized data
     fmq_msg_t *self = *self_p;
-    size_t frame_size = 1;
+    size_t frame_size = 2 + 1;          //  Signature and message ID
     switch (self->id) {
         case FMQ_MSG_OHAI:
             //  protocol is a string with 1-byte length
             frame_size += 1 + strlen ("FILEMQ");
-            //  version is an octet
+            //  version is a 1-byte integer
             frame_size += 1;
-            //  identity is a block of 16 bytes
-            frame_size += 16;
             break;
             
         case FMQ_MSG_ORLY:
             //  mechanisms is an array of strings
             frame_size++;       //  Size is one octet
-            if (self->mechanisms)
-                frame_size += zlist_size (self->mechanisms) + self->mechanisms_bytes;
+            if (self->mechanisms) {
+                //  Add up size of list contents
+                char *mechanisms = (char *) zlist_first (self->mechanisms);
+                while (mechanisms) {
+                    frame_size += 1 + strlen (mechanisms);
+                    mechanisms = (char *) zlist_next (self->mechanisms);
+                }
+            }
             break;
             
         case FMQ_MSG_YARLY:
@@ -414,35 +481,43 @@ fmq_msg_send (fmq_msg_t **self_p, void *socket)
                 frame_size += strlen (self->path);
             //  options is an array of key=value strings
             frame_size++;       //  Size is one octet
-            if (self->options)
-                frame_size += zhash_size (self->options) + self->options_bytes;
+            if (self->options) {
+                self->options_bytes = 0;
+                //  Add up size of dictionary contents
+                zhash_foreach (self->options, s_options_count, self);
+            }
+            frame_size += self->options_bytes;
             break;
             
         case FMQ_MSG_ICANHAZ_OK:
             break;
             
         case FMQ_MSG_NOM:
-            //  credit is an 8-byte integer
+            //  credit is a 8-byte integer
             frame_size += 8;
-            //  sequence is an 8-byte integer
+            //  sequence is a 8-byte integer
             frame_size += 8;
             break;
             
         case FMQ_MSG_CHEEZBURGER:
-            //  sequence is an 8-byte integer
+            //  sequence is a 8-byte integer
             frame_size += 8;
-            //  operation is an octet
+            //  operation is a 1-byte integer
             frame_size += 1;
             //  filename is a string with 1-byte length
             frame_size++;       //  Size is one octet
             if (self->filename)
                 frame_size += strlen (self->filename);
-            //  offset is an 8-byte integer
+            //  offset is a 8-byte integer
             frame_size += 8;
             //  headers is an array of key=value strings
             frame_size++;       //  Size is one octet
-            if (self->headers)
-                frame_size += zhash_size (self->headers) + self->headers_bytes;
+            if (self->headers) {
+                self->headers_bytes = 0;
+                //  Add up size of dictionary contents
+                zhash_foreach (self->headers, s_headers_count, self);
+            }
+            frame_size += self->headers_bytes;
             break;
             
         case FMQ_MSG_HUGZ:
@@ -470,25 +545,26 @@ fmq_msg_send (fmq_msg_t **self_p, void *socket)
             
         default:
             printf ("E: bad message type '%d', not sent\n", self->id);
-            return;
+            //  No recovery, this is a fatal application error
+            assert (false);
     }
     //  Now serialize message into the frame
-    zframe_t *frame = zframe_new (NULL, frame_size + 1);
+    zframe_t *frame = zframe_new (NULL, frame_size);
     self->needle = zframe_data (frame);
     size_t string_size;
     int frame_flags = 0;
-    PUT_OCTET (self->id);
+    PUT_NUMBER2 (0xAAA0 | 3);
+    PUT_NUMBER1 (self->id);
 
     switch (self->id) {
         case FMQ_MSG_OHAI:
             PUT_STRING ("FILEMQ");
-            PUT_OCTET (FMQ_MSG_VERSION);
-            PUT_BLOCK (self->identity, 16);
+            PUT_NUMBER1 (FMQ_MSG_VERSION);
             break;
             
         case FMQ_MSG_ORLY:
             if (self->mechanisms != NULL) {
-                PUT_OCTET (zlist_size (self->mechanisms));
+                PUT_NUMBER1 (zlist_size (self->mechanisms));
                 char *mechanisms = (char *) zlist_first (self->mechanisms);
                 while (mechanisms) {
                     PUT_STRING (mechanisms);
@@ -496,7 +572,7 @@ fmq_msg_send (fmq_msg_t **self_p, void *socket)
                 }
             }
             else
-                PUT_OCTET (0);      //  Empty string array
+                PUT_NUMBER1 (0);    //  Empty string array
             frame_flags = ZFRAME_MORE;
             break;
             
@@ -505,7 +581,7 @@ fmq_msg_send (fmq_msg_t **self_p, void *socket)
                 PUT_STRING (self->mechanism);
             }
             else
-                PUT_OCTET (0);      //  Empty string
+                PUT_NUMBER1 (0);    //  Empty string
             frame_flags = ZFRAME_MORE;
             break;
             
@@ -517,38 +593,38 @@ fmq_msg_send (fmq_msg_t **self_p, void *socket)
                 PUT_STRING (self->path);
             }
             else
-                PUT_OCTET (0);      //  Empty string
+                PUT_NUMBER1 (0);    //  Empty string
             if (self->options != NULL) {
-                PUT_OCTET (zhash_size (self->options));
+                PUT_NUMBER1 (zhash_size (self->options));
                 zhash_foreach (self->options, s_options_write, self);
             }
             else
-                PUT_OCTET (0);      //  Empty dictionary
+                PUT_NUMBER1 (0);    //  Empty dictionary
             break;
             
         case FMQ_MSG_ICANHAZ_OK:
             break;
             
         case FMQ_MSG_NOM:
-            PUT_NUMBER (self->credit);
-            PUT_NUMBER (self->sequence);
+            PUT_NUMBER8 (self->credit);
+            PUT_NUMBER8 (self->sequence);
             break;
             
         case FMQ_MSG_CHEEZBURGER:
-            PUT_NUMBER (self->sequence);
-            PUT_OCTET (self->operation);
+            PUT_NUMBER8 (self->sequence);
+            PUT_NUMBER1 (self->operation);
             if (self->filename) {
                 PUT_STRING (self->filename);
             }
             else
-                PUT_OCTET (0);      //  Empty string
-            PUT_NUMBER (self->offset);
+                PUT_NUMBER1 (0);    //  Empty string
+            PUT_NUMBER8 (self->offset);
             if (self->headers != NULL) {
-                PUT_OCTET (zhash_size (self->headers));
+                PUT_NUMBER1 (zhash_size (self->headers));
                 zhash_foreach (self->headers, s_headers_write, self);
             }
             else
-                PUT_OCTET (0);      //  Empty dictionary
+                PUT_NUMBER1 (0);    //  Empty dictionary
             frame_flags = ZFRAME_MORE;
             break;
             
@@ -566,7 +642,7 @@ fmq_msg_send (fmq_msg_t **self_p, void *socket)
                 PUT_STRING (self->reason);
             }
             else
-                PUT_OCTET (0);      //  Empty string
+                PUT_NUMBER1 (0);    //  Empty string
             break;
             
         case FMQ_MSG_RTFM:
@@ -574,41 +650,327 @@ fmq_msg_send (fmq_msg_t **self_p, void *socket)
                 PUT_STRING (self->reason);
             }
             else
-                PUT_OCTET (0);      //  Empty string
+                PUT_NUMBER1 (0);    //  Empty string
             break;
             
     }
     //  If we're sending to a ROUTER, we send the address first
-    if (zsockopt_type (socket) == ZMQ_ROUTER) {
+    if (zsockopt_type (output) == ZMQ_ROUTER) {
         assert (self->address);
-        zframe_send (&self->address, socket, ZFRAME_MORE);
+        if (zframe_send (&self->address, output, ZFRAME_MORE)) {
+            zframe_destroy (&frame);
+            fmq_msg_destroy (self_p);
+            return -1;
+        }
     }
     //  Now send the data frame
-    zframe_send (&frame, socket, frame_flags);
+    if (zframe_send (&frame, output, frame_flags)) {
+        zframe_destroy (&frame);
+        fmq_msg_destroy (self_p);
+        return -1;
+    }
     
     //  Now send any frame fields, in order
     switch (self->id) {
         case FMQ_MSG_ORLY:
-        //  If challenge isn't set, send an empty frame
-        if (!self->challenge)
-            self->challenge = zframe_new (NULL, 0);
-            zframe_send (&self->challenge, socket, 0);
+            //  If challenge isn't set, send an empty frame
+            if (!self->challenge)
+                self->challenge = zframe_new (NULL, 0);
+            if (zframe_send (&self->challenge, output, 0)) {
+                zframe_destroy (&frame);
+                fmq_msg_destroy (self_p);
+                return -1;
+            }
             break;
         case FMQ_MSG_YARLY:
-        //  If response isn't set, send an empty frame
-        if (!self->response)
-            self->response = zframe_new (NULL, 0);
-            zframe_send (&self->response, socket, 0);
+            //  If response isn't set, send an empty frame
+            if (!self->response)
+                self->response = zframe_new (NULL, 0);
+            if (zframe_send (&self->response, output, 0)) {
+                zframe_destroy (&frame);
+                fmq_msg_destroy (self_p);
+                return -1;
+            }
             break;
         case FMQ_MSG_CHEEZBURGER:
-        //  If chunk isn't set, send an empty frame
-        if (!self->chunk)
-            self->chunk = zframe_new (NULL, 0);
-            zframe_send (&self->chunk, socket, 0);
+            //  If chunk isn't set, send an empty frame
+            if (!self->chunk)
+                self->chunk = zframe_new (NULL, 0);
+            if (zframe_send (&self->chunk, output, 0)) {
+                zframe_destroy (&frame);
+                fmq_msg_destroy (self_p);
+                return -1;
+            }
             break;
     }
     //  Destroy fmq_msg object
     fmq_msg_destroy (self_p);
+    return 0;
+}
+
+
+//  --------------------------------------------------------------------------
+//  Send the OHAI to the socket in one step
+
+int
+fmq_msg_send_ohai (
+    void *output,
+    char *protocol,
+    byte version)
+{
+    fmq_msg_t *self = fmq_msg_new (FMQ_MSG_OHAI);
+    return fmq_msg_send (&self, output);
+}
+
+
+//  --------------------------------------------------------------------------
+//  Send the ORLY to the socket in one step
+
+int
+fmq_msg_send_orly (
+    void *output,
+    zlist_t *mechanisms,
+    zframe_t *challenge)
+{
+    fmq_msg_t *self = fmq_msg_new (FMQ_MSG_ORLY);
+    fmq_msg_mechanisms_set (self, zlist_dup (mechanisms));
+    fmq_msg_challenge_set (self, zframe_dup (challenge));
+    return fmq_msg_send (&self, output);
+}
+
+
+//  --------------------------------------------------------------------------
+//  Send the YARLY to the socket in one step
+
+int
+fmq_msg_send_yarly (
+    void *output,
+    char *mechanism,
+    zframe_t *response)
+{
+    fmq_msg_t *self = fmq_msg_new (FMQ_MSG_YARLY);
+    fmq_msg_mechanism_set (self, mechanism);
+    fmq_msg_response_set (self, zframe_dup (response));
+    return fmq_msg_send (&self, output);
+}
+
+
+//  --------------------------------------------------------------------------
+//  Send the OHAI_OK to the socket in one step
+
+int
+fmq_msg_send_ohai_ok (
+    void *output)
+{
+    fmq_msg_t *self = fmq_msg_new (FMQ_MSG_OHAI_OK);
+    return fmq_msg_send (&self, output);
+}
+
+
+//  --------------------------------------------------------------------------
+//  Send the ICANHAZ to the socket in one step
+
+int
+fmq_msg_send_icanhaz (
+    void *output,
+    char *path,
+    zhash_t *options)
+{
+    fmq_msg_t *self = fmq_msg_new (FMQ_MSG_ICANHAZ);
+    fmq_msg_path_set (self, path);
+    fmq_msg_options_set (self, zhash_dup (options));
+    return fmq_msg_send (&self, output);
+}
+
+
+//  --------------------------------------------------------------------------
+//  Send the ICANHAZ_OK to the socket in one step
+
+int
+fmq_msg_send_icanhaz_ok (
+    void *output)
+{
+    fmq_msg_t *self = fmq_msg_new (FMQ_MSG_ICANHAZ_OK);
+    return fmq_msg_send (&self, output);
+}
+
+
+//  --------------------------------------------------------------------------
+//  Send the NOM to the socket in one step
+
+int
+fmq_msg_send_nom (
+    void *output,
+    uint64_t credit,
+    uint64_t sequence)
+{
+    fmq_msg_t *self = fmq_msg_new (FMQ_MSG_NOM);
+    fmq_msg_credit_set (self, credit);
+    fmq_msg_sequence_set (self, sequence);
+    return fmq_msg_send (&self, output);
+}
+
+
+//  --------------------------------------------------------------------------
+//  Send the CHEEZBURGER to the socket in one step
+
+int
+fmq_msg_send_cheezburger (
+    void *output,
+    uint64_t sequence,
+    byte operation,
+    char *filename,
+    uint64_t offset,
+    zhash_t *headers,
+    zframe_t *chunk)
+{
+    fmq_msg_t *self = fmq_msg_new (FMQ_MSG_CHEEZBURGER);
+    fmq_msg_sequence_set (self, sequence);
+    fmq_msg_operation_set (self, operation);
+    fmq_msg_filename_set (self, filename);
+    fmq_msg_offset_set (self, offset);
+    fmq_msg_headers_set (self, zhash_dup (headers));
+    fmq_msg_chunk_set (self, zframe_dup (chunk));
+    return fmq_msg_send (&self, output);
+}
+
+
+//  --------------------------------------------------------------------------
+//  Send the HUGZ to the socket in one step
+
+int
+fmq_msg_send_hugz (
+    void *output)
+{
+    fmq_msg_t *self = fmq_msg_new (FMQ_MSG_HUGZ);
+    return fmq_msg_send (&self, output);
+}
+
+
+//  --------------------------------------------------------------------------
+//  Send the HUGZ_OK to the socket in one step
+
+int
+fmq_msg_send_hugz_ok (
+    void *output)
+{
+    fmq_msg_t *self = fmq_msg_new (FMQ_MSG_HUGZ_OK);
+    return fmq_msg_send (&self, output);
+}
+
+
+//  --------------------------------------------------------------------------
+//  Send the KTHXBAI to the socket in one step
+
+int
+fmq_msg_send_kthxbai (
+    void *output)
+{
+    fmq_msg_t *self = fmq_msg_new (FMQ_MSG_KTHXBAI);
+    return fmq_msg_send (&self, output);
+}
+
+
+//  --------------------------------------------------------------------------
+//  Send the SRSLY to the socket in one step
+
+int
+fmq_msg_send_srsly (
+    void *output,
+    char *reason)
+{
+    fmq_msg_t *self = fmq_msg_new (FMQ_MSG_SRSLY);
+    fmq_msg_reason_set (self, reason);
+    return fmq_msg_send (&self, output);
+}
+
+
+//  --------------------------------------------------------------------------
+//  Send the RTFM to the socket in one step
+
+int
+fmq_msg_send_rtfm (
+    void *output,
+    char *reason)
+{
+    fmq_msg_t *self = fmq_msg_new (FMQ_MSG_RTFM);
+    fmq_msg_reason_set (self, reason);
+    return fmq_msg_send (&self, output);
+}
+
+
+//  --------------------------------------------------------------------------
+//  Duplicate the fmq_msg message
+
+fmq_msg_t *
+fmq_msg_dup (fmq_msg_t *self)
+{
+    if (!self)
+        return NULL;
+        
+    fmq_msg_t *copy = fmq_msg_new (self->id);
+    if (self->address)
+        copy->address = zframe_dup (self->address);
+    switch (self->id) {
+        case FMQ_MSG_OHAI:
+            copy->protocol = strdup (self->protocol);
+            copy->version = self->version;
+            break;
+
+        case FMQ_MSG_ORLY:
+            copy->mechanisms = zlist_copy (self->mechanisms);
+            copy->challenge = zframe_dup (self->challenge);
+            break;
+
+        case FMQ_MSG_YARLY:
+            copy->mechanism = strdup (self->mechanism);
+            copy->response = zframe_dup (self->response);
+            break;
+
+        case FMQ_MSG_OHAI_OK:
+            break;
+
+        case FMQ_MSG_ICANHAZ:
+            copy->path = strdup (self->path);
+            copy->options = zhash_dup (self->options);
+            break;
+
+        case FMQ_MSG_ICANHAZ_OK:
+            break;
+
+        case FMQ_MSG_NOM:
+            copy->credit = self->credit;
+            copy->sequence = self->sequence;
+            break;
+
+        case FMQ_MSG_CHEEZBURGER:
+            copy->sequence = self->sequence;
+            copy->operation = self->operation;
+            copy->filename = strdup (self->filename);
+            copy->offset = self->offset;
+            copy->headers = zhash_dup (self->headers);
+            copy->chunk = zframe_dup (self->chunk);
+            break;
+
+        case FMQ_MSG_HUGZ:
+            break;
+
+        case FMQ_MSG_HUGZ_OK:
+            break;
+
+        case FMQ_MSG_KTHXBAI:
+            break;
+
+        case FMQ_MSG_SRSLY:
+            copy->reason = strdup (self->reason);
+            break;
+
+        case FMQ_MSG_RTFM:
+            copy->reason = strdup (self->reason);
+            break;
+
+    }
+    return copy;
 }
 
 
@@ -643,14 +1005,6 @@ fmq_msg_dump (fmq_msg_t *self)
             puts ("OHAI:");
             printf ("    protocol=filemq\n");
             printf ("    version=fmq_msg_version\n");
-            printf ("    identity=");
-            int identity_index;
-            for (identity_index = 0; identity_index < 16; identity_index++) {
-                if (identity_index && (identity_index % 4 == 0))
-                    printf ("-");
-                printf ("%02X", self->identity [identity_index]);
-            }
-            printf ("\n");
             break;
             
         case FMQ_MSG_ORLY:
@@ -733,7 +1087,7 @@ fmq_msg_dump (fmq_msg_t *self)
         case FMQ_MSG_CHEEZBURGER:
             puts ("CHEEZBURGER:");
             printf ("    sequence=%ld\n", (long) self->sequence);
-            printf ("    operation=%d\n", self->operation);
+            printf ("    operation=%ld\n", (long) self->operation);
             if (self->filename)
                 printf ("    filename='%s'\n", self->filename);
             else
@@ -828,22 +1182,76 @@ fmq_msg_id_set (fmq_msg_t *self, int id)
 }
 
 //  --------------------------------------------------------------------------
-//  Get/set the identity field
+//  Return a printable command string
 
-byte *
-fmq_msg_identity (fmq_msg_t *self)
+char *
+fmq_msg_command (fmq_msg_t *self)
 {
     assert (self);
-    return self->identity;
+    switch (self->id) {
+        case FMQ_MSG_OHAI:
+            return ("OHAI");
+            break;
+        case FMQ_MSG_ORLY:
+            return ("ORLY");
+            break;
+        case FMQ_MSG_YARLY:
+            return ("YARLY");
+            break;
+        case FMQ_MSG_OHAI_OK:
+            return ("OHAI_OK");
+            break;
+        case FMQ_MSG_ICANHAZ:
+            return ("ICANHAZ");
+            break;
+        case FMQ_MSG_ICANHAZ_OK:
+            return ("ICANHAZ_OK");
+            break;
+        case FMQ_MSG_NOM:
+            return ("NOM");
+            break;
+        case FMQ_MSG_CHEEZBURGER:
+            return ("CHEEZBURGER");
+            break;
+        case FMQ_MSG_HUGZ:
+            return ("HUGZ");
+            break;
+        case FMQ_MSG_HUGZ_OK:
+            return ("HUGZ_OK");
+            break;
+        case FMQ_MSG_KTHXBAI:
+            return ("KTHXBAI");
+            break;
+        case FMQ_MSG_SRSLY:
+            return ("SRSLY");
+            break;
+        case FMQ_MSG_RTFM:
+            return ("RTFM");
+            break;
+    }
+    return "?";
 }
+
+//  --------------------------------------------------------------------------
+//  Get/set the mechanisms field
+
+zlist_t *
+fmq_msg_mechanisms (fmq_msg_t *self)
+{
+    assert (self);
+    return self->mechanisms;
+}
+
+//  Greedy function, takes ownership of mechanisms; if you don't want that
+//  then use zlist_dup() to pass a copy of mechanisms
 
 void
-fmq_msg_identity_set (fmq_msg_t *self, byte *identity)
+fmq_msg_mechanisms_set (fmq_msg_t *self, zlist_t *mechanisms)
 {
     assert (self);
-    memcpy (self->identity, identity, 16);
+    zlist_destroy (&self->mechanisms);
+    self->mechanisms = mechanisms;
 }
-
 
 //  --------------------------------------------------------------------------
 //  Iterate through the mechanisms field, and append a mechanisms value
@@ -881,10 +1289,11 @@ fmq_msg_mechanisms_append (fmq_msg_t *self, char *format, ...)
     va_end (argptr);
     
     //  Attach string to list
-    if (!self->mechanisms)
+    if (!self->mechanisms) {
         self->mechanisms = zlist_new ();
+        zlist_autofree (self->mechanisms);
+    }
     zlist_append (self->mechanisms, string);
-    self->mechanisms_bytes += strlen (string);
 }
 
 size_t
@@ -985,6 +1394,27 @@ fmq_msg_path_set (fmq_msg_t *self, char *format, ...)
 
 
 //  --------------------------------------------------------------------------
+//  Get/set the options field
+
+zhash_t *
+fmq_msg_options (fmq_msg_t *self)
+{
+    assert (self);
+    return self->options;
+}
+
+//  Greedy function, takes ownership of options; if you don't want that
+//  then use zhash_dup() to pass a copy of options
+
+void
+fmq_msg_options_set (fmq_msg_t *self, zhash_t *options)
+{
+    assert (self);
+    zhash_destroy (&self->options);
+    self->options = options;
+}
+
+//  --------------------------------------------------------------------------
 //  Get/set a value in the options dictionary
 
 char *
@@ -1000,11 +1430,11 @@ fmq_msg_options_string (fmq_msg_t *self, char *key, char *default_value)
     return value;
 }
 
-int64_t
-fmq_msg_options_number (fmq_msg_t *self, char *key, int64_t default_value)
+uint64_t
+fmq_msg_options_number (fmq_msg_t *self, char *key, uint64_t default_value)
 {
     assert (self);
-    int64_t value = default_value;
+    uint64_t value = default_value;
     char *string;
     if (self->options)
         string = (char *) (zhash_lookup (self->options, key));
@@ -1029,11 +1459,8 @@ fmq_msg_options_insert (fmq_msg_t *self, char *key, char *format, ...)
     //  Store string in hash table
     if (!self->options)
         self->options = zhash_new ();
-    if (zhash_insert (self->options, key, string) == 0) {
+    if (zhash_insert (self->options, key, string) == 0)
         zhash_freefn (self->options, key, free);
-        //  Count key=value
-        self->options_bytes += strlen (key) + 1 + strlen (string);
-    }
 }
 
 size_t
@@ -1046,7 +1473,7 @@ fmq_msg_options_size (fmq_msg_t *self)
 //  --------------------------------------------------------------------------
 //  Get/set the credit field
 
-int64_t
+uint64_t
 fmq_msg_credit (fmq_msg_t *self)
 {
     assert (self);
@@ -1054,7 +1481,7 @@ fmq_msg_credit (fmq_msg_t *self)
 }
 
 void
-fmq_msg_credit_set (fmq_msg_t *self, int64_t credit)
+fmq_msg_credit_set (fmq_msg_t *self, uint64_t credit)
 {
     assert (self);
     self->credit = credit;
@@ -1064,7 +1491,7 @@ fmq_msg_credit_set (fmq_msg_t *self, int64_t credit)
 //  --------------------------------------------------------------------------
 //  Get/set the sequence field
 
-int64_t
+uint64_t
 fmq_msg_sequence (fmq_msg_t *self)
 {
     assert (self);
@@ -1072,7 +1499,7 @@ fmq_msg_sequence (fmq_msg_t *self)
 }
 
 void
-fmq_msg_sequence_set (fmq_msg_t *self, int64_t sequence)
+fmq_msg_sequence_set (fmq_msg_t *self, uint64_t sequence)
 {
     assert (self);
     self->sequence = sequence;
@@ -1125,7 +1552,7 @@ fmq_msg_filename_set (fmq_msg_t *self, char *format, ...)
 //  --------------------------------------------------------------------------
 //  Get/set the offset field
 
-int64_t
+uint64_t
 fmq_msg_offset (fmq_msg_t *self)
 {
     assert (self);
@@ -1133,12 +1560,33 @@ fmq_msg_offset (fmq_msg_t *self)
 }
 
 void
-fmq_msg_offset_set (fmq_msg_t *self, int64_t offset)
+fmq_msg_offset_set (fmq_msg_t *self, uint64_t offset)
 {
     assert (self);
     self->offset = offset;
 }
 
+
+//  --------------------------------------------------------------------------
+//  Get/set the headers field
+
+zhash_t *
+fmq_msg_headers (fmq_msg_t *self)
+{
+    assert (self);
+    return self->headers;
+}
+
+//  Greedy function, takes ownership of headers; if you don't want that
+//  then use zhash_dup() to pass a copy of headers
+
+void
+fmq_msg_headers_set (fmq_msg_t *self, zhash_t *headers)
+{
+    assert (self);
+    zhash_destroy (&self->headers);
+    self->headers = headers;
+}
 
 //  --------------------------------------------------------------------------
 //  Get/set a value in the headers dictionary
@@ -1156,11 +1604,11 @@ fmq_msg_headers_string (fmq_msg_t *self, char *key, char *default_value)
     return value;
 }
 
-int64_t
-fmq_msg_headers_number (fmq_msg_t *self, char *key, int64_t default_value)
+uint64_t
+fmq_msg_headers_number (fmq_msg_t *self, char *key, uint64_t default_value)
 {
     assert (self);
-    int64_t value = default_value;
+    uint64_t value = default_value;
     char *string;
     if (self->headers)
         string = (char *) (zhash_lookup (self->headers, key));
@@ -1185,11 +1633,8 @@ fmq_msg_headers_insert (fmq_msg_t *self, char *key, char *format, ...)
     //  Store string in hash table
     if (!self->headers)
         self->headers = zhash_new ();
-    if (zhash_insert (self->headers, key, string) == 0) {
+    if (zhash_insert (self->headers, key, string) == 0)
         zhash_freefn (self->headers, key, free);
-        //  Count key=value
-        self->headers_bytes += strlen (key) + 1 + strlen (string);
-    }
 }
 
 size_t
@@ -1272,15 +1717,10 @@ fmq_msg_test (bool verbose)
     //  Encode/send/decode and verify each message type
 
     self = fmq_msg_new (FMQ_MSG_OHAI);
-    byte identity_data [FMQ_MSG_IDENTITY_SIZE];
-    memset (identity_data, 123, FMQ_MSG_IDENTITY_SIZE);
-    fmq_msg_identity_set (self, identity_data);
     fmq_msg_send (&self, output);
     
     self = fmq_msg_recv (input);
     assert (self);
-    assert (fmq_msg_identity (self) [0] == 123);
-    assert (fmq_msg_identity (self) [FMQ_MSG_IDENTITY_SIZE - 1] == 123);
     fmq_msg_destroy (&self);
 
     self = fmq_msg_new (FMQ_MSG_ORLY);
@@ -1337,21 +1777,21 @@ fmq_msg_test (bool verbose)
     fmq_msg_destroy (&self);
 
     self = fmq_msg_new (FMQ_MSG_NOM);
-    fmq_msg_credit_set (self, 12345678);
-    fmq_msg_sequence_set (self, 12345678);
+    fmq_msg_credit_set (self, 123);
+    fmq_msg_sequence_set (self, 123);
     fmq_msg_send (&self, output);
     
     self = fmq_msg_recv (input);
     assert (self);
-    assert (fmq_msg_credit (self) == 12345678);
-    assert (fmq_msg_sequence (self) == 12345678);
+    assert (fmq_msg_credit (self) == 123);
+    assert (fmq_msg_sequence (self) == 123);
     fmq_msg_destroy (&self);
 
     self = fmq_msg_new (FMQ_MSG_CHEEZBURGER);
-    fmq_msg_sequence_set (self, 12345678);
+    fmq_msg_sequence_set (self, 123);
     fmq_msg_operation_set (self, 123);
     fmq_msg_filename_set (self, "Life is short but Now lasts for ever");
-    fmq_msg_offset_set (self, 12345678);
+    fmq_msg_offset_set (self, 123);
     fmq_msg_headers_insert (self, "Name", "Brutus");
     fmq_msg_headers_insert (self, "Age", "%d", 43);
     fmq_msg_chunk_set (self, zframe_new ("Captcha Diem", 12));
@@ -1359,10 +1799,10 @@ fmq_msg_test (bool verbose)
     
     self = fmq_msg_recv (input);
     assert (self);
-    assert (fmq_msg_sequence (self) == 12345678);
+    assert (fmq_msg_sequence (self) == 123);
     assert (fmq_msg_operation (self) == 123);
     assert (streq (fmq_msg_filename (self), "Life is short but Now lasts for ever"));
-    assert (fmq_msg_offset (self) == 12345678);
+    assert (fmq_msg_offset (self) == 123);
     assert (fmq_msg_headers_size (self) == 2);
     assert (streq (fmq_msg_headers_string (self, "Name", "?"), "Brutus"));
     assert (fmq_msg_headers_number (self, "Age", 0) == 43);

@@ -1,4 +1,4 @@
-<class name = "fmq_msg" script = "codec_c.gsl">
+<class name = "fmq_msg" script = "codec_c.gsl" signature = "3">
 This is the FILEMQ protocol version 1.0
 <include filename = "license.xml" />
 
@@ -12,8 +12,7 @@ This is the FILEMQ protocol version 1.0
 <message name = "OHAI" id = "1">
 Client opens peering
     <field name = "protocol" type = "string" value = "FILEMQ" />
-    <field name = "version" type = "octet" value = "FMQ_MSG_VERSION" />
-    <field name = "identity" type = "octets" size = "16" />
+    <field name = "version" type = "number" size = "1" value = "FMQ_MSG_VERSION" />
 </message>
 
 <message name = "ORLY" id = "2">
@@ -44,16 +43,16 @@ Server confirms the subscription
 
 <message name = "NOM" id = "7">
 Client sends credit to the server
-    <field name = "credit" type = "number" />
-    <field name = "sequence" type = "number" />
+    <field name = "credit" type = "number" size = "8" />
+    <field name = "sequence" type = "number" size = "8" />
 </message>
 
 <message name = "CHEEZBURGER" id = "8">
 The server sends a file chunk
-    <field name = "sequence" type = "number" />
-    <field name = "operation" type = "octet" />
+    <field name = "sequence" type = "number" size = "8" />
+    <field name = "operation" type = "number" size = "1" />
     <field name = "filename" type = "string" />
-    <field name = "offset" type = "number" />
+    <field name = "offset" type = "number" size = "8" />
     <field name = "headers" type = "dictionary" />
     <field name = "chunk" type = "frame" />
 </message>

@@ -27,51 +27,37 @@
 #define __FMQ_MSG_H_INCLUDED__
 
 /*  These are the fmq_msg messages
-
     OHAI - Client opens peering
-        protocol      string 
-        version       octet 
-        identity      octets [16]
-
+        protocol      string
+        version       number 1
     ORLY - Server challenges the client to authenticate itself
-        mechanisms    strings 
-        challenge     frame 
-
+        mechanisms    strings
+        challenge     frame
     YARLY - Client responds with authentication information
-        mechanism     string 
-        response      frame 
-
+        mechanism     string
+        response      frame
     OHAI_OK - Server grants the client access
-
     ICANHAZ - Client subscribes to a path
-        path          string 
-        options       dictionary 
-
+        path          string
+        options       dictionary
     ICANHAZ_OK - Server confirms the subscription
-
     NOM - Client sends credit to the server
-        credit        number 
-        sequence      number 
-
+        credit        number 8
+        sequence      number 8
     CHEEZBURGER - The server sends a file chunk
-        sequence      number 
-        operation     octet 
-        filename      string 
-        offset        number 
-        headers       dictionary 
-        chunk         frame 
-
+        sequence      number 8
+        operation     number 1
+        filename      string
+        offset        number 8
+        headers       dictionary
+        chunk         frame
     HUGZ - Client or server sends a heartbeat
-
     HUGZ_OK - Client or server answers a heartbeat
-
     KTHXBAI - Client closes the peering
-
     SRSLY - Server refuses client due to access rights
-        reason        string 
-
+        reason        string
     RTFM - Server tells client it sent an invalid message
-        reason        string 
+        reason        string
 */
 
 #define FMQ_MSG_VERSION                     1
@@ -91,7 +77,6 @@
 #define FMQ_MSG_KTHXBAI                     11
 #define FMQ_MSG_SRSLY                       128
 #define FMQ_MSG_RTFM                        129
-#define FMQ_MSG_IDENTITY_SIZE               16
 
 #ifdef __cplusplus
 extern "C" {
@@ -108,13 +93,87 @@ fmq_msg_t *
 void
     fmq_msg_destroy (fmq_msg_t **self_p);
 
-//  Receive and parse a fmq_msg from the socket
+//  Receive and parse a fmq_msg from the input
 fmq_msg_t *
-    fmq_msg_recv (void *socket);
+    fmq_msg_recv (void *input);
 
-//  Send the fmq_msg to the socket, and destroy it
-void
-    fmq_msg_send (fmq_msg_t **self_p, void *socket);
+//  Send the fmq_msg to the output, and destroy it
+int
+    fmq_msg_send (fmq_msg_t **self_p, void *output);
+
+//  Send the OHAI to the output in one step
+int
+    fmq_msg_send_ohai (void *output,
+        char *protocol,
+        byte version);
+    
+//  Send the ORLY to the output in one step
+int
+    fmq_msg_send_orly (void *output,
+        zlist_t *mechanisms,
+        zframe_t *challenge);
+    
+//  Send the YARLY to the output in one step
+int
+    fmq_msg_send_yarly (void *output,
+        char *mechanism,
+        zframe_t *response);
+    
+//  Send the OHAI_OK to the output in one step
+int
+    fmq_msg_send_ohai_ok (void *output);
+    
+//  Send the ICANHAZ to the output in one step
+int
+    fmq_msg_send_icanhaz (void *output,
+        char *path,
+        zhash_t *options);
+    
+//  Send the ICANHAZ_OK to the output in one step
+int
+    fmq_msg_send_icanhaz_ok (void *output);
+    
+//  Send the NOM to the output in one step
+int
+    fmq_msg_send_nom (void *output,
+        uint64_t credit,
+        uint64_t sequence);
+    
+//  Send the CHEEZBURGER to the output in one step
+int
+    fmq_msg_send_cheezburger (void *output,
+        uint64_t sequence,
+        byte operation,
+        char *filename,
+        uint64_t offset,
+        zhash_t *headers,
+        zframe_t *chunk);
+    
+//  Send the HUGZ to the output in one step
+int
+    fmq_msg_send_hugz (void *output);
+    
+//  Send the HUGZ_OK to the output in one step
+int
+    fmq_msg_send_hugz_ok (void *output);
+    
+//  Send the KTHXBAI to the output in one step
+int
+    fmq_msg_send_kthxbai (void *output);
+    
+//  Send the SRSLY to the output in one step
+int
+    fmq_msg_send_srsly (void *output,
+        char *reason);
+    
+//  Send the RTFM to the output in one step
+int
+    fmq_msg_send_rtfm (void *output,
+        char *reason);
+    
+//  Duplicate the fmq_msg message
+fmq_msg_t *
+    fmq_msg_dup (fmq_msg_t *self);
 
 //  Print contents of message to stdout
 void
@@ -126,17 +185,19 @@ zframe_t *
 void
     fmq_msg_address_set (fmq_msg_t *self, zframe_t *address);
 
-//  Get the fmq_msg id
+//  Get the fmq_msg id and printable command
 int
     fmq_msg_id (fmq_msg_t *self);
 void
     fmq_msg_id_set (fmq_msg_t *self, int id);
+char *
+    fmq_msg_command (fmq_msg_t *self);
 
-//  Get/set the identity field
-byte *
-    fmq_msg_identity (fmq_msg_t *self);
+//  Get/set the mechanisms field
+zlist_t *
+    fmq_msg_mechanisms (fmq_msg_t *self);
 void
-    fmq_msg_identity_set (fmq_msg_t *self, byte *identity);
+    fmq_msg_mechanisms_set (fmq_msg_t *self, zlist_t *mechanisms);
 
 //  Iterate through the mechanisms field, and append a mechanisms value
 char *
@@ -172,27 +233,33 @@ char *
 void
     fmq_msg_path_set (fmq_msg_t *self, char *format, ...);
 
+//  Get/set the options field
+zhash_t *
+    fmq_msg_options (fmq_msg_t *self);
+void
+    fmq_msg_options_set (fmq_msg_t *self, zhash_t *options);
+    
 //  Get/set a value in the options dictionary
 char *
     fmq_msg_options_string (fmq_msg_t *self, char *key, char *default_value);
-int64_t
-    fmq_msg_options_number (fmq_msg_t *self, char *key, int64_t default_value);
+uint64_t
+    fmq_msg_options_number (fmq_msg_t *self, char *key, uint64_t default_value);
 void
     fmq_msg_options_insert (fmq_msg_t *self, char *key, char *format, ...);
 size_t
     fmq_msg_options_size (fmq_msg_t *self);
 
 //  Get/set the credit field
-int64_t
+uint64_t
     fmq_msg_credit (fmq_msg_t *self);
 void
-    fmq_msg_credit_set (fmq_msg_t *self, int64_t credit);
+    fmq_msg_credit_set (fmq_msg_t *self, uint64_t credit);
 
 //  Get/set the sequence field
-int64_t
+uint64_t
     fmq_msg_sequence (fmq_msg_t *self);
 void
-    fmq_msg_sequence_set (fmq_msg_t *self, int64_t sequence);
+    fmq_msg_sequence_set (fmq_msg_t *self, uint64_t sequence);
 
 //  Get/set the operation field
 byte
@@ -207,16 +274,22 @@ void
     fmq_msg_filename_set (fmq_msg_t *self, char *format, ...);
 
 //  Get/set the offset field
-int64_t
+uint64_t
     fmq_msg_offset (fmq_msg_t *self);
 void
-    fmq_msg_offset_set (fmq_msg_t *self, int64_t offset);
+    fmq_msg_offset_set (fmq_msg_t *self, uint64_t offset);
 
+//  Get/set the headers field
+zhash_t *
+    fmq_msg_headers (fmq_msg_t *self);
+void
+    fmq_msg_headers_set (fmq_msg_t *self, zhash_t *headers);
+    
 //  Get/set a value in the headers dictionary
 char *
     fmq_msg_headers_string (fmq_msg_t *self, char *key, char *default_value);
-int64_t
-    fmq_msg_headers_number (fmq_msg_t *self, char *key, int64_t default_value);
+uint64_t
+    fmq_msg_headers_number (fmq_msg_t *self, char *key, uint64_t default_value);
 void
     fmq_msg_headers_insert (fmq_msg_t *self, char *key, char *format, ...);
 size_t

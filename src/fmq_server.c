@@ -195,7 +195,6 @@ typedef struct {
     //  Properties accessible to client actions
     int64_t heartbeat;          //  Heartbeat interval
     event_t next_event;         //  Next event
-    byte identity [FMQ_MSG_IDENTITY_SIZE];                     
     size_t credit;              //  Credit remaining           
     zlist_t *patches;           //  Patches to send            
     fmq_patch_t *patch;         //  Current patch              
@@ -669,12 +668,6 @@ terminate_the_client (server_t *self, client_t *client)
 }
 
 static void
-track_client_identity (server_t *self, client_t *client)
-{
-    memcpy (client->identity, fmq_msg_identity (client->request), FMQ_MSG_IDENTITY_SIZE);
-}
-
-static void
 try_anonymous_access (server_t *self, client_t *client)
 {
     if (atoi (fmq_config_resolve (self->config, "security/anonymous", "0")) == 1)
@@ -766,12 +759,6 @@ get_next_patch_for_client (server_t *self, client_t *client)
     }                                                                                               
     //  Map filename to logical space                                                               
     char *filename = fmq_file_name (fmq_patch_file (client->patch), fmq_patch_path (client->patch));
-                                                                                                    
-    printf ("MAP FILE: \nroot=%s\nname=%s\nresult=%s\n",                                            
-        fmq_patch_path (client->patch),                                                             
-        fmq_file_name (fmq_patch_file (client->patch), NULL),                                       
-        filename);                                                                                  
-                                                                                                    
     fmq_msg_filename_set (client->reply, filename);                                                 
                                                                                                     
     //  We can process a delete patch right away                                                    
@@ -838,7 +825,6 @@ server_client_execute (server_t *self, client_t *client, int event)
         switch (client->state) {
             case start_state:
                 if (client->event == ohai_event) {
-                    track_client_identity (self, client);
                     try_anonymous_access (self, client);
                     client->state = checking_client_state;
                 }
@@ -893,7 +879,6 @@ server_client_execute (server_t *self, client_t *client, int event)
                 }
                 else
                 if (client->event == ohai_event) {
-                    track_client_identity (self, client);
                     try_anonymous_access (self, client);
                     client->state = checking_client_state;
                 }
@@ -921,7 +906,6 @@ server_client_execute (server_t *self, client_t *client, int event)
                 }
                 else
                 if (client->event == ohai_event) {
-                    track_client_identity (self, client);
                     try_anonymous_access (self, client);
                     client->state = checking_client_state;
                 }
@@ -978,7 +962,6 @@ server_client_execute (server_t *self, client_t *client, int event)
                 }
                 else
                 if (client->event == ohai_event) {
-                    track_client_identity (self, client);
                     try_anonymous_access (self, client);
                     client->state = checking_client_state;
                 }
@@ -1029,7 +1012,6 @@ server_client_execute (server_t *self, client_t *client, int event)
                 }
                 else
                 if (client->event == ohai_event) {
-                    track_client_identity (self, client);
                     try_anonymous_access (self, client);
                     client->state = checking_client_state;
                 }
@@ -1148,14 +1130,14 @@ fmq_server_test (bool verbose)
     fmq_server_t *self;
     void *dealer = zsocket_new (ctx, ZMQ_DEALER);
     zsocket_set_rcvtimeo (dealer, 2000);
-    zsocket_connect (dealer, "tcp://localhost:6000");
+    zsocket_connect (dealer, "tcp://localhost:5670");
     
     fmq_msg_t *request, *reply;
     
     //  Run selftest using '' configuration
     self = fmq_server_new ();
     assert (self);
-    fmq_server_bind (self, "tcp://*:6000");
+    fmq_server_bind (self, "tcp://*:5670");
     request = fmq_msg_new (FMQ_MSG_OHAI);
     fmq_msg_send (&request, dealer);
     reply = fmq_msg_recv (dealer);
@@ -1189,7 +1171,7 @@ fmq_server_test (bool verbose)
     self = fmq_server_new ();
     assert (self);
     fmq_server_configure (self, "anonymous.cfg");
-    fmq_server_bind (self, "tcp://*:6000");
+    fmq_server_bind (self, "tcp://*:5670");
     request = fmq_msg_new (FMQ_MSG_OHAI);
     fmq_msg_send (&request, dealer);
     reply = fmq_msg_recv (dealer);
@@ -1219,7 +1201,7 @@ fmq_server_test (bool verbose)
     self = fmq_server_new ();
     assert (self);
     fmq_server_configure (self, "server_test.cfg");
-    fmq_server_bind (self, "tcp://*:6000");
+    fmq_server_bind (self, "tcp://*:5670");
     request = fmq_msg_new (FMQ_MSG_OHAI);
     fmq_msg_send (&request, dealer);
     reply = fmq_msg_recv (dealer);

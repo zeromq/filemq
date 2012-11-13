@@ -4,7 +4,6 @@ FileMQ protocol server
 
 <state name = "start">
     <event name = "OHAI" next = "checking client">
-        <action name = "track client identity" />
         <action name = "try anonymous access" />
     </event>
 </state>
@@ -75,7 +74,6 @@ FileMQ protocol server
     </event>
     <!-- Client can restart connection at any time -->
     <event name = "OHAI" next = "checking client">
-        <action name = "track client identity" />
         <action name = "try anonymous access" />
     </event>
     <event name = "$other">
@@ -113,7 +111,6 @@ zlist_destroy (&self->mounts);
 
 <client>
 <context>
-byte identity [FMQ_MSG_IDENTITY_SIZE];
 size_t credit;              //  Credit remaining
 zlist_t *patches;           //  Patches to send
 fmq_patch_t *patch;         //  Current patch
@@ -148,10 +145,6 @@ while (mount) {
     mount = (mount_t *) zlist_next (self->mounts);
 }
 client->next_event = terminate_event;
-</action>
-
-<action name = "track client identity">
-memcpy (client->identity, fmq_msg_identity (client->request), FMQ_MSG_IDENTITY_SIZE);
 </action>
 
 <action name = "try anonymous access">
@@ -243,12 +236,6 @@ if (client->patch == NULL) {
 }
 //  Map filename to logical space
 char *filename = fmq_file_name (fmq_patch_file (client->patch), fmq_patch_path (client->patch));
-
-printf ("MAP FILE: \nroot=%s\nname=%s\nresult=%s\n",
-    fmq_patch_path (client->patch),
-    fmq_file_name (fmq_patch_file (client->patch), NULL),
-    filename);
-    
 fmq_msg_filename_set (client->reply, filename);
 
 //  We can process a delete patch right away

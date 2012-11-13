@@ -44,6 +44,7 @@ sleep 1
 #   Push some files into photos and logs
 push_file logs/log.1 2500 100
 push_file logs/log.2 9999 100
+echo ./fmqroot/logs/log.2 > ./fmqroot/logs/log.3.ln
 push_file send/photos/DSCF0001.jpg  1000 1000
 push_file send/photos/DSCF0002.jpg  2000 1000
 push_file send/photos/DSCF0003.jpg  4000 1000

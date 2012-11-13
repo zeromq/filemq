@@ -723,7 +723,7 @@ $(class.name)_test (bool verbose)
     $(class.name)_t *self;
     void *dealer = zsocket_new (ctx, ZMQ_DEALER);
     zsocket_set_rcvtimeo (dealer, 2000);
-    zsocket_connect (dealer, "tcp://localhost:6000");
+    zsocket_connect (dealer, "tcp://localhost:5670");
     
     $(codec)_t *request, *reply;
     

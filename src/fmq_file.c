@@ -29,6 +29,7 @@
 
 struct _fmq_file_t {
     char *name;             //  File name with path
+    char *link;             //  Optional linked file
 
     //  Properties from file system
     time_t time;            //  Modification time
@@ -75,13 +76,34 @@ s_file_mode (const char *filename)
 //  --------------------------------------------------------------------------
 //  Constructor
 //  If file exists, populates properties
+//  If file is a FileMQ symbolic link (ends in .ln), resolves the link
 
 fmq_file_t *
 fmq_file_new (const char *path, const char *name)
 {
     fmq_file_t *self = (fmq_file_t *) zmalloc (sizeof (fmq_file_t));
+    
+    //  Format full path to file
     self->name = malloc (strlen (path) + strlen (name) + 2);
     sprintf (self->name, "%s/%s", path, name);
+
+    //  Resolve symbolic link if necessary
+    if (strlen (name) > 3
+    &&  streq (name + strlen (name) - 3, ".ln")) {
+        FILE *handle = fopen (self->name, "r");
+        if (handle) {
+            char buffer [256];
+            if (fgets (buffer, 256, handle)) {
+                //  We have the contents of the symbolic link
+                if (buffer [strlen (buffer) - 1] == '\n')
+                    buffer [strlen (buffer) - 1] = 0;
+                self->link = strdup (buffer);
+                //  Chop ".ln" off name for external use
+                self->name [strlen (self->name) - 3] = 0;
+            }
+            fclose (handle);
+        }
+    }
     fmq_file_restat (self);
     return self;
 }
@@ -99,6 +121,7 @@ fmq_file_destroy (fmq_file_t **self_p)
         if (self->handle)
             fclose (self->handle);
         free (self->name);
+        free (self->link);
         free (self);
         *self_p = NULL;
     }
@@ -116,6 +139,7 @@ fmq_file_dup (fmq_file_t *self)
 
     copy = (fmq_file_t *) zmalloc (sizeof (fmq_file_t));
     copy->name = strdup (self->name);
+    copy->link = self->link? strdup (self->link): NULL;
     copy->time = self->time;
     copy->size = self->size;
     copy->mode = self->mode;
@@ -150,13 +174,14 @@ fmq_file_restat (fmq_file_t *self)
 {
     assert (self);
     struct stat stat_buf;
-    if (stat (self->name, &stat_buf) == 0) {
+    char *real_name = self->link? self->link: self->name;
+    if (stat (real_name, &stat_buf) == 0) {
         //  Not sure if stat mtime is fully portable
         self->exists = true;
         self->size = stat_buf.st_size;
         self->time = stat_buf.st_mtime;
 #if (defined (WIN32))
-        self->mode = s_file_mode (self->name);
+        self->mode = s_file_mode (real_name);
 #else
         self->mode = stat_buf.st_mode;
 #endif
@@ -231,6 +256,9 @@ void
 fmq_file_remove (fmq_file_t *self)
 {
     assert (self);
+    if (self->link)
+        //  Restore ".ln" in file name
+        self->name [strlen (self->name)] = '.';
 #if (defined (WIN32))
     DeleteFile (self->name);
 #else
@@ -275,6 +303,7 @@ s_assert_path (fmq_file_t *self)
 //  --------------------------------------------------------------------------
 //  Open file for reading
 //  Returns 0 if OK, -1 if not found or not accessible
+//  If file is symlink, opens real physical file, not link
 
 int
 fmq_file_input (fmq_file_t *self)
@@ -283,10 +312,11 @@ fmq_file_input (fmq_file_t *self)
     if (self->handle)
         fmq_file_close (self);
     
-    self->handle = fopen (self->name, "rb");
+    char *real_name = self->link? self->link: self->name;
+    self->handle = fopen (real_name, "rb");
     if (self->handle) {
         struct stat stat_buf;
-        if (stat (self->name, &stat_buf) == 0)
+        if (stat (real_name, &stat_buf) == 0)
             self->size = stat_buf.st_size;
         else
             self->size = 0;
@@ -299,18 +329,24 @@ fmq_file_input (fmq_file_t *self)
 //  Open file for writing, creating directory if needed
 //  File is created if necessary; chunks can be written to file at any
 //  location. Returns 0 if OK, -1 if error.
+//  If file was symbolic link, that's over-written
 
 int
 fmq_file_output (fmq_file_t *self)
 {
     assert (self);
+    //  Wipe symbolic link if that's what the file was
+    if (self->link) {
+        free (self->link);
+        self->link = NULL;
+    }
     s_assert_path (self);
     if (self->handle)
         fmq_file_close (self);
-
-    //  Create file if it doesn't exist, and always 
+    
+    //  Create file if it doesn't exist
     self->handle = fopen (self->name, "r+b");
-    if (!self->handle )
+    if (!self->handle)
         self->handle = fopen (self->name, "w+b");
     return self->handle? 0: -1;
 }
