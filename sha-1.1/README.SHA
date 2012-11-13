@@ -1,0 +1,223 @@
+shaX-asaddi (X = 1, 256, 384, 512)
+==================================
+Copyright (c) 2001-2003 Allan Saddi <allan@saddi.com>
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions
+are met:
+1. Redistributions of source code must retain the above copyright
+   notice, this list of conditions and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright
+   notice, this list of conditions and the following disclaimer in the
+   documentation and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+SUCH DAMAGE.
+
+Introduction
+------------
+These are portable implementations of the National Institute of
+Standards and Technology's Secure Hash Algorithms. Implementations
+for SHA-1, SHA-256, SHA-384, and SHA-512 are available. All are
+equally portable, assuming your compiler supports 64-bit integers
+(which gcc does).
+
+For more information on SHA (the algorithms), visit:
+http://csrc.nist.gov/encryption/tkhash.html
+
+The following documentation and examples will refer to the SHA-1
+implementation. However, they equally apply to the SHA-256, SHA-384,
+and SHA-512 implementations except where noted.
+
+API
+---
+SHA1_Context
+  This is the hash context. There should be one SHA1_Context for each
+  object to be hashed. (This only applies if hashing is being done
+  in parallel. Otherwise, it's perfectly safe to reuse a SHA1_Context
+  to hash objects serially, e.g. one file at a time.)
+
+  A SHA1_Context can be declared static, automatic, or allocated from
+  the heap. There are certain alignment restrictions, but it shouldn't
+  be of any concern in normal usage (malloc() should return suitably
+  aligned memory, and the compiler will take care of the other cases).
+
+  There's nothing really special about a SHA1_Context. It should be
+  safe to copy it, e.g. using memcpy() or bcopy().
+
+void SHA1_Init (SHA1_Context *sc);
+  Initializes a SHA1_Context. This should be called before any of the
+  following functions are called.
+
+void SHA1_Update (SHA1_Context *sc, const void *data, uint32_t len);
+  Hashes some data. len is in bytes.
+
+void SHA1_Final (SHA1_Context *sc, uint8_t hash[SHA1_HASH_SIZE]);
+  Gets the SHA-1 hash and "closes" the context. The context should
+  no longer be used. (Due to padding, etc.) If you wish to hash a
+  new set of data using the same SHA1_Context, be sure to call
+  SHA1_Init(). If you want to continue hashing data using the
+  same context, simply make a copy of the context and call
+  SHA1_Final() on the copy.
+
+  hash may be NULL, in which case no hash is generated (but the
+  context is still closed). Regardless if hash is NULL or not, a
+  word representation of the hash (32-bit words for SHA-1 and SHA-256,
+  64-bit words for SHA-384 and SHA-512) is available in
+  sc->hash[0..SHA1_HASH_WORDS-1]. This may be useful in other
+  applications.
+
+  If being used for cryptography, it's probably a good idea to zero-out
+  the SHA1_Context after you're done.
+
+Compile-Time Options
+--------------------
+HAVE_CONFIG_H
+  Define this if you want the code to include <config.h>. This is useful
+  if you use GNU configure.
+
+HAVE_INTTYPES_H
+HAVE_STDINT_H
+  Define one of these to 1 if you have the respective header file. If you
+  have neither, be sure to typedef/define uint8_t, uint32_t, and uint64_t
+  appropriately (perhaps in config.h above).
+
+WORDS_BIGENDIAN
+  Define this if you're on a big-endian processor.
+
+RUNTIME_ENDIAN
+  Define this if you would rather determine processor endianess at
+  runtime. WORDS_BIGENDIAN will be ignored if this is defined. The
+  generated code may be slightly slower, but at least you won't
+  have to worry about big-endian vs. little-endian!
+
+SHA1_FAST_COPY
+  Defining this will eliminate some copying overhead of hashed data.
+  Also, calculating the hash in SHA1_Final() should be slightly faster.
+  This isn't on by default because of alignment issues. See Portability
+  Notes.
+
+SHA1_UNROLL
+  If undefined, it will default to 1. This is the number of rounds
+  to perform in a loop iteration. The larger the number, the bigger
+  the code, but also the less loop overhead there will be. It must
+  be between 1 and 20 inclusive, and it must be a factor of 20 or
+  a product of some of its factors. (Don't worry, you'll get a nice
+  error message if you defined it wrong.)
+
+  SHA-256 is the only other implementation that has something
+  similar (SHA256_UNROLL). It must be a power of 2 between 1 and
+  64 inclusive and it defaults to 1.
+
+  You may want to experiment with different values. I've generally
+  found that big code is slower, despite being more efficient. This
+  is most likely due to cache space limitations.
+
+SHA1_TEST
+  Define this to compile a simple test program. See the comments in
+  sha1.c for what the output should look like. If the output doesn't
+  look right, try flipping WORDS_BIGENDIAN (define it if you didn't
+  define it, undefine it if you did). For example:
+
+  > gcc -Wall -O2 -DSHA1_TEST -o test sha1.c
+
+Portability Notes
+-----------------
+As was mentioned, you need a compiler that supports 64-bit integers.
+You will also need <inttypes.h> for uint8_t, uint32_t, uint64_t. I'm not
+sure how common or standard this include file is, but it was available
+on all platforms I tested.
+
+It was actually surprising to find that all but one of the processors
+tested supported unaligned word accesses. (I came from a MC680x0 +
+MIPS background.) I developed the code on i386 and powerpc architectures,
+which both supported unaligned words. It wasn't until I tried out my
+code on a sparc that I realized I needed to be a little more careful.
+(Bus errors... yum!)
+
+With SHA1_FAST_COPY undefined, the code should be very portable. If you
+define it, the code may be slightly faster, but there are a few things
+you need to be careful about, especially on architectures that don't
+support unaligned word accesses. Here are some general guidelines:
+
+Use SHA1_FAST_COPY if:
+
+  * You call SHA1_Update() with a consistent buffer size every time.
+    (The last time you call it before calling SHA1_Final() can be the
+    exception.) And:
+
+  * The buffer size is a multiple of 64-bytes (SHA-1, SHA-256) or
+    128-bytes (SHA-384, SHA-512). And:
+
+  * The buffer address is evenly divisible by 4 (SHA-1, SHA-256) or
+    evenly divisible by 8 (SHA-384, SHA-512). And finally:
+
+  * The hash address passed to SHA1_Final() is evenly divisible by
+    4 (SHA-1, SHA-256) or evenly divisible by 8 (SHA-384, SHA-512).
+
+You can ensure proper address alignment by using malloc() (read your
+man page to verify this) or by doing something like:
+
+  union {
+    uint32_t w; /* use uint64_t for SHA-384, SHA-512 */
+    uint8_t b[SHA1_HASH_SIZE];
+  } hash;
+  ...
+  SHA1_Final (&sha, hash.b);
+
+If you're on an architecture that supports unaligned word accesses,
+it may be safe to define SHA1_FAST_COPY anyway. However, it would be
+a good idea to experiment, since unaligned word accesses may actually
+take longer and cancel the benefits of faster code.
+
+Example
+-------
+  #include <inttypes.h> /* for uint8_t, etc. */
+  #include <string.h> /* for memset() */
+
+  #include "sha1.h"
+
+  ...
+    SHA1_Context sha;
+    uint8_t hash[SHA1_HASH_SIZE];
+    ...
+    SHA1_Init (&sha);
+    ...
+    SHA1_Update (&sha, buffer, length);
+    ...
+    SHA1_Update (&sha, buffer2, length2);
+    ...
+    call SHA1_Update() with more data
+    ...
+    SHA1_Final (&sha, hash);
+    memset (&sha, 0, sizeof (sha)); /* for the truly paranoid */
+    ...
+    do something with hash
+  ...
+
+Platforms Tested
+----------------
+gcc was the compiler used on all tested platforms.
+
+FreeBSD	 i386
+Darwin   powerpc
+Linux    i386
+Linux    alpha
+Linux    powerpc
+Solaris  sparc
+
+Comments? Suggestions? Bugs?
+----------------------------
+Please let me know!
+
+- Allan Saddi <allan@saddi.com>

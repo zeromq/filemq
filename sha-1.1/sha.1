@@ -1,0 +1,74 @@
+.\" Copyright (c) 2001-2003 Allan Saddi <allan@saddi.com>
+.\" All rights reserved.
+.\"
+.\" Redistribution and use in source and binary forms, with or without
+.\" modification, are permitted provided that the following conditions
+.\" are met:
+.\" 1. Redistributions of source code must retain the above copyright
+.\"    notice, this list of conditions and the following disclaimer.
+.\" 2. Redistributions in binary form must reproduce the above copyright
+.\"    notice, this list of conditions and the following disclaimer in the
+.\"    documentation and/or other materials provided with the distribution.
+.\"
+.\" THIS SOFTWARE IS PROVIDED BY ALLAN SADDI AND HIS CONTRIBUTORS ``AS IS''
+.\" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+.\" IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+.\" ARE DISCLAIMED.  IN NO EVENT SHALL ALLAN SADDI OR HIS CONTRIBUTORS BE
+.\" LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+.\" CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+.\" SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+.\" INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+.\" CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+.\" ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+.\" POSSIBILITY OF SUCH DAMAGE.
+.\"
+.\" $Id: sha.1 351 2003-02-23 23:24:40Z asaddi $
+.TH SHA 1 "August 19, 2001"
+.SH NAME
+sha - file hashing utility
+.SH SYNOPSIS
+.TP 4
+.B sha
+.RB [ -12345Vh ]
+.RI [ file
+.IR ... ]
+.SH DESCRIPTION
+.B sha
+is a simple program that hashes files. It uses the National
+Institute of Standards and Technology's Secure Hash Algorithm.
+It can use SHA-1, SHA-256, SHA-384, or SHA-512, which generate
+respectively, hashes of 160, 256, 384, or 512 bits.
+.B sha
+can be used in scripts to do, for example, file integrity checking.
+.SH OPTIONS
+.TP
+.B -1
+Use SHA-1, which produces a 160-bit hash (40 hex digits).
+.TP
+.B -2
+Use SHA-256, which produces a 256-bit hash (64 hex digits).
+.TP
+.B -3
+Use SHA-384, which produces a 384-bit hash (96 hex digits).
+.TP
+.B -5
+Use SHA-512, which produces a 512-bit hash (128 hex digits).
+.TP
+.B -V
+Display version information.
+.TP
+.B -h
+Display help summary.
+.TP
+.I file ...
+One or more files to hash. If no files are given, stdin is hashed.
+.P
+If neither
+.BR -1 ", " -2 ", " -3 ", or " -5
+are given, then SHA-1 is used. (But see note about SHA_DEFAULT below.)
+.SH ENVIRONMENT
+.TP
+SHA_DEFAULT
+The default hash algorithm to use. ``1'' denotes SHA-1, ``2'' denotes
+SHA-256, ``3'' denotes SHA-384, and ``5'' denotes SHA-512. Only the first
+character is significant. If not defined, SHA-1 is the default.
