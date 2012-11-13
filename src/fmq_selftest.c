@@ -44,6 +44,7 @@ int main (int argc, char *argv [])
         fmq_dir_test (verbose);
         fmq_msg_test (verbose);
         fmq_sasl_test (verbose);
+        fmq_sha_test (verbose);
         fmq_config_test (verbose);
         fmq_server_test (verbose);
         fmq_client_test (verbose);

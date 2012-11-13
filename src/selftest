@@ -15,8 +15,10 @@ gcc -g -o fmq_selftest fmq_selftest.c  \
     fmq_msg.c \
     fmq_patch.c \
     fmq_sasl.c \
+    fmq_sha.c \
     fmq_server.c \
-    ${CFLAGS} ${LDFLAGS} -lczmq -lzmq
+    ../sha-1.1/sha1.c \
+    ${CFLAGS} ${LDFLAGS} -DHAVE_CONFIG_H -lczmq -lzmq
 
 if [ $? -eq 0 ]; then
     if [ "$1" == "-q" ]; then

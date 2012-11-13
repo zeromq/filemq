@@ -1,0 +1,7 @@
+.deps/
+config.h
+config.h.in~
+libsha.a
+sha
+shatest
+stamp-h1

@@ -44,6 +44,7 @@
 #include "fmq_dir.h"
 #include "fmq_patch.h"
 #include "fmq_sasl.h"
+#include "fmq_sha.h"
 #include "fmq_config.h"
 
 //  These are specific to the FileMQ implementation

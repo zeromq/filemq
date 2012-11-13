@@ -1,6 +1,10 @@
 AUTOMAKE_OPTIONS = foreign
 AM_CFLAGS = -Wall
 
+lib_LIBRARIES = libsha.a
+libsha_a_SOURCES = sha.c sha1.c sha256.c sha384.c sha512.c \
+	hmac-sha1.c hmac-sha256.c hmac-sha384.c hmac-sha512.c
+
 bin_PROGRAMS = sha
 noinst_PROGRAMS = shatest
 

@@ -15,7 +15,16 @@ libfmq_la_SOURCES = \
     fmq_msg.c \
     fmq_patch.c \
     fmq_sasl.c \
-    fmq_server.c 
+    fmq_server.c \
+    fmq_sha.c \
+    ../sha-1.1/sha1.c \
+    ../sha-1.1/sha256.c \
+    ../sha-1.1/sha384.c \
+    ../sha-1.1/sha512.c \
+    ../sha-1.1/hmac-sha1.c \
+    ../sha-1.1/hmac-sha256.c \
+    ../sha-1.1/hmac-sha384.c \
+    ../sha-1.1/hmac-sha512.c
 
 INCLUDES = -I$(top_srcdir)/include
 bin_PROGRAMS = filemq track fmq_selftest
