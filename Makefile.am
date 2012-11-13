@@ -1,4 +1,5 @@
+SUBDIRS = src doc sha-1.1
+
 ACLOCAL_AMFLAGS = -I config
 
-SUBDIRS = src doc
-DIST_SUBDIRS = src doc
+DIST_SUBDIRS = src doc sha-1.1

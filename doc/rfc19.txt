@@ -79,6 +79,7 @@ path            = string        ; Full path or path prefix
 options         = dictionary
 dictionary      = size *key-value
 key-value       = string        ; Formatted as name=value
+cache           = dictionary    ; File SHA1 signatures
 
 ;   The server confirms the subscription
 ICANHAZ-OK      = signature %x06
@@ -174,7 +175,7 @@ The client MAY sent NOM commands at any point after it has received an OHAI-OK f
 
 ++++ The CHEEZBURGER Command
 
-The server SHALL send file content to the client using CHEEZBURGER commands. Each CHEEZBURGER command shall deliver a chunk of file data starting at a specific offset. The server SHOULD send the content of a single file as consecutive chunks but clients MUST not depend on this behavior.
+The server SHALL send file content to the client using CHEEZBURGER commands. Each CHEEZBURGER command shall deliver a chunk of file data starting at a specific offset. The server MUST send the content of a single file as consecutive chunks and clients MAY depend on this behavior.
 
 The headers field is reserved for future use.
 
