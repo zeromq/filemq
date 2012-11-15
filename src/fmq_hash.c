@@ -1,9 +1,5 @@
 /*  =========================================================================
-    fmq_sha - wraps the sha-1.1 library
-
-    sha-1.1 is copyright (c) 2001-2003 Allan Saddi <allan@saddi.com>
-    http://www.saddi.com/software/sha/. Note sha-1.1 is slightly shaed to
-    build properly with FileMQ.
+    fmq_hash - provides hashing functions (SHA-1 at present)
 
     -------------------------------------------------------------------------
     Copyright (c) 1991-2012 iMatix Corporation -- http://www.imatix.com
@@ -27,15 +23,15 @@
 */
 
 #include <czmq.h>
+#include <openssl/sha.h>
 #include "../include/fmq.h"
-#include "../sha-1.1/sha1.h"
 
 
 //  Structure of our class
 
-struct _fmq_sha_t {
-    SHA1_Context context;
-    byte hash [SHA1_HASH_SIZE];
+struct _fmq_hash_t {
+    SHA_CTX context;
+    byte hash [SHA_DIGEST_LENGTH];
     bool final;
 };
 
@@ -44,10 +40,10 @@ struct _fmq_sha_t {
 //  Constructor
 //  Create new SHA object
 
-fmq_sha_t *
-fmq_sha_new (void)
+fmq_hash_t *
+fmq_hash_new (void)
 {
-    fmq_sha_t *self = (fmq_sha_t *) zmalloc (sizeof (fmq_sha_t));
+    fmq_hash_t *self = (fmq_hash_t *) zmalloc (sizeof (fmq_hash_t));
     SHA1_Init (&self->context);
     return self;
 }
@@ -56,11 +52,11 @@ fmq_sha_new (void)
 //  Destroy a SHA object
 
 void
-fmq_sha_destroy (fmq_sha_t **self_p)
+fmq_hash_destroy (fmq_hash_t **self_p)
 {
     assert (self_p);
     if (*self_p) {
-        fmq_sha_t *self = *self_p;
+        fmq_hash_t *self = *self_p;
         free (self);
         *self_p = NULL;
     }
@@ -71,8 +67,10 @@ fmq_sha_destroy (fmq_sha_t **self_p)
 //  Add buffer into SHA calculation
 
 void
-fmq_sha_update (fmq_sha_t *self, byte *buffer, size_t length)
+fmq_hash_update (fmq_hash_t *self, byte *buffer, size_t length)
 {
+    //  Buffer has to be on 64-bit boundary
+    assert (((long) buffer & 7L) == 0);
     SHA1_Update (&self->context, buffer, length);
 }
 
@@ -81,10 +79,10 @@ fmq_sha_update (fmq_sha_t *self, byte *buffer, size_t length)
 //  Return final SHA hash data
 
 byte *
-fmq_sha_hash_data (fmq_sha_t *self)
+fmq_hash_data (fmq_hash_t *self)
 {
     if (!self->final) {
-        SHA1_Final (&self->context, self->hash);
+        SHA1_Final (self->hash, &self->context);
         self->final = true;
     }
     return self->hash;
@@ -95,9 +93,9 @@ fmq_sha_hash_data (fmq_sha_t *self)
 //  Return final SHA hash size
 
 size_t
-fmq_sha_hash_size (fmq_sha_t *self)
+fmq_hash_size (fmq_hash_t *self)
 {
-    return SHA1_HASH_SIZE;
+    return SHA_DIGEST_LENGTH;
 }
 
 
@@ -105,22 +103,22 @@ fmq_sha_hash_size (fmq_sha_t *self)
 //  Self test of this class
 
 int
-fmq_sha_test (bool verbose)
+fmq_hash_test (bool verbose)
 {
-    printf (" * fmq_sha: ");
+    printf (" * fmq_hash: ");
 
     byte buffer [1024];
     memset (buffer, 0xAA, 1024);
     
-    fmq_sha_t *sha = fmq_sha_new ();
-    fmq_sha_update (sha, buffer, 1024);
-    byte *hash = fmq_sha_hash_data (sha);
-    size_t size = fmq_sha_hash_size (sha);
-    assert (hash [0] == 0xDE);
-    assert (hash [1] == 0xB2);
-    assert (hash [2] == 0x38);
-    assert (hash [3] == 0x07);
-    fmq_sha_destroy (&sha);
+    fmq_hash_t *hash = fmq_hash_new ();
+    fmq_hash_update (hash, buffer, 1024);
+    byte *data = fmq_hash_data (hash);
+    size_t size = fmq_hash_size (hash);
+    assert (data [0] == 0xDE);
+    assert (data [1] == 0xB2);
+    assert (data [2] == 0x38);
+    assert (data [3] == 0x07);
+    fmq_hash_destroy (&hash);
 
     printf ("OK\n");
     return 0;

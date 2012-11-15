@@ -13,8 +13,6 @@ AC_CONFIG_MACRO_DIR(config)
 AM_CONFIG_HEADER(src/platform.h)
 AM_INIT_AUTOMAKE(tar-ustar)
 
-AC_CONFIG_SUBDIRS([sha-1.1])
-
 # This defines PACKAGE_VERSION_... in src/platform.h
 PV_MAJOR=`echo $PACKAGE_VERSION | cut -d . -f 1`
 PV_MINOR=`echo $PACKAGE_VERSION | cut -d . -f 2`
@@ -113,6 +111,9 @@ AC_LINK_IFELSE([AC_LANG_PROGRAM([#include <czmq.h>],
                ],
                [AC_MSG_RESULT([yes])],
                [AC_MSG_ERROR([no. Please specify libczmq installation prefix using --with-czmq])])
+
+# Other libraries
+AC_CHECK_LIB(crypto, SHA1_Init, ,[AC_MSG_ERROR([cannot link with -lcrypto, install libssl-dev.])])
 
 #Whether we are on mingw or not.
 fmq_on_mingw32="no"
