@@ -31,3 +31,7 @@ fmq_selftest
 src/fmqroot/send/*
 src/fmqroot/recv/*
 src/fmqroot/logs/*
+.cache
+mymusic
+testit
+

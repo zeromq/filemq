@@ -1,5 +1,5 @@
 /*  =========================================================================
-    fmq_sha - wraps the sha-1.1 library
+    fmq_hash - provides hashing functions (SHA-1 at present)
 
     -------------------------------------------------------------------------
     Copyright (c) 1991-2012 iMatix Corporation -- http://www.imatix.com
@@ -22,39 +22,39 @@
     =========================================================================
 */
 
-#ifndef __FMQ_SHA_H_INCLUDED__
-#define __FMQ_SHA_H_INCLUDED__
+#ifndef __FMQ_HASH_H_INCLUDED__
+#define __FMQ_HASH_H_INCLUDED__
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 //  Opaque class structure
-typedef struct _fmq_sha_t fmq_sha_t;
+typedef struct _fmq_hash_t fmq_hash_t;
 
-//  Create new SHA object
-fmq_sha_t *
-    fmq_sha_new (void);
+//  Create new HASH object
+fmq_hash_t *
+    fmq_hash_new (void);
 
-//  Destroy a SHA object
+//  Destroy a HASH object
 void
-    fmq_sha_destroy (fmq_sha_t **self_p);
+    fmq_hash_destroy (fmq_hash_t **self_p);
 
-//  Add buffer into SHA calculation
+//  Add buffer into HASH calculation
 void
-    fmq_sha_update (fmq_sha_t *self, byte *buffer, size_t length);
+    fmq_hash_update (fmq_hash_t *self, byte *buffer, size_t length);
     
-//  Return final SHA hash data
+//  Return final HASH hash data
 byte *
-    fmq_sha_hash_data (fmq_sha_t *self);
+    fmq_hash_data (fmq_hash_t *self);
 
-//  Return final SHA hash size
+//  Return final HASH hash size
 size_t
-    fmq_sha_hash_size (fmq_sha_t *self);
+    fmq_hash_size (fmq_hash_t *self);
 
 //  Self test of this class
 int
-    fmq_sha_test (bool verbose);
+    fmq_hash_test (bool verbose);
 
 #ifdef __cplusplus
 }

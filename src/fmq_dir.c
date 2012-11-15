@@ -294,6 +294,7 @@ fmq_dir_diff (fmq_dir_t *older, fmq_dir_t *newer)
             if (fmq_file_stable (old)) {
                 //  Old file was modified or replaced
                 //  Since we don't check file contents, treat as created
+                //  Could better do SHA check on file here
                 if (fmq_file_time (new) != fmq_file_time (old)
                 ||  fmq_file_size (new) != fmq_file_size (old))
                     zlist_append (patches, fmq_patch_new (newer->path, new, patch_create));
@@ -428,6 +429,47 @@ fmq_dir_dump (fmq_dir_t *self, int indent)
 }
 
 
+static void
+s_dir_recache (fmq_dir_t *self, char *root, zhash_t *cache)
+{
+    //  Process files in directory
+    fmq_file_t *file = (fmq_file_t *) zlist_first (self->files);
+    while (file) {
+        char *filename = fmq_file_name (file, root);
+        if (zhash_lookup (cache, fmq_file_name (file, root)) == NULL)
+            zhash_insert (cache, filename, fmq_file_hash (file));
+        file = (fmq_file_t *) zlist_next (self->files);
+    }
+    
+    //  Recurse to subdirectories 
+    fmq_dir_t *subdir = (fmq_dir_t *) zlist_first (self->subdirs);
+    while (subdir) {
+        s_dir_recache (subdir, root, cache);
+        subdir = (fmq_dir_t *) zlist_next (self->subdirs);
+    }
+}
+
+
+//  --------------------------------------------------------------------------
+//  Load directory cache; returns a hash table containing the SHA-1 digests
+//  of every file in the tree. The cache is saved between runs in .cache.
+//  The caller must destroy the hash table when done with it.
+
+zhash_t *
+fmq_dir_cache (fmq_dir_t *self)
+{
+    assert (self);
+    zhash_t *cache = zhash_new ();
+    char *cache_file = malloc (strlen (self->path) + strlen ("/.cache") + 1);
+    sprintf (cache_file, "%s/.cache", self->path);
+    zhash_load (cache, cache_file);
+    s_dir_recache (self, self->path, cache);
+    zhash_save (cache, cache_file);
+    free (cache_file);
+    return cache;
+}
+
+
 //  --------------------------------------------------------------------------
 //  Self test of this class
 int
@@ -452,6 +494,12 @@ fmq_dir_test (bool verbose)
     fmq_dir_destroy (&older);
     fmq_dir_destroy (&newer);
 
+    //  Test directory cache calculation
+    fmq_dir_t *here = fmq_dir_new (".", NULL);
+    zhash_t *cache = fmq_dir_cache (here);
+    fmq_dir_destroy (&here);
+    zhash_destroy (&cache);
+    
     fmq_dir_t *nosuch = fmq_dir_new ("does-not-exist", NULL);
     assert (nosuch == NULL);
 

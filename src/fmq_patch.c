@@ -27,11 +27,14 @@
 #include "../include/fmq.h"
 
 //  Structure of our class
+//  If you modify this beware to also change _dup
 
 struct _fmq_patch_t {
     char *path;                 //  Directory path
+    char *virtual;              //  Virtual file name
     fmq_file_t *file;           //  File we refer to
     fmq_patch_op_t op;          //  Operation
+    char *hashstr;              //  File hash digest
 };
 
 
@@ -46,8 +49,11 @@ fmq_patch_new (char *path, fmq_file_t *file, fmq_patch_op_t op)
     self->path = strdup (path);
     self->file = fmq_file_dup (file);
     self->op = op;
+    if (self->op == patch_create)
+        self->hashstr = fmq_file_hash (self->file);
     return self;
 }
+
 
 //  --------------------------------------------------------------------------
 //  Destroy a patch
@@ -59,6 +65,8 @@ fmq_patch_destroy (fmq_patch_t **self_p)
     if (*self_p) {
         fmq_patch_t *self = *self_p;
         free (self->path);
+        free (self->virtual);
+        free (self->hashstr);
         fmq_file_destroy (&self->file);
         free (self);
         *self_p = NULL;
@@ -72,12 +80,19 @@ fmq_patch_destroy (fmq_patch_t **self_p)
 fmq_patch_t *
 fmq_patch_dup (fmq_patch_t *self)
 {
-    return fmq_patch_new (self->path, self->file, self->op);
+    fmq_patch_t *copy = (fmq_patch_t *) zmalloc (sizeof (fmq_patch_t));
+    copy->path = strdup (self->path);
+    copy->file = fmq_file_dup (self->file);
+    copy->op = self->op;
+    //  Don't recalculate hash when we duplicate patch
+    copy->hashstr = self->hashstr? strdup (self->hashstr): NULL;
+    copy->virtual = self->virtual? strdup (self->virtual): NULL;
+    return copy;
 }
 
 
 //  --------------------------------------------------------------------------
-//  Return patch file directory oatth
+//  Return patch file directory path
 
 char *
 fmq_patch_path (fmq_patch_t *self)
@@ -110,6 +125,40 @@ fmq_patch_op (fmq_patch_t *self)
 
 
 //  --------------------------------------------------------------------------
+//  Return patch virtual file name
+
+char *
+fmq_patch_virtual (fmq_patch_t *self)
+{
+    assert (self);
+    return self->virtual;
+}
+
+
+//  --------------------------------------------------------------------------
+//  Set patch virtual file name
+
+void
+fmq_patch_virtual_set (fmq_patch_t *self, char *virtual)
+{
+    assert (self);
+    free (self->virtual);
+    self->virtual = strdup (virtual);
+}
+
+
+//  --------------------------------------------------------------------------
+//  Return hash digest for patch file (create only)
+
+char *
+fmq_patch_hashstr (fmq_patch_t *self)
+{
+    assert (self);
+    return self->hashstr;
+}
+
+
+//  --------------------------------------------------------------------------
 //  Self test of this class
 int
 fmq_patch_test (bool verbose)
@@ -122,7 +171,8 @@ fmq_patch_test (bool verbose)
     
     file = fmq_patch_file (patch);
     assert (streq (fmq_file_name (file, "."), "bilbo"));
-    
+    fmq_patch_virtual_set (patch, "/virtual/path");
+    assert (streq (fmq_patch_virtual (patch), "/virtual/path"));
     fmq_patch_destroy (&patch);
 
     printf ("OK\n");

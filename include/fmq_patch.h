@@ -61,6 +61,18 @@ fmq_file_t *
 fmq_patch_op_t
     fmq_patch_op (fmq_patch_t *self);
     
+//  Return patch virtual file name
+char *
+    fmq_patch_virtual (fmq_patch_t *self);
+
+//  Set patch virtual file name
+void
+    fmq_patch_virtual_set (fmq_patch_t *self, char *virtual);
+
+//  Return hash digest for patch file (create only)
+char *
+    fmq_patch_hashstr (fmq_patch_t *self);
+    
 //  Self test of this class
 int
     fmq_patch_test (bool verbose);

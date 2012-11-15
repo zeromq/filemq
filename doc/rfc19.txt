@@ -79,7 +79,7 @@ path            = string        ; Full path or path prefix
 options         = dictionary
 dictionary      = size *key-value
 key-value       = string        ; Formatted as name=value
-cache           = dictionary    ; File SHA1 signatures
+cache           = dictionary    ; File SHA-1 signatures
 
 ;   The server confirms the subscription
 ICANHAZ-OK      = signature %x06
@@ -161,7 +161,13 @@ When the server grants the client access after an OHAI or YARL command, it SHALL
 
 The client MAY subscribe to any number of virtual paths by sending ICANHAZ commands to the server. The client MAY specify a full path, or it MAY specify a partial path, which is used as a prefix match. Paths MUST start with "/", thus the path "/" subscribes to //everything//.
 
-The options field is reserved for future use. The path does not have to exist in the server. That is, clients can request paths which will exist in the server at some future time.
+The 'path' does not have to exist in the server. That is, clients can request paths which will exist in the server at some future time.
+
+The 'options' field provides additional information to the server. The server SHOULD implement these options:
+
+* {{RESYNC=1}} - if the client sets this, the server SHALL send the full contents of the virtual path to the client.
+
+The 'cache' dictionary field tells the server which files the client already has. The server SHOULD respect this information. Each entry in the 'cache' dictionary is a "filename=digest" key/value pair where the digest SHALL be a SHA-1 digest in printable hexadecimal format. If the filename starts with '/' then it SHOULD start with the path, otherwise the server MUST ignore it. If the filename does not start with '/' then the server SHALL treat it as relative to the path.
 
 ++++ The ICANHAZ-OK Command
 

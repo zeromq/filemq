@@ -42,6 +42,8 @@ struct _fmq_msg_t {
     char *path;
     zhash_t *options;
     size_t options_bytes;       //  Size of dictionary content
+    zhash_t *cache;
+    size_t cache_bytes;         //  Size of dictionary content
     uint64_t credit;
     uint64_t sequence;
     byte operation;
@@ -203,6 +205,7 @@ fmq_msg_destroy (fmq_msg_t **self_p)
         zframe_destroy (&self->response);
         free (self->path);
         zhash_destroy (&self->options);
+        zhash_destroy (&self->cache);
         free (self->filename);
         zhash_destroy (&self->headers);
         zframe_destroy (&self->chunk);
@@ -307,6 +310,7 @@ fmq_msg_recv (void *input)
             GET_STRING (self->path);
             GET_NUMBER1 (hash_size);
             self->options = zhash_new ();
+            zhash_autofree (self->options);
             while (hash_size--) {
                 char *string;
                 GET_STRING (string);
@@ -314,7 +318,18 @@ fmq_msg_recv (void *input)
                 if (value)
                     *value++ = 0;
                 zhash_insert (self->options, string, strdup (value));
-                zhash_freefn (self->options, string, free);
+                free (string);
+            }
+            GET_NUMBER1 (hash_size);
+            self->cache = zhash_new ();
+            zhash_autofree (self->cache);
+            while (hash_size--) {
+                char *string;
+                GET_STRING (string);
+                char *value = strchr (string, '=');
+                if (value)
+                    *value++ = 0;
+                zhash_insert (self->cache, string, strdup (value));
                 free (string);
             }
             break;
@@ -335,6 +350,7 @@ fmq_msg_recv (void *input)
             GET_NUMBER8 (self->offset);
             GET_NUMBER1 (hash_size);
             self->headers = zhash_new ();
+            zhash_autofree (self->headers);
             while (hash_size--) {
                 char *string;
                 GET_STRING (string);
@@ -342,7 +358,6 @@ fmq_msg_recv (void *input)
                 if (value)
                     *value++ = 0;
                 zhash_insert (self->headers, string, strdup (value));
-                zhash_freefn (self->headers, string, free);
                 free (string);
             }
             //  Get next frame, leave current untouched
@@ -398,6 +413,27 @@ s_options_count (const char *key, void *item, void *argument)
 //  Serialize options key=value pair
 static int
 s_options_write (const char *key, void *item, void *argument)
+{
+    fmq_msg_t *self = (fmq_msg_t *) argument;
+    char string [STRING_MAX + 1];
+    snprintf (string, STRING_MAX, "%s=%s", key, (char *) item);
+    size_t string_size;
+    PUT_STRING (string);
+    return 0;
+}
+
+//  Count size of key=value pair
+static int
+s_cache_count (const char *key, void *item, void *argument)
+{
+    fmq_msg_t *self = (fmq_msg_t *) argument;
+    self->cache_bytes += strlen (key) + 1 + strlen ((char *) item) + 1;
+    return 0;
+}
+
+//  Serialize cache key=value pair
+static int
+s_cache_write (const char *key, void *item, void *argument)
 {
     fmq_msg_t *self = (fmq_msg_t *) argument;
     char string [STRING_MAX + 1];
@@ -487,6 +523,14 @@ fmq_msg_send (fmq_msg_t **self_p, void *output)
                 zhash_foreach (self->options, s_options_count, self);
             }
             frame_size += self->options_bytes;
+            //  cache is an array of key=value strings
+            frame_size++;       //  Size is one octet
+            if (self->cache) {
+                self->cache_bytes = 0;
+                //  Add up size of dictionary contents
+                zhash_foreach (self->cache, s_cache_count, self);
+            }
+            frame_size += self->cache_bytes;
             break;
             
         case FMQ_MSG_ICANHAZ_OK:
@@ -597,6 +641,12 @@ fmq_msg_send (fmq_msg_t **self_p, void *output)
             if (self->options != NULL) {
                 PUT_NUMBER1 (zhash_size (self->options));
                 zhash_foreach (self->options, s_options_write, self);
+            }
+            else
+                PUT_NUMBER1 (0);    //  Empty dictionary
+            if (self->cache != NULL) {
+                PUT_NUMBER1 (zhash_size (self->cache));
+                zhash_foreach (self->cache, s_cache_write, self);
             }
             else
                 PUT_NUMBER1 (0);    //  Empty dictionary
@@ -774,11 +824,13 @@ int
 fmq_msg_send_icanhaz (
     void *output,
     char *path,
-    zhash_t *options)
+    zhash_t *options,
+    zhash_t *cache)
 {
     fmq_msg_t *self = fmq_msg_new (FMQ_MSG_ICANHAZ);
     fmq_msg_path_set (self, path);
     fmq_msg_options_set (self, zhash_dup (options));
+    fmq_msg_cache_set (self, zhash_dup (cache));
     return fmq_msg_send (&self, output);
 }
 
@@ -933,6 +985,7 @@ fmq_msg_dup (fmq_msg_t *self)
         case FMQ_MSG_ICANHAZ:
             copy->path = strdup (self->path);
             copy->options = zhash_dup (self->options);
+            copy->cache = zhash_dup (self->cache);
             break;
 
         case FMQ_MSG_ICANHAZ_OK:
@@ -977,6 +1030,15 @@ fmq_msg_dup (fmq_msg_t *self)
 //  Dump options key=value pair to stdout
 int
 s_options_dump (const char *key, void *item, void *argument)
+{
+    fmq_msg_t *self = (fmq_msg_t *) argument;
+    printf ("        %s=%s\n", key, (char *) item);
+    return 0;
+}
+
+//  Dump cache key=value pair to stdout
+int
+s_cache_dump (const char *key, void *item, void *argument)
 {
     fmq_msg_t *self = (fmq_msg_t *) argument;
     printf ("        %s=%s\n", key, (char *) item);
@@ -1071,6 +1133,10 @@ fmq_msg_dump (fmq_msg_t *self)
             printf ("    options={\n");
             if (self->options)
                 zhash_foreach (self->options, s_options_dump, self);
+            printf ("    }\n");
+            printf ("    cache={\n");
+            if (self->cache)
+                zhash_foreach (self->cache, s_cache_dump, self);
             printf ("    }\n");
             break;
             
@@ -1457,16 +1523,95 @@ fmq_msg_options_insert (fmq_msg_t *self, char *key, char *format, ...)
     va_end (argptr);
 
     //  Store string in hash table
-    if (!self->options)
+    if (!self->options) {
         self->options = zhash_new ();
-    if (zhash_insert (self->options, key, string) == 0)
-        zhash_freefn (self->options, key, free);
+        zhash_autofree (self->options);
+    }
+    zhash_update (self->options, key, string);
 }
 
 size_t
 fmq_msg_options_size (fmq_msg_t *self)
 {
     return zhash_size (self->options);
+}
+
+
+//  --------------------------------------------------------------------------
+//  Get/set the cache field
+
+zhash_t *
+fmq_msg_cache (fmq_msg_t *self)
+{
+    assert (self);
+    return self->cache;
+}
+
+//  Greedy function, takes ownership of cache; if you don't want that
+//  then use zhash_dup() to pass a copy of cache
+
+void
+fmq_msg_cache_set (fmq_msg_t *self, zhash_t *cache)
+{
+    assert (self);
+    zhash_destroy (&self->cache);
+    self->cache = cache;
+}
+
+//  --------------------------------------------------------------------------
+//  Get/set a value in the cache dictionary
+
+char *
+fmq_msg_cache_string (fmq_msg_t *self, char *key, char *default_value)
+{
+    assert (self);
+    char *value = NULL;
+    if (self->cache)
+        value = (char *) (zhash_lookup (self->cache, key));
+    if (!value)
+        value = default_value;
+
+    return value;
+}
+
+uint64_t
+fmq_msg_cache_number (fmq_msg_t *self, char *key, uint64_t default_value)
+{
+    assert (self);
+    uint64_t value = default_value;
+    char *string;
+    if (self->cache)
+        string = (char *) (zhash_lookup (self->cache, key));
+    if (string)
+        value = atol (string);
+
+    return value;
+}
+
+void
+fmq_msg_cache_insert (fmq_msg_t *self, char *key, char *format, ...)
+{
+    //  Format string into buffer
+    assert (self);
+    va_list argptr;
+    va_start (argptr, format);
+    char *string = (char *) malloc (STRING_MAX + 1);
+    assert (string);
+    vsnprintf (string, STRING_MAX, format, argptr);
+    va_end (argptr);
+
+    //  Store string in hash table
+    if (!self->cache) {
+        self->cache = zhash_new ();
+        zhash_autofree (self->cache);
+    }
+    zhash_update (self->cache, key, string);
+}
+
+size_t
+fmq_msg_cache_size (fmq_msg_t *self)
+{
+    return zhash_size (self->cache);
 }
 
 
@@ -1631,10 +1776,11 @@ fmq_msg_headers_insert (fmq_msg_t *self, char *key, char *format, ...)
     va_end (argptr);
 
     //  Store string in hash table
-    if (!self->headers)
+    if (!self->headers) {
         self->headers = zhash_new ();
-    if (zhash_insert (self->headers, key, string) == 0)
-        zhash_freefn (self->headers, key, free);
+        zhash_autofree (self->headers);
+    }
+    zhash_update (self->headers, key, string);
 }
 
 size_t
@@ -1759,6 +1905,8 @@ fmq_msg_test (bool verbose)
     fmq_msg_path_set (self, "Life is short but Now lasts for ever");
     fmq_msg_options_insert (self, "Name", "Brutus");
     fmq_msg_options_insert (self, "Age", "%d", 43);
+    fmq_msg_cache_insert (self, "Name", "Brutus");
+    fmq_msg_cache_insert (self, "Age", "%d", 43);
     fmq_msg_send (&self, output);
     
     self = fmq_msg_recv (input);
@@ -1767,6 +1915,9 @@ fmq_msg_test (bool verbose)
     assert (fmq_msg_options_size (self) == 2);
     assert (streq (fmq_msg_options_string (self, "Name", "?"), "Brutus"));
     assert (fmq_msg_options_number (self, "Age", 0) == 43);
+    assert (fmq_msg_cache_size (self) == 2);
+    assert (streq (fmq_msg_cache_string (self, "Name", "?"), "Brutus"));
+    assert (fmq_msg_cache_number (self, "Age", 0) == 43);
     fmq_msg_destroy (&self);
 
     self = fmq_msg_new (FMQ_MSG_ICANHAZ_OK);

@@ -354,7 +354,7 @@ client_apply_config (client_t *self)
             entry = fmq_config_next (entry);
         }
 .for class.method
-        if (streq (fmq_config_name (section), "$(name)")) {
+        if (streq (fmq_config_name (section), "$(name:c)")) {
 .   for argument
 .       if type = "string"
             char *$(name) = fmq_config_resolve (section, "$(name)", "?");

@@ -2,13 +2,15 @@
 //  Subscription in memory
 typedef struct {
     char *path;                 //  Path we subscribe to
+    zhash_t *cache;             //  Existing files, as digests
 } sub_t;
 
 static sub_t *
-sub_new (client_t *client, char *path)
+sub_new (client_t *client, char *path, zhash_t *cache)
 {
     sub_t *self = (sub_t *) zmalloc (sizeof (sub_t));
     self->path = strdup (path);
+    self->cache = cache;        //  Take ownership
     return self;
 }
 
@@ -18,6 +20,7 @@ sub_destroy (sub_t **self_p)
     assert (self_p);
     if (*self_p) {
         sub_t *self = *self_p;
+        zhash_destroy (&self->cache);
         free (self->path);
         free (self);
         *self_p = NULL;

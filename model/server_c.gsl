@@ -470,8 +470,8 @@ server_apply_config (server_t *self)
                 zclock_log (fmq_config_value (entry));
             entry = fmq_config_next (entry);
         }
-.for class.method
-        if (streq (fmq_config_name (section), "$(name)")) {
+.for class.method where count (argument) > 0
+        if (streq (fmq_config_name (section), "$(name:c)")) {
 .   for argument
 .       if type = "string"
             char *$(name) = fmq_config_resolve (section, "$(name)", "?");

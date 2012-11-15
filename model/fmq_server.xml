@@ -186,17 +186,18 @@ free (password);
 <action name = "store client subscription">
 //  Find mount point with longest match to subscription
 char *path = fmq_msg_path (client->request);
-mount_t *mount = (mount_t *) zlist_first (self->mounts);
-mount_t *match = mount;
-while (mount) {
-    //  If mount->alias is prefix of path and alias is
-    //  longer than previous best then we have a new best
-    if (strncmp (path, mount->alias, strlen (mount->alias)) == 0
-    &&  strlen (mount->alias) > strlen (match->alias))
-        match = mount;
-    mount = (mount_t *) zlist_next (self->mounts);
+
+mount_t *check = (mount_t *) zlist_first (self->mounts);
+mount_t *mount = check;
+while (check) {
+    //  If check->alias is prefix of path and alias is
+    //  longer than current mount then we have a new mount
+    if (strncmp (path, check->alias, strlen (check->alias)) == 0
+    &&  strlen (check->alias) > strlen (mount->alias))
+        mount = check;
+    check = (mount_t *) zlist_next (self->mounts);
 }
-mount_sub_store (match, client, path);
+mount_sub_store (mount, client, client->request);
 </action>
 
 <action name = "store client credit">
@@ -234,9 +235,8 @@ if (client->patch == NULL) {
     client->next_event = finished_event;
     return;
 }
-//  Map filename to logical space
-char *filename = fmq_file_name (fmq_patch_file (client->patch), fmq_patch_path (client->patch));
-fmq_msg_filename_set (client->reply, filename);
+//  Get virtual filename from patch
+fmq_msg_filename_set (client->reply, fmq_patch_virtual (client->patch));
 
 //  We can process a delete patch right away
 if (fmq_patch_op (client->patch) == patch_delete) {
@@ -247,7 +247,8 @@ if (fmq_patch_op (client->patch) == patch_delete) {
     //  No reliability in this version, assume patch delivered safely
     fmq_patch_destroy (&client->patch);
 }
-else {
+else
+if (fmq_patch_op (client->patch) == patch_create) {
     //  Create patch refers to file, open that for input if needed
     if (client->file == NULL) {
         client->file = fmq_file_dup (fmq_patch_file (client->patch));

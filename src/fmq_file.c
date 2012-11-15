@@ -409,6 +409,55 @@ fmq_file_close (fmq_file_t *self)
 
 
 //  --------------------------------------------------------------------------
+//  Return file handle, if opened
+
+FILE *
+fmq_file_handle (fmq_file_t *self)
+{
+    assert (self);
+    return self->handle;
+}
+
+
+//  --------------------------------------------------------------------------
+//  Return file SHA-1 hash as string; caller has to free it
+
+char *
+fmq_file_hash (fmq_file_t *self)
+{
+    assert (self);
+    
+    int rc = fmq_file_input (self);
+    if (rc == -1)
+        return "";              //  Problem reading directory
+
+    //  Now calculate hash for file data, chunk by chunk
+    fmq_hash_t *hash = fmq_hash_new ();
+    size_t blocksz = 65535;
+
+    fmq_chunk_t *chunk = fmq_chunk_read (self->handle, blocksz);
+    while (fmq_chunk_size (chunk)) {
+        fmq_hash_update (hash, fmq_chunk_data (chunk), fmq_chunk_size (chunk));
+        fmq_chunk_destroy (&chunk);
+        chunk = fmq_chunk_read (self->handle, blocksz);
+    }
+    fmq_chunk_destroy (&chunk);
+    fmq_file_close (self);
+
+    //  Convert to printable string
+    char hex_char [] = "0123456789ABCDEF";
+    char *hashstr = zmalloc (fmq_hash_size (hash) * 2 + 1);
+    int byte_nbr;
+    for (byte_nbr = 0; byte_nbr < fmq_hash_size (hash); byte_nbr++) {
+        hashstr [byte_nbr * 2 + 0] = hex_char [fmq_hash_data (hash) [byte_nbr] >> 4];
+        hashstr [byte_nbr * 2 + 1] = hex_char [fmq_hash_data (hash) [byte_nbr] & 15];
+    }
+    fmq_hash_destroy (&hash);
+    return hashstr;
+}
+
+
+//  --------------------------------------------------------------------------
 //  Self test of this class
 
 int

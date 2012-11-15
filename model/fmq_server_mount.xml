@@ -64,7 +64,7 @@ mount_refresh (mount_t *self, server_t *server)
 {
     bool activity = false;
 
-    //  Get latest snapshot and build a patches list if it's activity
+    //  Get latest snapshot and build a patches list for any changes
     fmq_dir_t *latest = fmq_dir_new (self->location, NULL);
     zlist_t *patches = fmq_dir_diff (self->dir, latest);
 
@@ -72,6 +72,26 @@ mount_refresh (mount_t *self, server_t *server)
     fmq_dir_destroy (&self->dir);
     self->dir = latest;
 
+    //  Compute virtual file names for all patches
+    fmq_patch_t *patch = (fmq_patch_t *) zlist_first (patches);
+    while (patch) {
+        //  Get filename without path
+        char *filename = fmq_file_name (fmq_patch_file (patch),
+                                        fmq_patch_path (patch));
+        assert (*filename != '/');
+        
+        //  Now put mount alias in front of that
+        char *virtual = malloc (strlen (self->alias) + strlen (filename) + 2);
+        strcpy (virtual, self->alias);
+        if (virtual [strlen (virtual) - 1] != '/')
+            strcat (virtual, "/");
+        strcat (virtual, filename);
+        fmq_patch_virtual_set (patch, virtual);
+        free (virtual);
+        
+        patch = (fmq_patch_t *) zlist_next (patches);
+    }
+    
     //  Copy new patches to clients' patches list
     sub_t *sub = (sub_t *) zlist_first (self->subs);
     while (sub) {
@@ -92,11 +112,11 @@ mount_refresh (mount_t *self, server_t *server)
 //  Store subscription for mount point
 
 static void
-mount_sub_store (mount_t *self, client_t *client, char *path)
+mount_sub_store (mount_t *self, client_t *client, fmq_msg_t *request)
 {
     //  Store subscription along with any previous ones
     //  Coalesce subscriptions that are on same path
-
+    char *path = fmq_msg_path (request);
     sub_t *sub = (sub_t *) zlist_first (self->subs);
     while (sub) {
         if (client == sub->client) {
@@ -107,6 +127,7 @@ mount_sub_store (mount_t *self, client_t *client, char *path)
             //  If new subscription is superset of old one, remove old
             if (strncmp (sub->path, path, strlen (path)) == 0) {
                 zlist_remove (self->subs, sub);
+                sub_destroy (&sub);
                 sub = (sub_t *) zlist_first (self->subs);
             }
             else
@@ -116,7 +137,7 @@ mount_sub_store (mount_t *self, client_t *client, char *path)
             sub = (sub_t *) zlist_next (self->subs);
     }
     //  New subscription for this client, append to our list
-    sub = sub_new (client, path);
+    sub = sub_new (client, path, fmq_msg_cache (request));
     zlist_append (self->subs, sub);
 }
 

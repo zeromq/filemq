@@ -40,6 +40,7 @@
     ICANHAZ - Client subscribes to a path
         path          string
         options       dictionary
+        cache         dictionary
     ICANHAZ_OK - Server confirms the subscription
     NOM - Client sends credit to the server
         credit        number 8
@@ -127,7 +128,8 @@ int
 int
     fmq_msg_send_icanhaz (void *output,
         char *path,
-        zhash_t *options);
+        zhash_t *options,
+        zhash_t *cache);
     
 //  Send the ICANHAZ_OK to the output in one step
 int
@@ -248,6 +250,22 @@ void
     fmq_msg_options_insert (fmq_msg_t *self, char *key, char *format, ...);
 size_t
     fmq_msg_options_size (fmq_msg_t *self);
+
+//  Get/set the cache field
+zhash_t *
+    fmq_msg_cache (fmq_msg_t *self);
+void
+    fmq_msg_cache_set (fmq_msg_t *self, zhash_t *cache);
+    
+//  Get/set a value in the cache dictionary
+char *
+    fmq_msg_cache_string (fmq_msg_t *self, char *key, char *default_value);
+uint64_t
+    fmq_msg_cache_number (fmq_msg_t *self, char *key, uint64_t default_value);
+void
+    fmq_msg_cache_insert (fmq_msg_t *self, char *key, char *format, ...);
+size_t
+    fmq_msg_cache_size (fmq_msg_t *self);
 
 //  Get/set the credit field
 uint64_t

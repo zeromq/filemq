@@ -35,6 +35,7 @@ Server grants the client access
 Client subscribes to a path
     <field name = "path" type = "string" />
     <field name = "options" type = "dictionary" />
+    <field name = "cache" type = "dictionary" />
 </message>
 
 <message name = "ICANHAZ-OK" id = "6">

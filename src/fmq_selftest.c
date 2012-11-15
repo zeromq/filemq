@@ -44,7 +44,7 @@ int main (int argc, char *argv [])
         fmq_dir_test (verbose);
         fmq_msg_test (verbose);
         fmq_sasl_test (verbose);
-        fmq_sha_test (verbose);
+        fmq_hash_test (verbose);
         fmq_config_test (verbose);
         fmq_server_test (verbose);
         fmq_client_test (verbose);
@@ -70,7 +70,6 @@ int main (int argc, char *argv [])
         fmq_client_configure (client, "client_test.cfg");
         fmq_client_setoption (client, "client/inbox", "./fmqroot/recv");
         fmq_client_connect   (client, "tcp://localhost:5670");
-        fmq_client_subscribe (client, "/");
         fmq_client_subscribe (client, "/photos");
         fmq_client_subscribe (client, "/logs");
     }

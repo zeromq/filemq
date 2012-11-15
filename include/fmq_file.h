@@ -96,6 +96,14 @@ int
 void
     fmq_file_close (fmq_file_t *self);
     
+//  Return file handle, if opened
+FILE *
+    fmq_file_handle (fmq_file_t *self);
+
+//  Return file SHA-1 hash as string; caller has to free it
+char *
+    fmq_file_hash (fmq_file_t *self);
+
 //  Self test of this class
 int
     fmq_file_test (bool verbose);

@@ -156,7 +156,7 @@ fmq_chunk_data (fmq_chunk_t *self)
 
 
 //  --------------------------------------------------------------------------
-//  Read chunk to an open file descriptor
+//  Read chunk from an open file descriptor
 
 fmq_chunk_t *
 fmq_chunk_read (FILE *handle, size_t bytes)

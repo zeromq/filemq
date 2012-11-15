@@ -36,6 +36,11 @@
 #define FMQ_VERSION \
     FMQ_MAKE_VERSION(FMQ_VERSION_MAJOR, FMQ_VERSION_MINOR, FMQ_VERSION_PATCH)
 
+//  Maximum length of a path + filename
+#ifndef PATH_MAX
+#define PATH_MAX    1024
+#endif
+
 //  These are reusable utility classes
 //  TODO: the generators and required classes should not be part of FMQ
 //  as such, but a separate project so they can be reused more widely.
@@ -44,7 +49,7 @@
 #include "fmq_dir.h"
 #include "fmq_patch.h"
 #include "fmq_sasl.h"
-#include "fmq_sha.h"
+#include "fmq_hash.h"
 #include "fmq_config.h"
 
 //  These are specific to the FileMQ implementation

@@ -23,6 +23,7 @@ This is the FILEMQ/1.0 client protocol handler
 
 <state name = "subscribing">
     <event name = "ok" next = "subscribing">
+        <action name = "format icanhaz command" />
         <action name = "send" message = "ICANHAZ" />
         <action name = "get next subscription" />
     </event>
@@ -40,6 +41,7 @@ This is the FILEMQ/1.0 client protocol handler
         <action name = "send" message = "HUGZ-OK" />
     </event>
     <event name = "subscribe">
+        <action name = "format icanhaz command" />
         <action name = "send" message = "ICANHAZ" />
     </event>
     <event name = "send credit">
@@ -74,6 +76,7 @@ This is the FILEMQ/1.0 client protocol handler
 <context>
 bool connected;             //  Are we connected to server?
 zlist_t *subs;              //  Subscriptions
+sub_t *sub;                 //  Subscription we want to send
 size_t credit;              //  Current credit pending
 fmq_file_t *file;           //  File we're writing to
 </context>
@@ -113,23 +116,24 @@ self->connected = true;
 </action>
 
 <action name = "get first subscription">
-sub_t *sub = (sub_t *) zlist_first (self->subs);
-if (sub) {
-    fmq_msg_path_set (self->request, sub->path);
+self->sub = (sub_t *) zlist_first (self->subs);
+if (self->sub)
     self->next_event = ok_event;
-}
 else
     self->next_event = finished_event;
 </action>
 
 <action name = "get next subscription">
-sub_t *sub = (sub_t *) zlist_next (self->subs);
-if (sub) {
-    fmq_msg_path_set (self->request, sub->path);
+self->sub = (sub_t *) zlist_next (self->subs);
+if (self->sub)
     self->next_event = ok_event;
-}
 else
     self->next_event = finished_event;
+</action>
+
+<action name = "format icanhaz command">
+fmq_msg_path_set (self->request, self->sub->path);
+fmq_msg_cache_set (self->request, zhash_dup (self->sub->cache));
 </action>
 
 <action name = "refill credit as needed">
@@ -148,6 +152,10 @@ if (credit_to_send) {
 <action name = "process the patch">
 char *inbox = fmq_config_resolve (self->config, "client/inbox", ".inbox");
 char *filename = fmq_msg_filename (self->reply);
+
+//  Filenames from server must start with slash, which we skip
+assert (*filename == '/');
+filename++;                 
 
 if (fmq_msg_operation (self->reply) == FMQ_MSG_FILE_CREATE) {
     if (self->file == NULL) {
@@ -169,6 +177,7 @@ if (fmq_msg_operation (self->reply) == FMQ_MSG_FILE_CREATE) {
     else
         //  Zero-sized chunk means end of file
         fmq_file_destroy (&self->file);
+        
     fmq_chunk_destroy (&chunk);
 }
 else
@@ -201,27 +210,30 @@ self->next_event = terminate_event;
 <argument name = "path" type = "string" />
 //  Store subscription along with any previous ones
 //  Check we don't already have a subscription for this path
-sub_t *sub = (sub_t *) zlist_first (self->subs);
-while (sub) {
-    if (streq (path, sub->path))
+self->sub = (sub_t *) zlist_first (self->subs);
+while (self->sub) {
+    if (streq (path, self->sub->path))
         return;
-    sub = (sub_t *) zlist_next (self->subs);
+    self->sub = (sub_t *) zlist_next (self->subs);
 }
 //  Subscription path must start with '/'
 //  We'll do better error handling later
 assert (*path == '/');
 
-//  New subscription, so store it for later replay
-sub = sub_new (self, path);
-zlist_append (self->subs, sub);
-zclock_log ("I: subscribing directory %s as '%s'",
-    fmq_config_resolve (self->config, "client/inbox", ".inbox"), path, path);
-    
+//  Get directory cache for this path
+char *inbox = fmq_config_resolve (self->config, "client/inbox", ".inbox");
+fmq_dir_t *dir = fmq_dir_new (path + 1, inbox);
+zhash_t *cache = dir? fmq_dir_cache (dir): NULL;
+fmq_dir_destroy (&dir);
+
+//  New subscription, store it for later replay
+self->sub = sub_new (self, path, cache);
+zlist_append (self->subs, self->sub);
+zclock_log ("I: subscribe to %s as %s%s", path, inbox, path);
+
 //  If we're connected, then also send to server
-if (self->connected) {
-    fmq_msg_path_set (self->request, path);
+if (self->connected)
     self->next_event = subscribe_event;
-}
 </method>
 
 <method name = "set inbox">

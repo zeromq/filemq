@@ -5,19 +5,40 @@
 typedef struct {
     client_t *client;           //  Always refers to live client
     char *path;                 //  Path client is subscribed to
+    zhash_t *cache;             //  Client's cache list
 } sub_t;
 
+static int
+s_resolve_cache_path (const char *key, void *item, void *argument);
 
 //  --------------------------------------------------------------------------
 //  Constructor
 
 static sub_t *
-sub_new (client_t *client, char *path)
+sub_new (client_t *client, char *path, zhash_t *cache)
 {
     sub_t *self = (sub_t *) zmalloc (sizeof (sub_t));
     self->client = client;
     self->path = strdup (path);
+    self->cache = zhash_dup (cache);
+    zhash_foreach (self->cache, s_resolve_cache_path, self);
     return self;
+}
+
+//  Cached filenames may be local, in which case prefix them with
+//  the subscription path so we can do a consistent match.
+
+static int
+s_resolve_cache_path (const char *key, void *item, void *argument)
+{
+    sub_t *self = (sub_t *) argument;
+    if (*key != '/') {
+        char *new_key = malloc (strlen (self->path) + strlen (key) + 2);
+        sprintf (new_key, "%s/%s", self->path, key);
+        zhash_rename (self->cache, key, new_key);
+        free (new_key);
+    }
+    return 0;
 }
 
 
@@ -30,11 +51,13 @@ sub_destroy (sub_t **self_p)
     assert (self_p);
     if (*self_p) {
         sub_t *self = *self_p;
+        zhash_destroy (&self->cache);
         free (self->path);
         free (self);
         *self_p = NULL;
     }
 }
+
 
 //  --------------------------------------------------------------------------
 //  Add patch to sub client patches list
@@ -42,12 +65,19 @@ sub_destroy (sub_t **self_p)
 static void
 sub_patch_add (sub_t *self, fmq_patch_t *patch)
 {
-    //  Delete duplicate patches
+    //  Skip file creation if client already has identical file
+    if (fmq_patch_op (patch) == patch_create) {
+        char *hashstr = zhash_lookup (self->cache, fmq_patch_virtual (patch));
+        if (hashstr && strcasecmp (hashstr, fmq_patch_hashstr (patch)) == 0)
+            return;             //  Just skip patch for this client
+    }
+    //  Remove any previous patches for the same file
     fmq_patch_t *existing = (fmq_patch_t *) zlist_first (self->client->patches);
     while (existing) {
         if (streq (fmq_file_name (fmq_patch_file (patch), NULL),
-                    fmq_file_name (fmq_patch_file (existing), NULL))) {
+                   fmq_file_name (fmq_patch_file (existing), NULL))) {
             zlist_remove (self->client->patches, existing);
+            fmq_patch_destroy (&existing);
             break;
         }
         existing = (fmq_patch_t *) zlist_next (self->client->patches);

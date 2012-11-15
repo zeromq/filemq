@@ -72,6 +72,12 @@ void
 void
     fmq_dir_dump (fmq_dir_t *self, int indent);
     
+//  Load directory cache; returns a hash table containing the SHA-1 digests
+//  of every file in the tree. The cache is saved between runs in .cache.
+//  The caller must destroy the hash table when done with it.
+zhash_t *
+    fmq_dir_cache (fmq_dir_t *self);
+
 //  Self test of this class
 int
     fmq_dir_test (bool verbose);
