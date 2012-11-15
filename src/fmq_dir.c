@@ -249,10 +249,11 @@ fmq_dir_count (fmq_dir_t *self)
 //  --------------------------------------------------------------------------
 //  Calculate differences between two versions of a directory tree
 //  Returns a list of fmq_patch_t patches. Either older or newer may
-//  be null, indicating the directory is empty/absent.
+//  be null, indicating the directory is empty/absent. If alias is set,
+//  generates virtual filename (minus path, plus alias).
 
 zlist_t *
-fmq_dir_diff (fmq_dir_t *older, fmq_dir_t *newer)
+fmq_dir_diff (fmq_dir_t *older, fmq_dir_t *newer, char *alias)
 {
     zlist_t *patches = zlist_new ();
     fmq_file_t **old_files = fmq_dir_flatten (older);
@@ -279,14 +280,14 @@ fmq_dir_diff (fmq_dir_t *older, fmq_dir_t *newer)
         if (cmp > 0) {
             //  New file was created
             if (fmq_file_stable (new))
-                zlist_append (patches, fmq_patch_new (newer->path, new, patch_create));
+                zlist_append (patches, fmq_patch_new (newer->path, new, patch_create, alias));
             old_index--;
         }
         else
         if (cmp < 0) {
             //  Old file was deleted
             if (fmq_file_stable (old))
-                zlist_append (patches, fmq_patch_new (older->path, old, patch_delete));
+                zlist_append (patches, fmq_patch_new (older->path, old, patch_delete, alias));
             new_index--;
         }
         else
@@ -297,11 +298,11 @@ fmq_dir_diff (fmq_dir_t *older, fmq_dir_t *newer)
                 //  Could better do SHA check on file here
                 if (fmq_file_time (new) != fmq_file_time (old)
                 ||  fmq_file_size (new) != fmq_file_size (old))
-                    zlist_append (patches, fmq_patch_new (newer->path, new, patch_create));
+                    zlist_append (patches, fmq_patch_new (newer->path, new, patch_create, alias));
             }
             else
                 //  File was created over some period of time
-                zlist_append (patches, fmq_patch_new (newer->path, new, patch_create));
+                zlist_append (patches, fmq_patch_new (newer->path, new, patch_create, alias));
         }
         old_index++;
         new_index++;
@@ -309,6 +310,27 @@ fmq_dir_diff (fmq_dir_t *older, fmq_dir_t *newer)
     free (old_files);
     free (new_files);
     
+    return patches;
+}
+
+
+//  --------------------------------------------------------------------------
+//  Return full contents of directory as a patch list. If alias is set,
+//  generates virtual filename (minus path, plus alias).
+
+zlist_t *
+fmq_dir_resync (fmq_dir_t *self, char *alias)
+{
+    zlist_t *patches = zlist_new ();
+    fmq_file_t **files = fmq_dir_flatten (self);
+    uint index;
+    for (index = 0;; index++) {
+        fmq_file_t *file = files [index];
+        if (!file)
+            break;
+        zlist_append (patches, fmq_patch_new (self->path, file, patch_create, alias));
+    }
+    free (files);
     return patches;
 }
 
@@ -328,6 +350,8 @@ s_dir_compare (void *item1, void *item2)
 }
 
 //  Compare two files, true if they need swapping
+//  We sort by ascending name
+
 static bool
 s_file_compare (void *item1, void *item2)
 {
@@ -357,6 +381,10 @@ s_dir_flatten (fmq_dir_t *self, fmq_file_t **files, int index)
     }
     return index;
 }
+
+
+//  --------------------------------------------------------------------------
+//  Return sorted array of file references
 
 fmq_file_t **
 fmq_dir_flatten (fmq_dir_t *self)
@@ -429,27 +457,6 @@ fmq_dir_dump (fmq_dir_t *self, int indent)
 }
 
 
-static void
-s_dir_recache (fmq_dir_t *self, char *root, zhash_t *cache)
-{
-    //  Process files in directory
-    fmq_file_t *file = (fmq_file_t *) zlist_first (self->files);
-    while (file) {
-        char *filename = fmq_file_name (file, root);
-        if (zhash_lookup (cache, fmq_file_name (file, root)) == NULL)
-            zhash_insert (cache, filename, fmq_file_hash (file));
-        file = (fmq_file_t *) zlist_next (self->files);
-    }
-    
-    //  Recurse to subdirectories 
-    fmq_dir_t *subdir = (fmq_dir_t *) zlist_first (self->subdirs);
-    while (subdir) {
-        s_dir_recache (subdir, root, cache);
-        subdir = (fmq_dir_t *) zlist_next (self->subdirs);
-    }
-}
-
-
 //  --------------------------------------------------------------------------
 //  Load directory cache; returns a hash table containing the SHA-1 digests
 //  of every file in the tree. The cache is saved between runs in .cache.
@@ -459,11 +466,27 @@ zhash_t *
 fmq_dir_cache (fmq_dir_t *self)
 {
     assert (self);
+    
+    //  Load any previous cache from disk
     zhash_t *cache = zhash_new ();
     char *cache_file = malloc (strlen (self->path) + strlen ("/.cache") + 1);
     sprintf (cache_file, "%s/.cache", self->path);
     zhash_load (cache, cache_file);
-    s_dir_recache (self, self->path, cache);
+
+    //  Recalculate digest for any new files
+    fmq_file_t **files = fmq_dir_flatten (self);
+    uint index;
+    for (index = 0;; index++) {
+        fmq_file_t *file = files [index];
+        if (!file)
+            break;
+        char *filename = fmq_file_name (file, self->path);
+        if (zhash_lookup (cache, fmq_file_name (file, self->path)) == NULL)
+            zhash_insert (cache, filename, fmq_file_hash (file));
+    }
+    free (files);
+
+    //  Save cache to disk for future reference
     zhash_save (cache, cache_file);
     free (cache_file);
     return cache;
@@ -484,7 +507,7 @@ fmq_dir_test (bool verbose)
         fmq_dir_dump (older, 0);
     }
     fmq_dir_t *newer = fmq_dir_new ("..", NULL);
-    zlist_t *patches = fmq_dir_diff (older, newer);
+    zlist_t *patches = fmq_dir_diff (older, newer, "/");
     assert (patches);
     while (zlist_size (patches)) {
         fmq_patch_t *patch = (fmq_patch_t *) zlist_pop (patches);

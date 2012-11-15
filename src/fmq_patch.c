@@ -34,23 +34,31 @@ struct _fmq_patch_t {
     char *virtual;              //  Virtual file name
     fmq_file_t *file;           //  File we refer to
     fmq_patch_op_t op;          //  Operation
-    char *hashstr;              //  File hash digest
+    char *digest;               //  File SHA-1 digest
 };
 
 
 //  --------------------------------------------------------------------------
 //  Constructor
-//  Create new patch
+//  Create new patch, create virtual path from alias
 
 fmq_patch_t *
-fmq_patch_new (char *path, fmq_file_t *file, fmq_patch_op_t op)
+fmq_patch_new (char *path, fmq_file_t *file, fmq_patch_op_t op, char *alias)
 {
     fmq_patch_t *self = (fmq_patch_t *) zmalloc (sizeof (fmq_patch_t));
     self->path = strdup (path);
     self->file = fmq_file_dup (file);
     self->op = op;
-    if (self->op == patch_create)
-        self->hashstr = fmq_file_hash (self->file);
+    
+    //  Calculate virtual filename for patch (remove path, prefix alias)
+    char *filename = fmq_file_name (file, path);
+    assert (*filename != '/');
+    self->virtual = malloc (strlen (alias) + strlen (filename) + 2);
+    if (alias [strlen (alias) - 1] == '/')
+        sprintf (self->virtual, "%s%s", alias, filename);
+    else
+        sprintf (self->virtual, "%s/%s", alias, filename);
+    
     return self;
 }
 
@@ -66,7 +74,7 @@ fmq_patch_destroy (fmq_patch_t **self_p)
         fmq_patch_t *self = *self_p;
         free (self->path);
         free (self->virtual);
-        free (self->hashstr);
+        free (self->digest);
         fmq_file_destroy (&self->file);
         free (self);
         *self_p = NULL;
@@ -84,9 +92,9 @@ fmq_patch_dup (fmq_patch_t *self)
     copy->path = strdup (self->path);
     copy->file = fmq_file_dup (self->file);
     copy->op = self->op;
+    copy->virtual = strdup (self->virtual);
     //  Don't recalculate hash when we duplicate patch
-    copy->hashstr = self->hashstr? strdup (self->hashstr): NULL;
-    copy->virtual = self->virtual? strdup (self->virtual): NULL;
+    copy->digest = self->digest? strdup (self->digest): NULL;
     return copy;
 }
 
@@ -136,14 +144,14 @@ fmq_patch_virtual (fmq_patch_t *self)
 
 
 //  --------------------------------------------------------------------------
-//  Set patch virtual file name
+//  Calculate hash digest for file (create only)
 
-void
-fmq_patch_virtual_set (fmq_patch_t *self, char *virtual)
+fmq_patch_t *
+fmq_patch_digest_set (fmq_patch_t *self)
 {
-    assert (self);
-    free (self->virtual);
-    self->virtual = strdup (virtual);
+    if (self->op == patch_create
+    &&  self->digest == NULL)
+        self->digest = fmq_file_hash (self->file);
 }
 
 
@@ -151,10 +159,10 @@ fmq_patch_virtual_set (fmq_patch_t *self, char *virtual)
 //  Return hash digest for patch file (create only)
 
 char *
-fmq_patch_hashstr (fmq_patch_t *self)
+fmq_patch_digest (fmq_patch_t *self)
 {
     assert (self);
-    return self->hashstr;
+    return self->digest;
 }
 
 
@@ -166,13 +174,12 @@ fmq_patch_test (bool verbose)
     printf (" * fmq_patch: ");
 
     fmq_file_t *file = fmq_file_new (".", "bilbo");
-    fmq_patch_t *patch = fmq_patch_new (".", file, patch_create);
+    fmq_patch_t *patch = fmq_patch_new (".", file, patch_create, "/");
     fmq_file_destroy (&file);
     
     file = fmq_patch_file (patch);
     assert (streq (fmq_file_name (file, "."), "bilbo"));
-    fmq_patch_virtual_set (patch, "/virtual/path");
-    assert (streq (fmq_patch_virtual (patch), "/virtual/path"));
+    assert (streq (fmq_patch_virtual (patch), "/bilbo"));
     fmq_patch_destroy (&patch);
 
     printf ("OK\n");

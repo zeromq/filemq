@@ -127,11 +127,11 @@ fmq_server_publish (fmq_server_t *self, const char *location, const char *alias)
 //  --------------------------------------------------------------------------
 
 void
-fmq_server_set_anonymous (fmq_server_t *self, long access)
+fmq_server_set_anonymous (fmq_server_t *self, long enabled)
 {
     assert (self);
     zstr_sendm (self->pipe, "SET ANONYMOUS");
-    zstr_sendf (self->pipe, "%ld", access);
+    zstr_sendf (self->pipe, "%ld", enabled);
 }
 
 
@@ -288,22 +288,24 @@ static void
 sub_patch_add (sub_t *self, fmq_patch_t *patch)
 {
     //  Skip file creation if client already has identical file
+    fmq_patch_digest_set (patch);
     if (fmq_patch_op (patch) == patch_create) {
-        char *hashstr = zhash_lookup (self->cache, fmq_patch_virtual (patch));
-        if (hashstr && strcasecmp (hashstr, fmq_patch_hashstr (patch)) == 0)
+        char *digest = zhash_lookup (self->cache, fmq_patch_virtual (patch));
+        if (digest && strcasecmp (digest, fmq_patch_digest (patch)) == 0)
             return;             //  Just skip patch for this client
     }
     //  Remove any previous patches for the same file
     fmq_patch_t *existing = (fmq_patch_t *) zlist_first (self->client->patches);
     while (existing) {
-        if (streq (fmq_file_name (fmq_patch_file (patch), NULL),
-                   fmq_file_name (fmq_patch_file (existing), NULL))) {
+        if (streq (fmq_patch_virtual (patch), fmq_patch_virtual (existing))) {
             zlist_remove (self->client->patches, existing);
             fmq_patch_destroy (&existing);
             break;
         }
         existing = (fmq_patch_t *) zlist_next (self->client->patches);
     }
+    //  Track that we've queued patch for client, so we don't do it twice
+    zhash_insert (self->cache, fmq_patch_digest (patch), fmq_patch_virtual (patch));
     zlist_append (self->client->patches, fmq_patch_dup (patch));
 }
 
@@ -374,32 +376,12 @@ mount_refresh (mount_t *self, server_t *server)
 
     //  Get latest snapshot and build a patches list for any changes
     fmq_dir_t *latest = fmq_dir_new (self->location, NULL);
-    zlist_t *patches = fmq_dir_diff (self->dir, latest);
+    zlist_t *patches = fmq_dir_diff (self->dir, latest, self->alias);
 
     //  Drop old directory and replace with latest version
     fmq_dir_destroy (&self->dir);
     self->dir = latest;
 
-    //  Compute virtual file names for all patches
-    fmq_patch_t *patch = (fmq_patch_t *) zlist_first (patches);
-    while (patch) {
-        //  Get filename without path
-        char *filename = fmq_file_name (fmq_patch_file (patch),
-                                        fmq_patch_path (patch));
-        assert (*filename != '/');
-        
-        //  Now put mount alias in front of that
-        char *virtual = malloc (strlen (self->alias) + strlen (filename) + 2);
-        strcpy (virtual, self->alias);
-        if (virtual [strlen (virtual) - 1] != '/')
-            strcat (virtual, "/");
-        strcat (virtual, filename);
-        fmq_patch_virtual_set (patch, virtual);
-        free (virtual);
-        
-        patch = (fmq_patch_t *) zlist_next (patches);
-    }
-    
     //  Copy new patches to clients' patches list
     sub_t *sub = (sub_t *) zlist_first (self->subs);
     while (sub) {
@@ -410,6 +392,12 @@ mount_refresh (mount_t *self, server_t *server)
             activity = true;
         }
         sub = (sub_t *) zlist_next (self->subs);
+    }
+    
+    //  Destroy patches, they've all been copied
+    while (zlist_size (patches)) {
+        fmq_patch_t *patch = (fmq_patch_t *) zlist_pop (patches);
+        fmq_patch_destroy (&patch);
     }
     zlist_destroy (&patches);
     return activity;
@@ -447,6 +435,17 @@ mount_sub_store (mount_t *self, client_t *client, fmq_msg_t *request)
     //  New subscription for this client, append to our list
     sub = sub_new (client, path, fmq_msg_cache (request));
     zlist_append (self->subs, sub);
+
+    //  If client requested resync, send full mount contents now
+    if (fmq_msg_options_number (client->request, "RESYNC", 0) == 1) {
+        zlist_t *patches = fmq_dir_resync (self->dir, self->alias);
+        while (zlist_size (patches)) {
+            fmq_patch_t *patch = (fmq_patch_t *) zlist_pop (patches);
+            sub_patch_add (sub, patch);
+            fmq_patch_destroy (&patch);
+        }
+        zlist_destroy (&patches);
+    }
 }
 
 
@@ -640,9 +639,9 @@ server_apply_config (server_t *self)
         }
         else
         if (streq (fmq_config_name (section), "set_anonymous")) {
-            long access = atoi (fmq_config_resolve (section, "access", ""));
-            //  Enable anonymous access without a config file                          
-            fmq_config_path_set (self->config, "security/anonymous", access? "1" :"0");
+            long enabled = atoi (fmq_config_resolve (section, "enabled", ""));
+            //  Enable anonymous access without a config file                           
+            fmq_config_path_set (self->config, "security/anonymous", enabled? "1" :"0");
         }
         section = fmq_config_next (section);
     }
@@ -669,11 +668,11 @@ server_control_message (server_t *self)
     }
     else
     if (streq (method, "SET ANONYMOUS")) {
-        char *access_string = zmsg_popstr (msg);
-        long access = atoi (access_string);
-        free (access_string);
-        //  Enable anonymous access without a config file                          
-        fmq_config_path_set (self->config, "security/anonymous", access? "1" :"0");
+        char *enabled_string = zmsg_popstr (msg);
+        long enabled = atoi (enabled_string);
+        free (enabled_string);
+        //  Enable anonymous access without a config file                           
+        fmq_config_path_set (self->config, "security/anonymous", enabled? "1" :"0");
     }
     else
     if (streq (method, "CONFIG")) {

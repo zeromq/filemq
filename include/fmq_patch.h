@@ -39,7 +39,7 @@ typedef struct _fmq_patch_t fmq_patch_t;
 
 //  Create new patch
 fmq_patch_t *
-    fmq_patch_new (char *path, fmq_file_t *file, fmq_patch_op_t op);
+    fmq_patch_new (char *path, fmq_file_t *file, fmq_patch_op_t op, char *alias);
 
 //  Destroy a patch
 void
@@ -69,9 +69,13 @@ char *
 void
     fmq_patch_virtual_set (fmq_patch_t *self, char *virtual);
 
-//  Return hash digest for patch file (create only)
+//  Calculate hash digest for file (create only)
+fmq_patch_t *
+    fmq_patch_digest_set (fmq_patch_t *self);
+
+//  Return hash digest for patch file 
 char *
-    fmq_patch_hashstr (fmq_patch_t *self);
+    fmq_patch_digest (fmq_patch_t *self);
     
 //  Self test of this class
 int

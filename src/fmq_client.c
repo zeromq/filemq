@@ -134,6 +134,17 @@ fmq_client_set_inbox (fmq_client_t *self, const char *path)
 }
 
 
+//  --------------------------------------------------------------------------
+
+void
+fmq_client_set_resync (fmq_client_t *self, long enabled)
+{
+    assert (self);
+    zstr_sendm (self->pipe, "SET RESYNC");
+    zstr_sendf (self->pipe, "%ld", enabled);
+}
+
+
 //  ---------------------------------------------------------------------
 //  State machine constants
 
@@ -171,16 +182,18 @@ typedef struct _client_t client_t;
 
 //  Subscription in memory
 typedef struct {
+    client_t *client;           //  Pointer to parent client
+    char *inbox;                //  Inbox location
     char *path;                 //  Path we subscribe to
-    zhash_t *cache;             //  Existing files, as digests
 } sub_t;
 
 static sub_t *
-sub_new (client_t *client, char *path, zhash_t *cache)
+sub_new (client_t *client, char *inbox, char *path)
 {
     sub_t *self = (sub_t *) zmalloc (sizeof (sub_t));
+    self->client = client;
+    self->inbox = strdup (inbox);
     self->path = strdup (path);
-    self->cache = cache;        //  Take ownership
     return self;
 }
 
@@ -190,11 +203,23 @@ sub_destroy (sub_t **self_p)
     assert (self_p);
     if (*self_p) {
         sub_t *self = *self_p;
-        zhash_destroy (&self->cache);
+        free (self->inbox);
         free (self->path);
         free (self);
         *self_p = NULL;
     }
+}
+
+//  Return new cache object for subscription path
+
+static zhash_t *
+sub_cache (sub_t *self)
+{
+    //  Get directory cache for this path
+    fmq_dir_t *dir = fmq_dir_new (self->path + 1, self->inbox);
+    zhash_t *cache = dir? fmq_dir_cache (dir): NULL;
+    fmq_dir_destroy (&dir);
+    return cache;
 }
 
 
@@ -292,16 +317,11 @@ client_apply_config (client_t *self)
             //  We'll do better error handling later                                  
             assert (*path == '/');                                                    
                                                                                       
-            //  Get directory cache for this path                                     
-            char *inbox = fmq_config_resolve (self->config, "client/inbox", ".inbox");
-            fmq_dir_t *dir = fmq_dir_new (path + 1, inbox);                           
-            zhash_t *cache = dir? fmq_dir_cache (dir): NULL;                          
-            fmq_dir_destroy (&dir);                                                   
-                                                                                      
             //  New subscription, store it for later replay                           
-            self->sub = sub_new (self, path, cache);                                  
-            zlist_append (self->subs, self->sub);                                     
+            char *inbox = fmq_config_resolve (self->config, "client/inbox", ".inbox");
             zclock_log ("I: subscribe to %s as %s%s", path, inbox, path);             
+            self->sub = sub_new (self, inbox, path);                                  
+            zlist_append (self->subs, self->sub);                                     
                                                                                       
             //  If we're connected, then also send to server                          
             if (self->connected)                                                      
@@ -311,6 +331,12 @@ client_apply_config (client_t *self)
         if (streq (fmq_config_name (section), "set_inbox")) {
             char *path = fmq_config_resolve (section, "path", "?");
             fmq_config_path_set (self->config, "client/inbox", path);
+        }
+        else
+        if (streq (fmq_config_name (section), "set_resync")) {
+            long enabled = atoi (fmq_config_resolve (section, "enabled", ""));
+            //  Request resynchronization from server                              
+            fmq_config_path_set (self->config, "client/resync", enabled? "1" :"0");
         }
         section = fmq_config_next (section);
     }
@@ -363,8 +389,12 @@ get_next_subscription (client_t *self)
 static void
 format_icanhaz_command (client_t *self)
 {
-    fmq_msg_path_set (self->request, self->sub->path);              
-    fmq_msg_cache_set (self->request, zhash_dup (self->sub->cache));
+    fmq_msg_path_set (self->request, self->sub->path);                        
+    //  If client app wants full resync, send cache to server                 
+    if (atoi (fmq_config_resolve (self->config, "client/resync", "0")) == 1) {
+        fmq_msg_options_insert (self->request, "RESYNC", "1");                
+        fmq_msg_cache_set (self->request, sub_cache (self->sub));             
+    }                                                                         
 }
 
 static void
@@ -644,16 +674,11 @@ control_message (client_t *self)
         //  We'll do better error handling later                                  
         assert (*path == '/');                                                    
                                                                                   
-        //  Get directory cache for this path                                     
-        char *inbox = fmq_config_resolve (self->config, "client/inbox", ".inbox");
-        fmq_dir_t *dir = fmq_dir_new (path + 1, inbox);                           
-        zhash_t *cache = dir? fmq_dir_cache (dir): NULL;                          
-        fmq_dir_destroy (&dir);                                                   
-                                                                                  
         //  New subscription, store it for later replay                           
-        self->sub = sub_new (self, path, cache);                                  
-        zlist_append (self->subs, self->sub);                                     
+        char *inbox = fmq_config_resolve (self->config, "client/inbox", ".inbox");
         zclock_log ("I: subscribe to %s as %s%s", path, inbox, path);             
+        self->sub = sub_new (self, inbox, path);                                  
+        zlist_append (self->subs, self->sub);                                     
                                                                                   
         //  If we're connected, then also send to server                          
         if (self->connected)                                                      
@@ -665,6 +690,14 @@ control_message (client_t *self)
         char *path = zmsg_popstr (msg);
         fmq_config_path_set (self->config, "client/inbox", path);
         free (path);
+    }
+    else
+    if (streq (method, "SET RESYNC")) {
+        char *enabled_string = zmsg_popstr (msg);
+        long enabled = atoi (enabled_string);
+        free (enabled_string);
+        //  Request resynchronization from server                              
+        fmq_config_path_set (self->config, "client/resync", enabled? "1" :"0");
     }
     else
     if (streq (method, "CONNECT")) {

@@ -429,7 +429,7 @@ fmq_file_hash (fmq_file_t *self)
     
     int rc = fmq_file_input (self);
     if (rc == -1)
-        return "";              //  Problem reading directory
+        return NULL;            //  Problem reading directory
 
     //  Now calculate hash for file data, chunk by chunk
     fmq_hash_t *hash = fmq_hash_new ();

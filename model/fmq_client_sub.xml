@@ -1,16 +1,18 @@
 <declare>
 //  Subscription in memory
 typedef struct {
+    client_t *client;           //  Pointer to parent client
+    char *inbox;                //  Inbox location
     char *path;                 //  Path we subscribe to
-    zhash_t *cache;             //  Existing files, as digests
 } sub_t;
 
 static sub_t *
-sub_new (client_t *client, char *path, zhash_t *cache)
+sub_new (client_t *client, char *inbox, char *path)
 {
     sub_t *self = (sub_t *) zmalloc (sizeof (sub_t));
+    self->client = client;
+    self->inbox = strdup (inbox);
     self->path = strdup (path);
-    self->cache = cache;        //  Take ownership
     return self;
 }
 
@@ -20,10 +22,22 @@ sub_destroy (sub_t **self_p)
     assert (self_p);
     if (*self_p) {
         sub_t *self = *self_p;
-        zhash_destroy (&self->cache);
+        free (self->inbox);
         free (self->path);
         free (self);
         *self_p = NULL;
     }
+}
+
+//  Return new cache object for subscription path
+
+static zhash_t *
+sub_cache (sub_t *self)
+{
+    //  Get directory cache for this path
+    fmq_dir_t *dir = fmq_dir_new (self->path + 1, self->inbox);
+    zhash_t *cache = dir? fmq_dir_cache (dir): NULL;
+    fmq_dir_destroy (&dir);
+    return cache;
 }
 </declare>

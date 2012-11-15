@@ -306,9 +306,9 @@ zlist_append (self->mounts, mount);
 </method>
 
 <method name = "set anonymous">
-<argument name = "access" type = "number" />
+<argument name = "enabled" type = "number" />
 //  Enable anonymous access without a config file
-fmq_config_path_set (self->config, "security/anonymous", access? "1" :"0");
+fmq_config_path_set (self->config, "security/anonymous", enabled? "1" :"0");
 </method>
 
 <include filename = "fmq_server_selftest.xml" />

@@ -497,7 +497,7 @@ control_message (client_t *self)
 .       elsif type = "number"
         char *$(name)_string = zmsg_popstr (msg);
         long $(name) = atoi ($(name)_string);
-        free ($(name_string));
+        free ($(name)_string);
 .       endif
 .   endfor
         $(string.trim (method.?''):block                                        )

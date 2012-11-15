@@ -67,7 +67,7 @@ void
 
 //  
 void
-    fmq_server_set_anonymous (fmq_server_t *self, long access);
+    fmq_server_set_anonymous (fmq_server_t *self, long enabled);
 
 //  Self test of this class
 int

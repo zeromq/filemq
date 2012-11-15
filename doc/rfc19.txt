@@ -165,9 +165,9 @@ The 'path' does not have to exist in the server. That is, clients can request pa
 
 The 'options' field provides additional information to the server. The server SHOULD implement these options:
 
-* {{RESYNC=1}} - if the client sets this, the server SHALL send the full contents of the virtual path to the client.
+* {{RESYNC=1}} - if the client sets this, the server SHALL send the full contents of the virtual path to the client, except files the client already has, as identified by their SHA-1 digest in the 'cache' field.
 
-The 'cache' dictionary field tells the server which files the client already has. The server SHOULD respect this information. Each entry in the 'cache' dictionary is a "filename=digest" key/value pair where the digest SHALL be a SHA-1 digest in printable hexadecimal format. If the filename starts with '/' then it SHOULD start with the path, otherwise the server MUST ignore it. If the filename does not start with '/' then the server SHALL treat it as relative to the path.
+When the client specifies the RESYNC option, the 'cache' dictionary field tells the server which files the client already has. Each entry in the 'cache' dictionary is a "filename=digest" key/value pair where the digest SHALL be a SHA-1 digest in printable hexadecimal format. If the filename starts with '/' then it SHOULD start with the path, otherwise the server MUST ignore it. If the filename does not start with '/' then the server SHALL treat it as relative to the path.
 
 ++++ The ICANHAZ-OK Command
 
@@ -211,7 +211,7 @@ The server SHALL respond to an invalid command by sending RTFM. Note that the se
 
 ++ Security Aspects
 
-FILEMQ uses the Simple Authentication and Security Layer (SASL) for authentication and encryption.
+FILEMQ uses the Simple Authentication and Security Layer (SASL) for authentication and encryption. The SHA-1 digest used for file cache identification has no security implications.
 
 ++ References
 

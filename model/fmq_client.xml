@@ -133,7 +133,11 @@ else
 
 <action name = "format icanhaz command">
 fmq_msg_path_set (self->request, self->sub->path);
-fmq_msg_cache_set (self->request, zhash_dup (self->sub->cache));
+//  If client app wants full resync, send cache to server
+if (atoi (fmq_config_resolve (self->config, "client/resync", "0")) == 1) {
+    fmq_msg_options_insert (self->request, "RESYNC", "1");
+    fmq_msg_cache_set (self->request, sub_cache (self->sub));
+}
 </action>
 
 <action name = "refill credit as needed">
@@ -220,16 +224,11 @@ while (self->sub) {
 //  We'll do better error handling later
 assert (*path == '/');
 
-//  Get directory cache for this path
-char *inbox = fmq_config_resolve (self->config, "client/inbox", ".inbox");
-fmq_dir_t *dir = fmq_dir_new (path + 1, inbox);
-zhash_t *cache = dir? fmq_dir_cache (dir): NULL;
-fmq_dir_destroy (&dir);
-
 //  New subscription, store it for later replay
-self->sub = sub_new (self, path, cache);
-zlist_append (self->subs, self->sub);
+char *inbox = fmq_config_resolve (self->config, "client/inbox", ".inbox");
 zclock_log ("I: subscribe to %s as %s%s", path, inbox, path);
+self->sub = sub_new (self, inbox, path);
+zlist_append (self->subs, self->sub);
 
 //  If we're connected, then also send to server
 if (self->connected)
@@ -239,6 +238,12 @@ if (self->connected)
 <method name = "set inbox">
 <argument name = "path" type = "string" />
 fmq_config_path_set (self->config, "client/inbox", path);
+</method>
+
+<method name = "set resync">
+<argument name = "enabled" type = "number" />
+//  Request resynchronization from server
+fmq_config_path_set (self->config, "client/resync", enabled? "1" :"0");
 </method>
 
 <selftest config = "client_test.cfg">

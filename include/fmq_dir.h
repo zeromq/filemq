@@ -54,7 +54,11 @@ off_t
 
 //  Calculate differences between two versions of a directory tree
 zlist_t *
-    fmq_dir_diff (fmq_dir_t *older, fmq_dir_t *newer);
+    fmq_dir_diff (fmq_dir_t *older, fmq_dir_t *newer, char *alias);
+
+//  Return full contents of directory as a patch list.
+zlist_t *
+    fmq_dir_resync (fmq_dir_t *self, char *alias);
 
 //  Return total hierarchy count
 size_t
