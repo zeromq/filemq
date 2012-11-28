@@ -33,17 +33,17 @@ $(class.name)_t *
 void
     $(class.name)_destroy ($(class.name)_t **self_p);
 
-//  Bind to endpoint
-void
-    fmq_server_bind (fmq_server_t *self, const char *endpoint);
+//  Bind to endpoint, return port number
+int
+    $(class.name)_bind ($(class.name)_t *self, const char *endpoint);
     
 //  Connect to endpoint
 void
-    fmq_server_connect (fmq_server_t *self, const char *endpoint);
+    $(class.name)_connect ($(class.name)_t *self, const char *endpoint);
 
 //  Load server configuration data
 void
-    fmq_server_configure (fmq_server_t *self, const char *config_file);
+    $(class.name)_configure ($(class.name)_t *self, const char *config_file);
 
 //  Set one configuration path value
 void
@@ -141,7 +141,7 @@ $(class.name)_destroy ($(class.name)_t **self_p)
 //  --------------------------------------------------------------------------
 //  Load server configuration data
 void
-fmq_server_configure (fmq_server_t *self, const char *config_file)
+$(class.name)_configure ($(class.name)_t *self, const char *config_file)
 {
     zstr_sendm (self->pipe, "CONFIG");
     zstr_send (self->pipe, config_file);
