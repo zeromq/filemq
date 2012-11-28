@@ -146,7 +146,7 @@ fmq_patch_virtual (fmq_patch_t *self)
 //  --------------------------------------------------------------------------
 //  Calculate hash digest for file (create only)
 
-fmq_patch_t *
+void
 fmq_patch_digest_set (fmq_patch_t *self)
 {
     if (self->op == patch_create

@@ -47,7 +47,14 @@ void
 
 .for class.method
 //  $(method.text?'':)
-void
+.   if return ?= "number"
+.       method.ctype = "int"
+.   elsif return ?= "string"
+.       method.ctype = "char *"
+.   else
+.       method.ctype = "void"
+.   endif
+$(ctype)
     $(class.name)_$(name:c) ($(class.name)_t *self\
 .   for argument
 .       if type = "string"
@@ -171,7 +178,7 @@ $(class.name)_connect ($(class.name)_t *self, const char *endpoint)
 .for class.method
 //  --------------------------------------------------------------------------
 
-void
+$(ctype)
 $(class.name)_$(name:c) ($(class.name)_t *self\
 .   method.send = "send"
 .   for argument
@@ -205,6 +212,16 @@ $(class.name)_$(name:c) ($(class.name)_t *self\
     zstr_$(send) (self->pipe, "$(format)", $(name));
 .       endif
 .   endfor
+.   if defined (method.return)
+    char *reply = zstr_recv (self->pipe);
+.       if return = "string"
+    return reply;
+.       else
+    int rc = atoi (reply);
+    free (reply);
+    return rc;
+.       endif
+.   endif
 }
 
 
@@ -466,7 +483,7 @@ client_restart (client_t *self, char *endpoint)
         if (self->dealer)
             zsocket_destroy (self->ctx, self->dealer);
         self->dealer = zsocket_new (self->ctx, ZMQ_DEALER);
-        zmq_connect (self->dealer, endpoint);
+        zsocket_connect (self->dealer, endpoint);
     }
     //  Clear out any previous request data
     $(codec)_destroy (&self->request);
@@ -501,6 +518,9 @@ control_message (client_t *self)
 .       endif
 .   endfor
         $(string.trim (method.?''):block                                        )
+.   for method.return
+        $(string.trim (return.?''):block                                        )
+.   endfor
 .   for argument where type = "string"
         free ($(name));
 .   endfor

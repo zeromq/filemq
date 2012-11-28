@@ -36,6 +36,11 @@
 #define FMQ_VERSION \
     FMQ_MAKE_VERSION(FMQ_VERSION_MAJOR, FMQ_VERSION_MINOR, FMQ_VERSION_PATCH)
 
+#include <czmq.h>
+#if CZMQ_VERSION < 10302
+#   error "FileMQ needs CZMQ/1.3.2 or later"
+#endif
+
 //  Maximum length of a path + filename
 #ifndef PATH_MAX
 #define PATH_MAX    1024
