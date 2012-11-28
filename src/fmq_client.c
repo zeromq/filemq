@@ -639,7 +639,7 @@ client_restart (client_t *self, char *endpoint)
         if (self->dealer)
             zsocket_destroy (self->ctx, self->dealer);
         self->dealer = zsocket_new (self->ctx, ZMQ_DEALER);
-        zmq_connect (self->dealer, endpoint);
+        zsocket_connect (self->dealer, endpoint);
     }
     //  Clear out any previous request data
     fmq_msg_destroy (&self->request);

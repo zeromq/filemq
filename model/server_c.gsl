@@ -33,17 +33,9 @@ $(class.name)_t *
 void
     $(class.name)_destroy ($(class.name)_t **self_p);
 
-//  Bind to endpoint
-void
-    fmq_server_bind (fmq_server_t *self, const char *endpoint);
-    
-//  Connect to endpoint
-void
-    fmq_server_connect (fmq_server_t *self, const char *endpoint);
-
 //  Load server configuration data
 void
-    fmq_server_configure (fmq_server_t *self, const char *config_file);
+    $(class.name)_configure ($(class.name)_t *self, const char *config_file);
 
 //  Set one configuration path value
 void
@@ -51,7 +43,14 @@ void
 
 .for class.method
 //  $(method.text?'':)
-void
+.   if return ?= "number"
+.       method.ctype = "int"
+.   elsif return ?= "string"
+.       method.ctype = "char *"
+.   else
+.       method.ctype = "void"
+.   endif
+$(ctype)
     $(class.name)_$(name:c) ($(class.name)_t *self\
 .   for argument
 .       if type = "string"
@@ -141,7 +140,7 @@ $(class.name)_destroy ($(class.name)_t **self_p)
 //  --------------------------------------------------------------------------
 //  Load server configuration data
 void
-fmq_server_configure (fmq_server_t *self, const char *config_file)
+$(class.name)_configure ($(class.name)_t *self, const char *config_file)
 {
     zstr_sendm (self->pipe, "CONFIG");
     zstr_send (self->pipe, config_file);
@@ -163,7 +162,7 @@ $(class.name)_setoption ($(class.name)_t *self, const char *path, const char *va
 .for class.method
 //  --------------------------------------------------------------------------
 
-void
+$(ctype)
 $(class.name)_$(name:c) ($(class.name)_t *self\
 .   method.send = "send"
 .   for argument
@@ -197,6 +196,16 @@ $(class.name)_$(name:c) ($(class.name)_t *self\
     zstr_$(send) (self->pipe, "$(format)", $(name));
 .       endif
 .   endfor
+.   if defined (method.return)
+    char *reply = zstr_recv (self->pipe);
+.       if return = "string"
+    return reply;
+.       else
+    int rc = atoi (reply);
+    free (reply);
+    return rc;
+.       endif
+.   endif
 }
 
 
@@ -434,6 +443,7 @@ server_destroy (server_t **self_p)
     assert (self_p);
     if (*self_p) {
         server_t *self = *self_p;
+        zsocket_destroy (self->ctx, self->router);
         fmq_config_destroy (&self->config);
         zhash_destroy (&self->clients);
 .for class.self
@@ -506,6 +516,9 @@ server_control_message (server_t *self)
 .       endif
 .   endfor
         $(string.trim (method.?''):block                                        )
+.   for method.return
+        $(string.trim (return.?''):block                                        )
+.   endfor
 .   for argument where type = "string"
         free ($(name));
 .   endfor        

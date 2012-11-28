@@ -25,6 +25,7 @@ gcc -g -o fmq_selftest fmq_selftest.c  \
 if [ $? -eq 0 ]; then
     if [ "$1" == "-q" ]; then
         ./fmq_selftest
+        exit
     else
         $VG ./fmq_selftest
     fi

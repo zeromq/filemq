@@ -70,7 +70,7 @@ void
     fmq_patch_virtual_set (fmq_patch_t *self, char *virtual);
 
 //  Calculate hash digest for file (create only)
-fmq_patch_t *
+void
     fmq_patch_digest_set (fmq_patch_t *self);
 
 //  Return hash digest for patch file 
