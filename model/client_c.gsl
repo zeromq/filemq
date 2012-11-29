@@ -45,6 +45,14 @@ void
 void
     $(class.name)_connect ($(class.name)_t *self, const char *endpoint);
 
+//  Wait for message from API
+zmsg_t *
+    $(class.name)_recv ($(class.name)_t *self);
+
+//  Return API pipe handle for polling
+void *
+    $(class.name)_handle ($(class.name)_t *self);
+
 .for class.method
 //  $(method.text?'':)
 .   if return ?= "number"
@@ -172,6 +180,27 @@ $(class.name)_connect ($(class.name)_t *self, const char *endpoint)
 {
     zstr_sendm (self->pipe, "CONNECT");
     zstr_send  (self->pipe, endpoint);
+}
+
+
+//  --------------------------------------------------------------------------
+//  Wait for message from API
+
+zmsg_t *
+$(class.name)_recv ($(class.name)_t *self)
+{
+    zmsg_t *msg = zmsg_recv (self->pipe);
+    return msg;
+}
+
+
+//  --------------------------------------------------------------------------
+//  Return API pipe handle for polling
+
+void *
+$(class.name)_handle ($(class.name)_t *self)
+{
+    return self->pipe;
 }
 
 
@@ -599,7 +628,7 @@ static void
 client_thread (void *args, zctx_t *ctx, void *pipe)
 {
     client_t *self = client_new (ctx, pipe);
-    while (!self->stopped) {
+    while (!self->stopped && !zctx_interrupted) {
         //  Build structure each time since self->dealer can change
         zmq_pollitem_t items [] = {
             { self->pipe, 0, ZMQ_POLLIN, 0 },
@@ -618,9 +647,8 @@ client_thread (void *args, zctx_t *ctx, void *pipe)
             server_message (self);
 
         //  Check whether server seems dead
-        if (self->expires_at && zclock_time () >= self->expires_at) {
+        if (self->expires_at && zclock_time () >= self->expires_at)
             client_restart (self, NULL);
-        }
     }
     client_destroy (&self);
 }

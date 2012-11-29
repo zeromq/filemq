@@ -53,32 +53,44 @@ int main (int argc, char *argv [])
     }
 
     //  Else run as FILEMQ server or client
-    fmq_client_t *client = NULL;
-    fmq_server_t *server = NULL;
-
     if (streq (argv [1], "-s")) {
-        server = fmq_server_new ();
+        fmq_server_t *server = fmq_server_new ();
         fmq_server_configure (server, "server_test.cfg");
         fmq_server_publish (server, "./fmqroot/send", "/");
         fmq_server_publish (server, "./fmqroot/logs", "/logs");
         //  We do this last
         fmq_server_bind (server, "tcp://*:5670");
+        while (!zctx_interrupted)
+            sleep (1);
+        fmq_server_destroy (&server);
     }
     else
     if (streq (argv [1], "-c")) {
-        client = fmq_client_new ();
+        fmq_client_t *client = fmq_client_new ();
         fmq_client_configure (client, "client_test.cfg");
         fmq_client_setoption (client, "client/inbox", "./fmqroot/recv");
         fmq_client_connect (client, "tcp://localhost:5670");
         fmq_client_set_resync (client, true);
         fmq_client_subscribe (client, "/photos");
         fmq_client_subscribe (client, "/logs");
-    }
-    while (!zctx_interrupted)
-        sleep (1);
-    puts ("interrupted");
 
-    fmq_server_destroy (&server);
-    fmq_client_destroy (&client);
+        while (true) {
+            //  Get message from fmq_client API
+            zmsg_t *msg = fmq_client_recv (client);
+            if (!msg)
+                break;              //  Interrupted
+            char *command = zmsg_popstr (msg);
+            if (streq (command, "DELIVER")) {
+                char *filename = zmsg_popstr (msg);
+                char *fullname = zmsg_popstr (msg);
+                printf ("I: received %s (%s)\n", filename, fullname);
+                free (filename);
+                free (fullname);
+            }
+            free (command);
+            zmsg_destroy (&msg);
+        }
+        fmq_client_destroy (&client);
+    }
     return 0;
 }

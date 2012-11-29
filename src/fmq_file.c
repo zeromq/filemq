@@ -495,10 +495,26 @@ fmq_file_test (bool verbose)
     assert (chunk);
     assert (fmq_chunk_size (chunk) == 1000100);
     fmq_chunk_destroy (&chunk);
+
+    //  Try some fun with symbolic links
+    fmq_file_t *link = fmq_file_new ("./this/is/a/test", "bilbo.ln");
+    rc = fmq_file_output (link);
+    assert (rc == 0);
+    fprintf (fmq_file_handle (link), "./this/is/a/test/bilbo\n");
+    fmq_file_destroy (&link);
+
+    link = fmq_file_new ("./this/is/a/test", "bilbo.ln");
+    rc = fmq_file_input (link);
+    assert (rc == 0);
+    chunk = fmq_file_read (file, 1000100, 0);
+    assert (chunk);
+    assert (fmq_chunk_size (chunk) == 1000100);
+    fmq_chunk_destroy (&chunk);
+    fmq_file_destroy (&link);
     
     //  Remove file and directory
     fmq_dir_t *dir = fmq_dir_new ("./this", NULL);
-    assert (fmq_dir_size (dir) == 1000100);
+    assert (fmq_dir_size (dir) == 2000200);
     fmq_dir_remove (dir, true);
     assert (fmq_dir_size (dir) == 0);
     fmq_dir_destroy (&dir);
@@ -510,7 +526,7 @@ fmq_file_test (bool verbose)
     rc = fmq_file_input (file);
     assert (rc == -1);
     fmq_file_destroy (&file);
-        
+
     printf ("OK\n");
     return 0;
 }

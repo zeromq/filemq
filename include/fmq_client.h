@@ -53,6 +53,14 @@ void
 void
     fmq_client_connect (fmq_client_t *self, const char *endpoint);
 
+//  Wait for message from API
+zmsg_t *
+    fmq_client_recv (fmq_client_t *self);
+
+//  Return API pipe handle for polling
+void *
+    fmq_client_handle (fmq_client_t *self);
+
 //  
 void
     fmq_client_subscribe (fmq_client_t *self, const char *path);

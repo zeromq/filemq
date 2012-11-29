@@ -341,8 +341,6 @@ mount_new (char *location, char *alias)
     self->alias = strdup (alias);
     self->dir = fmq_dir_new (self->location, NULL);
     self->subs = zlist_new ();
-    zclock_log ("I: mounted directory %s as '%s' with %zd files",
-        self->location, self->alias, self->dir? fmq_dir_count (self->dir): 0);
     return self;
 }
 
@@ -1144,7 +1142,7 @@ server_thread (void *args, zctx_t *ctx, void *pipe)
     };
     
     self->monitor_at = zclock_time () + self->monitor;
-    while (!self->stopped) {
+    while (!self->stopped && !zctx_interrupted) {
         //  Calculate tickless timer, up to interval seconds
         uint64_t tickless = zclock_time () + self->monitor;
         zhash_foreach (self->clients, client_tickless, &tickless);
