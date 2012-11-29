@@ -1,4 +1,4 @@
-The FileMQ Protocol (FILEMQ) governs the delivery of files between a 'client' and a 'server'. FILEMQ runs over the ZeroMQ [http://rfc.zeromq.org/spec:15/ZMTP ZMTP protocol].
+The File Message Queuing Protocol (FILEMQ) governs the delivery of files between a 'client' and a 'server'. FILEMQ runs over the ZeroMQ [http://rfc.zeromq.org/spec:15/ZMTP ZMTP protocol].
 
 * Name: rfc.zeromq.org/spec:19/FILEMQ
 * Editor: Pieter Hintjens <ph@imatix.com>
@@ -64,11 +64,11 @@ version         = %x01
 ORLY            = signature %x02 mechanisms challenge
 mechanisms      = size 1*mechanism
 mechanism       = string
-challenge       = *OCTET        ; 0MQ frame
+challenge       = *OCTET        ; ZeroMQ frame
 
 ;   The client responds with SASL authentication information
 YARLY           = %signature x03 mechanism response
-response        = *OCTET        ; 0MQ frame
+response        = *OCTET        ; ZeroMQ frame
 
 ;   The server grants the client access
 OHAI-OK         = signature %x04
@@ -119,13 +119,13 @@ S:RTFM          = signature %x81 reason
 
 ++++ ZeroMQ Socket Types
 
-The server SHALL create a ROUTER socket and SHOULD bind it to port 5670, which is the registered Internet Assigned Numbers Authority (IANA) port for FILEMQ. The server MAY bind its ROUTER socket to other ports. The client SHALL create a DEALER socket and connect it to the server ROUTER host and port.
+The server SHALL create a ROUTER socket and SHOULD bind it to port 5670, which is the registered Internet Assigned Numbers Authority (IANA) port for FILEMQ. The server MAY bind its ROUTER socket to other ports in the ephemeral port range (%C000x - %FFFFx). The client SHALL create a DEALER socket and connect it to the server ROUTER host and port.
 
 Note that the ROUTER socket provides the caller with the connection identity of the sender for any message received on the socket, as an identity frame that precedes other frames in the message.
 
 ++++ Protocol Signature
 
-Every 0MQ message SHALL start with the FILEMQ protocol signature, %xAA %xA3. The server and client SHALL silently discard any message received that does not start with these two octets.
+Every ZeroMQ message SHALL start with the FILEMQ protocol signature, %xAA %xA3. The server and client SHALL silently discard any message received that does not start with these two octets.
 
 This mechanism is designed particularly for servers that bind to ephemeral ports which may have been previously used by other protocols, and to which there are still peers attempting to connect. It is also a general fail-fast mechanism to detect ill-formed messages.
 

@@ -88,10 +88,10 @@ FileMQ protocol server
 #define CHUNK_SIZE      1000000
 </declare>
 
-
 <self>
 <context>
 zlist_t *mounts;            //  Mount points
+int port;                   //  Server port
 </context>
 
 <construct>
@@ -293,9 +293,10 @@ if (fmq_patch_op (client->patch) == patch_create) {
 
 <!-- API methods -->
 
-<method name = "bind">
+<method name = "bind" return = "number">
 <argument name = "endpoint" type = "string" />
-zmq_bind (self->router, endpoint);
+self->port = zsocket_bind (self->router, endpoint);
+<return>zstr_sendf (self->pipe, "%d", self->port);</return>
 </method>
 
 <method name = "publish">

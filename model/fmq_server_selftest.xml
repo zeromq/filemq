@@ -1,6 +1,7 @@
 <selftest>
     <init>
-fmq_server_bind (self, "tcp://*:5670");
+int port = fmq_server_bind (self, "tcp://*:5670");
+assert (port == 5670);
     </init>
     <step send = "OHAI" recv = "SRSLY" />
     <step send = "ICANHAZ" recv = "RTFM" />
@@ -10,7 +11,8 @@ fmq_server_bind (self, "tcp://*:5670");
 
 <selftest config = "anonymous.cfg">
     <init>
-fmq_server_bind (self, "tcp://*:5670");
+port = fmq_server_bind (self, "tcp://*:5670");
+assert (port == 5670);
     </init>
     <step send = "OHAI" recv = "OHAI-OK" />
     <step send = "NOM" />
@@ -20,7 +22,8 @@ fmq_server_bind (self, "tcp://*:5670");
 
 <selftest config = "server_test.cfg">
     <init>
-fmq_server_bind (self, "tcp://*:5670");
+port = fmq_server_bind (self, "tcp://*:5670");
+assert (port == 5670);
     </init>
     <step send = "OHAI" recv = "ORLY" />
     <step send = "YARLY" recv = "OHAI-OK">

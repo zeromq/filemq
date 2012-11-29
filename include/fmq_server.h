@@ -41,14 +41,6 @@ fmq_server_t *
 void
     fmq_server_destroy (fmq_server_t **self_p);
 
-//  Bind to endpoint
-void
-    fmq_server_bind (fmq_server_t *self, const char *endpoint);
-    
-//  Connect to endpoint
-void
-    fmq_server_connect (fmq_server_t *self, const char *endpoint);
-
 //  Load server configuration data
 void
     fmq_server_configure (fmq_server_t *self, const char *config_file);
@@ -58,7 +50,7 @@ void
     fmq_server_setoption (fmq_server_t *self, const char *path, const char *value);
 
 //  
-void
+int
     fmq_server_bind (fmq_server_t *self, const char *endpoint);
 
 //  

@@ -100,13 +100,17 @@ fmq_server_setoption (fmq_server_t *self, const char *path, const char *value)
 
 //  --------------------------------------------------------------------------
 
-void
+int
 fmq_server_bind (fmq_server_t *self, const char *endpoint)
 {
     assert (self);
     assert (endpoint);
     zstr_sendm (self->pipe, "BIND");
     zstr_sendf (self->pipe, "%s", endpoint);
+    char *reply = zstr_recv (self->pipe);
+    int rc = atoi (reply);
+    free (reply);
+    return rc;
 }
 
 
@@ -175,6 +179,7 @@ typedef enum {
 typedef struct {
     //  Properties accessible to client actions
     zlist_t *mounts;            //  Mount points
+    int port;                   //  Server port 
 
     //  Properties you should NOT touch
     zctx_t *ctx;                //  Own CZMQ context
@@ -589,6 +594,7 @@ server_destroy (server_t **self_p)
     assert (self_p);
     if (*self_p) {
         server_t *self = *self_p;
+        zsocket_destroy (self->ctx, self->router);
         fmq_config_destroy (&self->config);
         zhash_destroy (&self->clients);
         //  Destroy mount points                                  
@@ -628,7 +634,7 @@ server_apply_config (server_t *self)
         }
         if (streq (fmq_config_name (section), "bind")) {
             char *endpoint = fmq_config_resolve (section, "endpoint", "?");
-            zmq_bind (self->router, endpoint);
+            self->port = zsocket_bind (self->router, endpoint);
         }
         else
         if (streq (fmq_config_name (section), "publish")) {
@@ -654,7 +660,8 @@ server_control_message (server_t *self)
     char *method = zmsg_popstr (msg);
     if (streq (method, "BIND")) {
         char *endpoint = zmsg_popstr (msg);
-        zmq_bind (self->router, endpoint);
+        self->port = zsocket_bind (self->router, endpoint);
+        zstr_sendf (self->pipe, "%d", self->port);
         free (endpoint);
     }
     else
@@ -1188,7 +1195,8 @@ fmq_server_test (bool verbose)
     //  Run selftest using '' configuration
     self = fmq_server_new ();
     assert (self);
-    fmq_server_bind (self, "tcp://*:5670");
+    int port = fmq_server_bind (self, "tcp://*:5670");
+    assert (port == 5670);                            
     request = fmq_msg_new (FMQ_MSG_OHAI);
     fmq_msg_send (&request, dealer);
     reply = fmq_msg_recv (dealer);
@@ -1222,7 +1230,8 @@ fmq_server_test (bool verbose)
     self = fmq_server_new ();
     assert (self);
     fmq_server_configure (self, "anonymous.cfg");
-    fmq_server_bind (self, "tcp://*:5670");
+    port = fmq_server_bind (self, "tcp://*:5670");
+    assert (port == 5670);                        
     request = fmq_msg_new (FMQ_MSG_OHAI);
     fmq_msg_send (&request, dealer);
     reply = fmq_msg_recv (dealer);
@@ -1252,7 +1261,8 @@ fmq_server_test (bool verbose)
     self = fmq_server_new ();
     assert (self);
     fmq_server_configure (self, "server_test.cfg");
-    fmq_server_bind (self, "tcp://*:5670");
+    port = fmq_server_bind (self, "tcp://*:5670");
+    assert (port == 5670);                        
     request = fmq_msg_new (FMQ_MSG_OHAI);
     fmq_msg_send (&request, dealer);
     reply = fmq_msg_recv (dealer);
