@@ -571,6 +571,17 @@ client_free (void *argument)
 
 //  Server methods
 
+static void
+server_config_self (server_t *self)
+{
+    //  Get standard server configuration
+    self->monitor = atoi (
+        fmq_config_resolve (self->config, "server/monitor", "1")) * 1000;
+    self->heartbeat = atoi (
+        fmq_config_resolve (self->config, "server/heartbeat", "1")) * 1000;
+    self->monitor_at = zclock_time () + self->monitor;
+}
+
 static server_t *
 server_new (zctx_t *ctx, void *pipe)
 {
@@ -580,8 +591,7 @@ server_new (zctx_t *ctx, void *pipe)
     self->router = zsocket_new (self->ctx, ZMQ_ROUTER);
     self->clients = zhash_new ();
     self->config = fmq_config_new ("root", NULL);
-    self->monitor = 5000;       //  5 seconds by default
-    self->heartbeat = 1000;     //  1 second by default
+    server_config_self (self);
     self->mounts = zlist_new ();
     return self;
 }
@@ -614,13 +624,6 @@ server_destroy (server_t **self_p)
 static void
 server_apply_config (server_t *self)
 {
-    //  Get standard server configuration
-    self->monitor = atoi (
-        fmq_config_resolve (self->config, "server/monitor", "5")) * 1000;
-    self->heartbeat = atoi (
-        fmq_config_resolve (self->config, "server/heartbeat", "1")) * 1000;
-    self->monitor_at = zclock_time () + self->monitor;
-
     //  Apply echo commands and class methods
     fmq_config_t *section = fmq_config_child (self->config);
     while (section) {
@@ -649,6 +652,7 @@ server_apply_config (server_t *self)
         }
         section = fmq_config_next (section);
     }
+    server_config_self (self);
 }
 
 static void
@@ -697,6 +701,7 @@ server_control_message (server_t *self)
         char *path = zmsg_popstr (msg);
         char *value = zmsg_popstr (msg);
         fmq_config_path_set (self->config, path, value);
+        server_config_self (self);
         free (path);
         free (value);
     }

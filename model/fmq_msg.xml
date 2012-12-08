@@ -54,6 +54,7 @@ The server sends a file chunk
     <field name = "operation" type = "number" size = "1" />
     <field name = "filename" type = "string" />
     <field name = "offset" type = "number" size = "8" />
+    <field name = "eof" type = "number" size = "1" />
     <field name = "headers" type = "dictionary" />
     <field name = "chunk" type = "frame" />
 </message>

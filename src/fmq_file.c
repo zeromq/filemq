@@ -39,6 +39,7 @@ struct _fmq_file_t {
     //  Other properties
     bool exists;            //  true if file exists
     bool stable;            //  true if file is stable
+    bool eof;               //  true if at end of file
     FILE *handle;           //  Read/write handle
 };
 
@@ -354,7 +355,7 @@ fmq_file_output (fmq_file_t *self)
 
 //  --------------------------------------------------------------------------
 //  Read chunk from file at specified position
-//  Zero-sized chunk means we're at the end of the file
+//  If this was the last chunk, sets self->eof
 //  Null chunk means there was another error
 
 fmq_chunk_t *
@@ -373,7 +374,11 @@ fmq_file_read (fmq_file_t *self, size_t bytes, off_t offset)
     if (rc == -1)
         return NULL;
 
-    return fmq_chunk_read (self->handle, bytes);
+    self->eof = false;
+    fmq_chunk_t *chunk = fmq_chunk_read (self->handle, bytes);
+    if (chunk)
+        self->eof = fmq_chunk_size (chunk) < bytes;
+    return chunk;
 }
 
 
