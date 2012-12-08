@@ -49,6 +49,7 @@ struct _fmq_msg_t {
     byte operation;
     char *filename;
     uint64_t offset;
+    byte eof;
     zhash_t *headers;
     size_t headers_bytes;       //  Size of dictionary content
     zframe_t *chunk;
@@ -286,6 +287,7 @@ fmq_msg_recv (void *input)
                 char *string;
                 GET_STRING (string);
                 zlist_append (self->mechanisms, string);
+                free (string);
             }
             //  Get next frame, leave current untouched
             if (!zsocket_rcvmore (input))
@@ -317,7 +319,7 @@ fmq_msg_recv (void *input)
                 char *value = strchr (string, '=');
                 if (value)
                     *value++ = 0;
-                zhash_insert (self->options, string, strdup (value));
+                zhash_insert (self->options, string, value);
                 free (string);
             }
             GET_NUMBER1 (hash_size);
@@ -329,7 +331,7 @@ fmq_msg_recv (void *input)
                 char *value = strchr (string, '=');
                 if (value)
                     *value++ = 0;
-                zhash_insert (self->cache, string, strdup (value));
+                zhash_insert (self->cache, string, value);
                 free (string);
             }
             break;
@@ -348,6 +350,7 @@ fmq_msg_recv (void *input)
             free (self->filename);
             GET_STRING (self->filename);
             GET_NUMBER8 (self->offset);
+            GET_NUMBER1 (self->eof);
             GET_NUMBER1 (hash_size);
             self->headers = zhash_new ();
             zhash_autofree (self->headers);
@@ -357,7 +360,7 @@ fmq_msg_recv (void *input)
                 char *value = strchr (string, '=');
                 if (value)
                     *value++ = 0;
-                zhash_insert (self->headers, string, strdup (value));
+                zhash_insert (self->headers, string, value);
                 free (string);
             }
             //  Get next frame, leave current untouched
@@ -554,6 +557,8 @@ fmq_msg_send (fmq_msg_t **self_p, void *output)
                 frame_size += strlen (self->filename);
             //  offset is a 8-byte integer
             frame_size += 8;
+            //  eof is a 1-byte integer
+            frame_size += 1;
             //  headers is an array of key=value strings
             frame_size++;       //  Size is one octet
             if (self->headers) {
@@ -669,6 +674,7 @@ fmq_msg_send (fmq_msg_t **self_p, void *output)
             else
                 PUT_NUMBER1 (0);    //  Empty string
             PUT_NUMBER8 (self->offset);
+            PUT_NUMBER1 (self->eof);
             if (self->headers != NULL) {
                 PUT_NUMBER1 (zhash_size (self->headers));
                 zhash_foreach (self->headers, s_headers_write, self);
@@ -873,6 +879,7 @@ fmq_msg_send_cheezburger (
     byte operation,
     char *filename,
     uint64_t offset,
+    byte eof,
     zhash_t *headers,
     zframe_t *chunk)
 {
@@ -881,6 +888,7 @@ fmq_msg_send_cheezburger (
     fmq_msg_operation_set (self, operation);
     fmq_msg_filename_set (self, filename);
     fmq_msg_offset_set (self, offset);
+    fmq_msg_eof_set (self, eof);
     fmq_msg_headers_set (self, zhash_dup (headers));
     fmq_msg_chunk_set (self, zframe_dup (chunk));
     return fmq_msg_send (&self, output);
@@ -1001,6 +1009,7 @@ fmq_msg_dup (fmq_msg_t *self)
             copy->operation = self->operation;
             copy->filename = strdup (self->filename);
             copy->offset = self->offset;
+            copy->eof = self->eof;
             copy->headers = zhash_dup (self->headers);
             copy->chunk = zframe_dup (self->chunk);
             break;
@@ -1159,6 +1168,7 @@ fmq_msg_dump (fmq_msg_t *self)
             else
                 printf ("    filename=\n");
             printf ("    offset=%ld\n", (long) self->offset);
+            printf ("    eof=%ld\n", (long) self->eof);
             printf ("    headers={\n");
             if (self->headers)
                 zhash_foreach (self->headers, s_headers_dump, self);
@@ -1360,6 +1370,7 @@ fmq_msg_mechanisms_append (fmq_msg_t *self, char *format, ...)
         zlist_autofree (self->mechanisms);
     }
     zlist_append (self->mechanisms, string);
+    free (string);
 }
 
 size_t
@@ -1528,6 +1539,7 @@ fmq_msg_options_insert (fmq_msg_t *self, char *key, char *format, ...)
         zhash_autofree (self->options);
     }
     zhash_update (self->options, key, string);
+    free (string);
 }
 
 size_t
@@ -1606,6 +1618,7 @@ fmq_msg_cache_insert (fmq_msg_t *self, char *key, char *format, ...)
         zhash_autofree (self->cache);
     }
     zhash_update (self->cache, key, string);
+    free (string);
 }
 
 size_t
@@ -1713,6 +1726,24 @@ fmq_msg_offset_set (fmq_msg_t *self, uint64_t offset)
 
 
 //  --------------------------------------------------------------------------
+//  Get/set the eof field
+
+byte
+fmq_msg_eof (fmq_msg_t *self)
+{
+    assert (self);
+    return self->eof;
+}
+
+void
+fmq_msg_eof_set (fmq_msg_t *self, byte eof)
+{
+    assert (self);
+    self->eof = eof;
+}
+
+
+//  --------------------------------------------------------------------------
 //  Get/set the headers field
 
 zhash_t *
@@ -1781,6 +1812,7 @@ fmq_msg_headers_insert (fmq_msg_t *self, char *key, char *format, ...)
         zhash_autofree (self->headers);
     }
     zhash_update (self->headers, key, string);
+    free (string);
 }
 
 size_t
@@ -1943,6 +1975,7 @@ fmq_msg_test (bool verbose)
     fmq_msg_operation_set (self, 123);
     fmq_msg_filename_set (self, "Life is short but Now lasts for ever");
     fmq_msg_offset_set (self, 123);
+    fmq_msg_eof_set (self, 123);
     fmq_msg_headers_insert (self, "Name", "Brutus");
     fmq_msg_headers_insert (self, "Age", "%d", 43);
     fmq_msg_chunk_set (self, zframe_new ("Captcha Diem", 12));
@@ -1954,6 +1987,7 @@ fmq_msg_test (bool verbose)
     assert (fmq_msg_operation (self) == 123);
     assert (streq (fmq_msg_filename (self), "Life is short but Now lasts for ever"));
     assert (fmq_msg_offset (self) == 123);
+    assert (fmq_msg_eof (self) == 123);
     assert (fmq_msg_headers_size (self) == 2);
     assert (streq (fmq_msg_headers_string (self, "Name", "?"), "Brutus"));
     assert (fmq_msg_headers_number (self, "Age", 0) == 43);

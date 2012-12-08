@@ -50,6 +50,7 @@
         operation     number 1
         filename      string
         offset        number 8
+        eof           number 1
         headers       dictionary
         chunk         frame
     HUGZ - Client or server sends a heartbeat
@@ -148,6 +149,7 @@ int
         byte operation,
         char *filename,
         uint64_t offset,
+        byte eof,
         zhash_t *headers,
         zframe_t *chunk);
     
@@ -296,6 +298,12 @@ uint64_t
     fmq_msg_offset (fmq_msg_t *self);
 void
     fmq_msg_offset_set (fmq_msg_t *self, uint64_t offset);
+
+//  Get/set the eof field
+byte
+    fmq_msg_eof (fmq_msg_t *self);
+void
+    fmq_msg_eof_set (fmq_msg_t *self, byte eof);
 
 //  Get/set the headers field
 zhash_t *
