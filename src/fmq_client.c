@@ -111,6 +111,27 @@ fmq_client_connect (fmq_client_t *self, const char *endpoint)
 
 
 //  --------------------------------------------------------------------------
+//  Wait for message from API
+
+zmsg_t *
+fmq_client_recv (fmq_client_t *self)
+{
+    zmsg_t *msg = zmsg_recv (self->pipe);
+    return msg;
+}
+
+
+//  --------------------------------------------------------------------------
+//  Return API pipe handle for polling
+
+void *
+fmq_client_handle (fmq_client_t *self)
+{
+    return self->pipe;
+}
+
+
+//  --------------------------------------------------------------------------
 
 void
 fmq_client_subscribe (fmq_client_t *self, const char *path)
@@ -249,6 +270,14 @@ struct _client_t {
     int64_t expires_at;         //  Server expires at
 };
 
+static void
+client_config_self (client_t *self)
+{
+    //  Get standard client configuration
+    self->heartbeat = atoi (
+        fmq_config_resolve (self->config, "client/heartbeat", "1")) * 1000;
+}
+
 static client_t *
 client_new (zctx_t *ctx, void *pipe)
 {
@@ -256,7 +285,7 @@ client_new (zctx_t *ctx, void *pipe)
     self->ctx = ctx;
     self->pipe = pipe;
     self->config = fmq_config_new ("root", NULL);
-    self->heartbeat = 1000;     //  1 second by default
+    client_config_self (self);
     self->subs = zlist_new ();
     self->connected = false;  
     return self;
@@ -290,10 +319,6 @@ client_destroy (client_t **self_p)
 static void
 client_apply_config (client_t *self)
 {
-    //  Get standard client configuration
-    self->heartbeat = atoi (
-        fmq_config_resolve (self->config, "client/heartbeat", "1")) * 1000;
-
     //  Apply echo commands and class methods
     fmq_config_t *section = fmq_config_child (self->config);
     while (section) {
@@ -319,7 +344,6 @@ client_apply_config (client_t *self)
                                                                                       
             //  New subscription, store it for later replay                           
             char *inbox = fmq_config_resolve (self->config, "client/inbox", ".inbox");
-            zclock_log ("I: subscribe to %s as %s%s", path, inbox, path);             
             self->sub = sub_new (self, inbox, path);                                  
             zlist_append (self->subs, self->sub);                                     
                                                                                       
@@ -340,6 +364,7 @@ client_apply_config (client_t *self)
         }
         section = fmq_config_next (section);
     }
+    client_config_self (self);
 }
 
 //  Custom actions for state machine
@@ -424,7 +449,6 @@ process_the_patch (client_t *self)
                                                                                       
     if (fmq_msg_operation (self->reply) == FMQ_MSG_FILE_CREATE) {                     
         if (self->file == NULL) {                                                     
-            zclock_log ("I: create %s/%s", inbox, filename);                          
             self->file = fmq_file_new (inbox, filename);                              
             if (fmq_file_output (self->file)) {                                       
                 //  File not writeable, skip patch                                    
@@ -439,10 +463,13 @@ process_the_patch (client_t *self)
             fmq_file_write (self->file, chunk, fmq_msg_offset (self->reply));         
             self->credit -= fmq_chunk_size (chunk);                                   
         }                                                                             
-        else                                                                          
-            //  Zero-sized chunk means end of file                                    
+        else {                                                                        
+            //  Zero-sized chunk means end of file, so report back to caller          
+            zstr_sendm (self->pipe, "DELIVER");                                       
+            zstr_sendm (self->pipe, filename);                                        
+            zstr_sendf (self->pipe, "%s/%s", inbox, filename);                        
             fmq_file_destroy (&self->file);                                           
-                                                                                      
+        }                                                                             
         fmq_chunk_destroy (&chunk);                                                   
     }                                                                                 
     else                                                                              
@@ -676,7 +703,6 @@ control_message (client_t *self)
                                                                                   
         //  New subscription, store it for later replay                           
         char *inbox = fmq_config_resolve (self->config, "client/inbox", ".inbox");
-        zclock_log ("I: subscribe to %s as %s%s", path, inbox, path);             
         self->sub = sub_new (self, inbox, path);                                  
         zlist_append (self->subs, self->sub);                                     
                                                                                   
@@ -723,6 +749,7 @@ control_message (client_t *self)
         char *path = zmsg_popstr (msg);
         char *value = zmsg_popstr (msg);
         fmq_config_path_set (self->config, path, value);
+        client_config_self (self);
         free (path);
         free (value);
     }
@@ -780,7 +807,7 @@ static void
 client_thread (void *args, zctx_t *ctx, void *pipe)
 {
     client_t *self = client_new (ctx, pipe);
-    while (!self->stopped) {
+    while (!self->stopped && !zctx_interrupted) {
         //  Build structure each time since self->dealer can change
         zmq_pollitem_t items [] = {
             { self->pipe, 0, ZMQ_POLLIN, 0 },
@@ -799,9 +826,8 @@ client_thread (void *args, zctx_t *ctx, void *pipe)
             server_message (self);
 
         //  Check whether server seems dead
-        if (self->expires_at && zclock_time () >= self->expires_at) {
+        if (self->expires_at && zclock_time () >= self->expires_at)
             client_restart (self, NULL);
-        }
     }
     client_destroy (&self);
 }

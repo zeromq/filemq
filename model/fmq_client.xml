@@ -163,7 +163,6 @@ filename++;
 
 if (fmq_msg_operation (self->reply) == FMQ_MSG_FILE_CREATE) {
     if (self->file == NULL) {
-        zclock_log ("I: create %s/%s", inbox, filename);
         self->file = fmq_file_new (inbox, filename);
         if (fmq_file_output (self->file)) {
             //  File not writeable, skip patch
@@ -178,10 +177,13 @@ if (fmq_msg_operation (self->reply) == FMQ_MSG_FILE_CREATE) {
         fmq_file_write (self->file, chunk, fmq_msg_offset (self->reply));
         self->credit -= fmq_chunk_size (chunk);
     }
-    else
-        //  Zero-sized chunk means end of file
+    else {
+        //  Zero-sized chunk means end of file, so report back to caller
+        zstr_sendm (self->pipe, "DELIVER");
+        zstr_sendm (self->pipe, filename);
+        zstr_sendf (self->pipe, "%s/%s", inbox, filename);
         fmq_file_destroy (&self->file);
-        
+    }
     fmq_chunk_destroy (&chunk);
 }
 else
@@ -226,7 +228,6 @@ assert (*path == '/');
 
 //  New subscription, store it for later replay
 char *inbox = fmq_config_resolve (self->config, "client/inbox", ".inbox");
-zclock_log ("I: subscribe to %s as %s%s", path, inbox, path);
 self->sub = sub_new (self, inbox, path);
 zlist_append (self->subs, self->sub);
 
