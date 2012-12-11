@@ -847,7 +847,7 @@ fmq_client_test (bool verbose)
     assert (self);
     fmq_client_configure (self, "client_test.cfg");
     fmq_client_connect (self, "tcp://localhost:6001");
-    sleep (1);                                        
+    zclock_sleep (1000);
     fmq_client_destroy (&self);
 
     printf ("OK\n");
