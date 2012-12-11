@@ -187,7 +187,12 @@ fmq_file_restat (fmq_file_t *self)
         self->mode = stat_buf.st_mode;
 #endif
         //  File is 'stable' if more than 1 second old
+#if (defined (WIN32))
+#define EPOCH_DIFFERENCE 11644473600LL
+        long age = (long) (zclock_time () - EPOCH_DIFFERENCE * 1000 - (self->time * 1000));
+#else
         long age = (long) (zclock_time () - (self->time * 1000));
+#endif
         self->stable = age > 1000;
     }
     else
@@ -278,10 +283,10 @@ s_assert_path (fmq_file_t *self)
         if (slash)
             *slash = 0;         //  Cut at slash
         mode_t mode = s_file_mode (path);
-        if (mode == -1) {
+        if (mode == (mode_t)-1) {
             //  Does not exist, try to create it
 #if (defined (WIN32))
-            if (CreateDirectory (path, NULL))
+            if (!CreateDirectory (path, NULL))
 #else
             if (mkdir (path, 0775))
 #endif
@@ -516,7 +521,8 @@ fmq_file_test (bool verbose)
     assert (fmq_chunk_size (chunk) == 1000100);
     fmq_chunk_destroy (&chunk);
     fmq_file_destroy (&link);
-    
+    fmq_file_close (file);		// win32 can't delete open files
+
     //  Remove file and directory
     fmq_dir_t *dir = fmq_dir_new ("./this", NULL);
     assert (fmq_dir_size (dir) == 2000200);
