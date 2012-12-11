@@ -118,17 +118,18 @@ fmq_dir_new (const char *path, const char *parent)
         self->path [strlen (self->path) - 1] = 0;
     
     //  Win32 wants a wildcard at the end of the path
-    char wildcard = malloc (strlen (self->path + 2));
-    sprintf (wildcard, "%s//", self->path);
+    char *wildcard = malloc (strlen (self->path) + 3);
+    sprintf (wildcard, "%s/*", self->path);
     WIN32_FIND_DATA entry;
     HANDLE handle = FindFirstFile (wildcard, &entry);
     free (wildcard);
     
     if (handle != INVALID_HANDLE_VALUE) {
         //  We have read an entry, so return those values
-        win_populate_entry (self, entry);
+        s_win32_populate_entry (self, &entry);
         while (FindNextFile (handle, &entry))
             s_win32_populate_entry (self, &entry);
+        FindClose (handle);
     }
 #else
     //  Remove any trailing slash

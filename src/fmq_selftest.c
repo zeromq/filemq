@@ -61,7 +61,7 @@ int main (int argc, char *argv [])
         //  We do this last
         fmq_server_bind (server, "tcp://*:5670");
         while (!zctx_interrupted)
-            sleep (1);
+            zclock_sleep (1000);
         fmq_server_destroy (&server);
     }
     else
