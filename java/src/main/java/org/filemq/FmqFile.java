@@ -66,8 +66,22 @@ public class FmqFile
                 in = new BufferedReader (new FileReader (path));
                 String buffer = in.readLine ();
                 link = buffer.trim ();
-                this.path = new File (link);
-                name = name.substring (0, name.length () -3);
+                if (link == null) {
+                    //  There could be a race condition or corrupted, try once more
+                    in.close ();
+                    in = new BufferedReader (new FileReader (path));
+                    buffer = in.readLine ();
+                    link = buffer.trim ();
+                }
+                if (link == null) {
+                    //  Guess it is corrupted
+                    in.close ();
+                    in = null;
+                    path.delete ();
+                } else {
+                    this.path = new File (link);
+                    name = name.substring (0, name.length () -3);
+                }
             } catch (IOException e) {
             } finally {
                 if (in != null)
