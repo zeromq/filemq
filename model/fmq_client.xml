@@ -71,6 +71,11 @@ This is the FILEMQ/1.0 client protocol handler
 #define CREDIT_SLICE    1000000
 #define CREDIT_MINIMUM  (CREDIT_SLICE * 4) + 1
 </declare>
+<java_declare>
+//  There's no point making these configurable
+private static final int CREDIT_SLICE   = 1000000;
+private static final int CREDIT_MINIMUM = (CREDIT_SLICE * 4) + 1;
+</java_declare>
 
 <self>
 <context>
@@ -80,11 +85,24 @@ sub_t *sub;                 //  Subscription we want to send
 size_t credit;              //  Current credit pending
 fmq_file_t *file;           //  File we're writing to
 </context>
+<java_context>
+private boolean connected;          //  Are we connected to server?
+private List &lt;Sub&gt; subs;      //  Subscriptions
+private Sub sub;                    //  Subscription we want to send
+private int credit;                 //  Current credit pending
+private FmqFile file;               //  File we're writing to
+
+private Iterator &lt;Sub&gt; subIterator;
+</java_context>
 
 <construct>
 self->subs = zlist_new ();
 self->connected = false;
 </construct>
+<java_construct>
+subs = new ArrayList &lt;Sub&gt; ();
+connected = false;
+</java_construct>
 
 <destruct>
 //  Destroy subscriptions
@@ -94,6 +112,10 @@ while (zlist_size (self->subs)) {
 }
 zlist_destroy (&self->subs);
 </destruct>
+<java_destruct>
+for (Sub sub: subs)
+    sub.destroy ();
+</java_destruct>
 </self>
 
 <!-- Embedded class for subscriptions -->
@@ -103,6 +125,10 @@ zlist_destroy (&self->subs);
 self->next_event = ready_event;
 </action>
 
+<java_action name = "initialize the client">
+next_event = Event.ready_event;
+</java_action>
+
 <action name = "try security mechanism">
 char *login = fmq_config_resolve (self->config, "security/plain/login", "guest");
 char *password = fmq_config_resolve (self->config, "security/plain/password", "");
@@ -111,9 +137,22 @@ fmq_msg_mechanism_set (self->request, "PLAIN");
 fmq_msg_response_set  (self->request, frame);
 </action>
 
+<java_action name = "try security mechanism">
+String login = config.resolve ("security/plain/login", "guest");
+String password = config.resolve ("security/plain/password", "");
+ZFrame frame = FmqSasl.plainEncode (login, password);
+request.setMechanism ("PLAIN");
+request.setResponse (frame);
+</java_action>
+
+
 <action name = "connected to server">
 self->connected = true;
 </action>
+
+<java_action name = "connected to server">
+connected = true;
+</java_action>
 
 <action name = "get first subscription">
 self->sub = (sub_t *) zlist_first (self->subs);
@@ -123,6 +162,15 @@ else
     self->next_event = finished_event;
 </action>
 
+<java_action name = "get first subscription">
+subIterator = subs.iterator ();
+if (subIterator.hasNext ()) {
+    sub = subIterator.next ();
+    next_event = Event.ok_event;
+} else
+    next_event = Event.finished_event;
+</java_action>
+
 <action name = "get next subscription">
 self->sub = (sub_t *) zlist_next (self->subs);
 if (self->sub)
@@ -130,6 +178,14 @@ if (self->sub)
 else
     self->next_event = finished_event;
 </action>
+
+<java_action name = "get next subscription">
+if (subIterator.hasNext ()) {
+    sub = subIterator.next ();
+    next_event = Event.ok_event;
+} else
+    next_event = Event.finished_event;
+</java_action>
 
 <action name = "format icanhaz command">
 fmq_msg_path_set (self->request, self->sub->path);
@@ -139,6 +195,15 @@ if (atoi (fmq_config_resolve (self->config, "client/resync", "0")) == 1) {
     fmq_msg_cache_set (self->request, sub_cache (self->sub));
 }
 </action>
+
+<java_action name = "format icanhaz command">
+request.setPath (sub.path);
+//  If client app wants full resync, send cache to server
+if (Integer.parseInt (config.resolve ("client/resync", "0")) == 1) {
+    request.insertOptions ("RESYNC", "1");
+    request.setCache (sub.cache ());
+}
+</java_action>
 
 <action name = "refill credit as needed">
 //  If credit has fallen too low, send more credit
@@ -152,6 +217,19 @@ if (credit_to_send) {
     self->next_event = send_credit_event;
 }
 </action>
+
+<java_action name = "refill credit as needed">
+//  If credit has fallen too low, send more credit
+int credit_to_send = 0;
+while (credit &lt; CREDIT_MINIMUM) {
+    credit_to_send += CREDIT_SLICE;
+    credit += CREDIT_SLICE;
+}
+if (credit_to_send > 0) {
+    request.setCredit (credit_to_send);
+    next_event = Event.send_credit_event;
+}
+</java_action>
 
 <action name = "process the patch">
 char *inbox = fmq_config_resolve (self->config, "client/inbox", ".inbox");
@@ -195,22 +273,84 @@ if (fmq_msg_operation (self->reply) == FMQ_MSG_FILE_DELETE) {
 }
 </action>
 
+<java_action name = "process the patch">
+String inbox = config.resolve ("client/inbox", ".inbox");
+String filename = reply.filename ();
+
+//  Filenames from server must start with slash, which we skip
+assert (filename.startsWith ("/"));
+filename = filename.substring (1);                 
+
+if (reply.operation () == FmqMsg.FMQ_MSG_FILE_CREATE) {
+    if (file == null) {
+        file = new FmqFile (inbox, filename);
+        if (!file.output ()) {
+            //  File not writeable, skip patch
+            file.destroy ();
+            file = null;
+            return;
+        }
+    }
+    //  Try to write, ignore errors in this version
+    ZFrame frame = reply.chunk ();
+    FmqChunk chunk = new FmqChunk (frame.getData (), frame.size ());
+    if (chunk.size () > 0) {
+        file.write (chunk, reply.offset ());
+        credit -= chunk.size ();
+    }
+    else {
+        //  Zero-sized chunk means end of file, so report back to caller
+        pipe.sendMore ("DELIVER");
+        pipe.sendMore (filename);
+        pipe.send (String.format ("%s/%s", inbox, filename));
+        file.destroy ();
+        file = null;
+    }
+    chunk.destroy ();
+}
+else
+if (reply.operation () == FmqMsg.FMQ_MSG_FILE_DELETE) {
+    zclock_log ("I: delete %s/%s", inbox, filename);
+    FmqFile file = new FmqFile (inbox, filename);
+    file.remove ();
+    file.destroy ();
+    file = null;
+}
+</java_action>
+
 <action name = "log access denied">
 puts ("W: server denied us access, retrying...");
 </action>
+
+<java_action name = "log access denied">
+System.out.println ("W: server denied us access, retrying...");
+</java_action>
 
 <action name = "log invalid message">
 puts ("E: server claims we sent an invalid message");
 </action>
 
+<java_action name = "log invalid message">
+System.out.println ("E: server claims we sent an invalid message");
+</java_action>
+
 <action name = "log protocol error">
 puts ("E: protocol error");
 </action>
+
+<java_action name = "log protocol error">
+System.out.println ("E: protocol error");
+</java_action>
 
 <action name = "terminate the client">
 self->connected = false;
 self->next_event = terminate_event;
 </action>
+
+<java_action name = "terminate the client">
+connected = false;
+next_event = Event.terminate_event;
+</java_action>
 
 <method name = "subscribe">
 <argument name = "path" type = "string" />
@@ -236,10 +376,37 @@ if (self->connected)
     self->next_event = subscribe_event;
 </method>
 
+<java_method name = "subscribe">
+<argument name = "path" type = "string" />
+//  Store subscription along with any previous ones
+//  Check we don't already have a subscription for this path
+for (Sub sub: subs) {
+    if (path.equals (sub.path))
+        return;
+}
+//  Subscription path must start with '/'
+//  We'll do better error handling later
+assert (path.startsWith ("/"));
+
+//  New subscription, store it for later replay
+String inbox = config.resolve ("client/inbox", ".inbox");
+sub = new Sub (this, inbox, path);
+subs.add (sub);
+
+//  If we're connected, then also send to server
+if (connected)
+    next_event = Event.subscribe_event;
+</java_method>
+
 <method name = "set inbox">
 <argument name = "path" type = "string" />
 fmq_config_path_set (self->config, "client/inbox", path);
 </method>
+
+<java_method name = "set Inbox">
+<argument name = "path" type = "string" />
+config.setPath ("client/inbox", path);
+</java_method>
 
 <method name = "set resync">
 <argument name = "enabled" type = "number" />
@@ -247,11 +414,22 @@ fmq_config_path_set (self->config, "client/inbox", path);
 fmq_config_path_set (self->config, "client/resync", enabled? "1" :"0");
 </method>
 
+<java_method name = "set resync">
+<argument name = "enabled" type = "number" />
+//  Request resynchronization from server
+config.setPath ("client/resync", enabled > 0 ? "1" :"0");
+</java_method>
+
 <selftest config = "client_test.cfg">
 <init>
 fmq_client_connect (self, "tcp://localhost:6001");
-sleep (1);
+zclock_sleep (1000);
 </init>
+
+<java_init>
+self.connect ("tcp://localhost:6001");
+try { Thread.sleep (1000); } catch (Exception e) {} 
+</java_init>
 </selftest>
 
 </class>

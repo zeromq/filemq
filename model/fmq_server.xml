@@ -87,16 +87,27 @@ FileMQ protocol server
 //  There's no point making these configurable
 #define CHUNK_SIZE      1000000
 </declare>
+<java_declare>
+//  There's no point making these configurable
+private static final int CHUNK_SIZE = 1000000;
+</java_declare>
 
 <self>
 <context>
 zlist_t *mounts;            //  Mount points
 int port;                   //  Server port
 </context>
+<java_context>
+private List &lt;Mount&gt; mounts;  //  Mount points
+private int port;                   //  Server port
+</java_context>
 
 <construct>
 self->mounts = zlist_new ();
 </construct>
+<java_construct>
+mounts = new ArrayList &lt;Mount&gt; ();
+</java_construct>
 
 <destruct>
 //  Destroy mount points
@@ -106,6 +117,11 @@ while (zlist_size (self->mounts)) {
 }
 zlist_destroy (&self->mounts);
 </destruct>
+<java_destruct>
+//  Destroy mount points
+for (Mount mount : mounts)
+    mount.destroy ();
+</java_destruct>
 </self>
 
 
@@ -118,10 +134,21 @@ fmq_file_t *file;           //  Current file we're sending
 off_t offset;               //  Offset of next read in file
 int64_t sequence;           //  Sequence number for chunk
 </context>
+<java_context>
+private int credit;                     //  Credit remaining
+private List &lt;FmqPatch&gt; patches;  //  Patches to send
+private FmqPatch patch;                 //  Current patch
+private FmqFile file;                   //  Current file we're sending
+private long offset;                    //  Offset of next read in file
+private long sequence;                  //  Sequence number for chunk
+</java_context>
 
 <construct>
 self->patches = zlist_new ();
 </construct>
+<java_construct>
+patches = new ArrayList &lt;FmqPatch&gt; ();
+</java_construct>
 
 <destruct>
 while (zlist_size (self->patches)) {
@@ -130,6 +157,10 @@ while (zlist_size (self->patches)) {
 }
 zlist_destroy (&self->patches);
 </destruct>
+<java_destruct>
+for (FmqPatch patch : patches)
+    patch.destroy ();
+</java_destruct>
 </client>
 
 <!-- Embedded class for subscriptions -->
@@ -146,6 +177,12 @@ while (mount) {
 }
 client->next_event = terminate_event;
 </action>
+<java_action name = "terminate the client">
+for (Mount mount : mounts) {
+    mount.purgeSub (client);
+}
+client.next_event = Event.terminate_event;
+</java_action>
 
 <action name = "try anonymous access">
 if (atoi (fmq_config_resolve (self->config, "security/anonymous", "0")) == 1)
@@ -156,6 +193,15 @@ if (atoi (fmq_config_resolve (self->config, "security/plain", "0")) == 1)
 else
     client->next_event = foe_event;
 </action>
+<java_action name = "try anonymous access">
+if (Integer.parseInt (config.resolve ("security/anonymous", "0")) == 1)
+    client.next_event = Event.friend_event;
+else
+if (Integer.parseInt (config.resolve ("security/plain", "0")) == 1)
+    client.next_event = Event.maybe_event;
+else
+    client.next_event = Event.foe_event;
+</java_action>
     
 <action name = "list security mechanisms">
 if (atoi (fmq_config_resolve (self->config, "security/anonymous", "0")) == 1)
@@ -163,6 +209,12 @@ if (atoi (fmq_config_resolve (self->config, "security/anonymous", "0")) == 1)
 if (atoi (fmq_config_resolve (self->config, "security/plain", "0")) == 1)
     fmq_msg_mechanisms_append (client->reply, "PLAIN");
 </action>
+<java_action name = "list security mechanisms">
+if (Integer.parseInt (config.resolve ("security/anonymous", "0")) == 1)
+    client.reply.appendMechanisms ("ANONYMOUS");
+if (Integer.parseInt (config.resolve ("security/plain", "0")) == 1)
+    client.reply.appendMechanisms ("PLAIN");
+</java_action>
 
 <action name = "try security mechanism">
 client->next_event = foe_event;
@@ -182,6 +234,25 @@ if (streq (fmq_msg_mechanism (client->request), "PLAIN")
 free (login);
 free (password);
 </action>
+<java_action name = "try security mechanism">
+client.next_event = Event.foe_event;
+String [] result = new String [2];
+String login, password;
+if (client.request.mechanism ().equals ("PLAIN")
+&amp;&amp; FmqSasl.plainDecode (client.request.response (), result)) {
+    login = result [0];
+    password = result [1];
+    FmqConfig account = config.locate ("security/plain/account");
+    while (account != null) {
+        if (account.resolve ("login", "").equals (login)
+        &amp;&amp; account.resolve ("password", "").equals (password)) {
+            client.next_event = Event.friend_event;
+            break;
+        }
+        account = account.next ();
+    }
+}
+</java_action>
 
 <action name = "store client subscription">
 //  Find mount point with longest match to subscription
@@ -199,10 +270,27 @@ while (check) {
 }
 mount_sub_store (mount, client, client->request);
 </action>
+<java_action name = "store client subscription">
+//  Find mount point with longest match to subscription
+String path = client.request.path ();
+
+Mount mount = mounts.isEmpty () ? null : mounts.get (0);
+for (Mount check : mounts) {
+    //  If check->alias is prefix of path and alias is
+    //  longer than current mount then we have a new mount
+    if (path.startsWith (check.alias)
+    &amp;&amp;  check.alias.length () > mount.alias.length ())
+        mount = check;
+}
+mount.storeSub (client, client.request);
+</java_action>
 
 <action name = "store client credit">
 client->credit += fmq_msg_credit (client->request);
 </action>
+<java_action name = "store client credit">
+client.credit += client.request.credit ();
+</java_action>
 
 <!-- Hook actions -->
 <declare>
@@ -214,6 +302,14 @@ client_dispatch (const char *key, void *client, void *server)
     return 0;
 }
 </declare>
+<java_declare>
+//  Client hash function that checks if client is alive
+private static void clientDispatch (Map &lt;String, Client&gt; clients, Server server)
+{
+    for (Client client : clients.values ())
+        server.clientExecute (client, Event.dispatch_event);
+}
+</java_declare>
 
 <action name = "monitor the server">
 bool activity = false;
@@ -226,6 +322,15 @@ while (mount) {
 if (activity)
     zhash_foreach (self->clients, client_dispatch, self);
 </action>
+<java_action name = "monitor the server">
+boolean activity = false;
+for (Mount mount : mounts) {
+    if (mount.refresh (this))
+        activity = true;
+}
+if (activity)
+    clientDispatch (clients, this);
+</java_action>
 
 <action name = "get next patch for client">
 //  Get next patch for client if we're not doing one already
@@ -290,6 +395,71 @@ if (fmq_patch_op (client->patch) == patch_create) {
     fmq_chunk_destroy (&chunk);
 }
 </action>
+<java_action name = "get next patch for client">
+//  Get next patch for client if we're not doing one already
+if (client.patch == null)
+    client.patch = client.patches.isEmpty () ? null : client.patches.remove (0);
+if (client.patch == null) {
+    client.next_event = Event.finished_event;
+    return;
+}
+//  Get virtual filename from patch
+client.reply.setFilename (client.patch.virtual ());
+
+//  We can process a delete patch right away
+if (client.patch.op () == FmqPatch.OP.patch_delete) {
+    client.reply.setSequence (client.sequence++);
+    client.reply.setOperation (FmqMsg.FMQ_MSG_FILE_DELETE);
+    client.next_event = Event.send_delete_event;
+    
+    //  No reliability in this version, assume patch delivered safely
+    client.patch.destroy ();
+}
+else
+if (client.patch.op () == FmqPatch.OP.patch_create) {
+    //  Create patch refers to file, open that for input if needed
+    if (client.file == null) {
+        client.file = client.patch.file ().dup ();
+        if (client.file.input () == false) {
+            //  File no longer available, skip it
+            client.patch.destroy ();
+            client.file.destroy ();
+            client.patch = null;
+            client.file = null;
+            client.next_event = Event.next_patch_event;
+            return;
+        }
+        client.offset = 0;
+    }
+    //  Get next chunk for file
+    FmqChunk chunk = client.file.read (CHUNK_SIZE, client.offset);
+    assert (chunk != null);
+
+    //  Check if we have the credit to send chunk
+    if (chunk.size () &lt;= client.credit) {
+        client.reply.setSequence (client.sequence++);
+        client.reply.setOperation (FmqMsg.FMQ_MSG_FILE_CREATE);
+        client.reply.setOffset (client.offset);
+        client.reply.setChunk (new ZFrame (chunk.data ()));
+        
+        client.offset += chunk.size ();
+        client.credit -= chunk.size ();
+        client.next_event = Event.send_chunk_event;
+        
+        //  Zero-sized chunk means end of file
+        if (chunk.size () == 0) {
+            client.file.destroy ();
+            client.patch.destroy ();
+            client.patch = null;
+            client.file = null;
+        }
+    }
+    else
+        client.next_event = Event.no_credit_event;
+        
+    chunk.destroy ();
+}
+</java_action>
 
 <!-- API methods -->
 
@@ -299,6 +469,12 @@ self->port = zsocket_bind (self->router, endpoint);
 <return>zstr_sendf (self->pipe, "%d", self->port);</return>
 </method>
 
+<java_method name = "bind" return = "number">
+<argument name = "endpoint" type = "string" />
+port = bind (router, endpoint);
+<return>pipe.send (String.format ("%d", port));</return>
+</java_method>
+
 <method name = "publish">
 <argument name = "location" type = "string" />
 <argument name = "alias" type = "string" />
@@ -306,11 +482,24 @@ mount_t *mount = mount_new (location, alias);
 zlist_append (self->mounts, mount);
 </method>
 
+<java_method name = "publish">
+<argument name = "location" type = "string" />
+<argument name = "alias" type = "string" />
+Mount mount = new Mount (location, alias);
+mounts.add (mount);
+</java_method>
+
 <method name = "set anonymous">
 <argument name = "enabled" type = "number" />
 //  Enable anonymous access without a config file
 fmq_config_path_set (self->config, "security/anonymous", enabled? "1" :"0");
 </method>
+
+<java_method name = "set anonymous">
+<argument name = "enabled" type = "number" />
+//  Enable anonymous access without a config file
+config.setPath ("security/anonymous", enabled > 0 ? "1" :"0");
+</java_method>
 
 <include filename = "fmq_server_selftest.xml" />
 

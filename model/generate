@@ -3,3 +3,6 @@ gsl -q -trace:0 -animate:0 fmq_server.xml
 gsl -q -script:graphs fmq_server.xml
 gsl -q -trace:0 -animate:0 fmq_client.xml
 
+gsl -q -script:codec_java fmq_msg.xml
+gsl -q -script:server_java -trace:0 -animate:0 fmq_server.xml
+gsl -q -script:client_java -trace:0 -animate:0 fmq_client.xml
