@@ -718,6 +718,7 @@ public class FmqServer {
                                                                                             
                 //  No reliability in this version, assume patch delivered safely           
                 client.patch.destroy ();                                                    
+                client.patch = null;                                                        
             }                                                                               
             else                                                                            
             if (client.patch.op () == FmqPatch.OP.patch_create) {                           
