@@ -1,0 +1,630 @@
+.#  client_java.gsl
+.#
+.#  Generates a client engine for a specified protocol.
+.#
+.include "library.gsl"
+.resolve_includes ()
+.echo "Generating ../java/src/main/java/org/filemq/$(class.name:pascal).java..."
+.output "../java/src/main/java/org/filemq/$(class.name:pascal).java"
+/*  =========================================================================
+    $(class.name:pascal).java
+
+    Generated header for $(class.name:pascal) protocol client
+    -------------------------------------------------------------------------
+    $(string.trim (class->license.):block                                   )
+    =========================================================================
+*/
+
+.for class.java_method
+.   if return ?= "number"
+.       java_method.ctype = "int"
+.   elsif return ?= "string"
+.       java_method.ctype = "String"
+.   else
+.       java_method.ctype = "void"
+.   endif
+.   for argument
+.       if type = "string"
+.       elsif type = "number"
+.       else
+.           echo "E: we didn't add support for $(type)s in methods"
+.       endif
+.   endfor
+.endfor
+
+package org.filemq;
+
+import java.util.List;
+import java.util.Iterator;
+import java.util.ArrayList;
+import java.util.Map;
+
+import org.zeromq.ZMQ;
+import org.zeromq.ZMQ.Socket;
+import org.zeromq.ZMQ.Poller;
+import org.zeromq.ZContext;
+import org.zeromq.ZThread;
+import org.zeromq.ZMsg;
+import org.zeromq.ZFrame;
+
+//  ---------------------------------------------------------------------
+//  Structure of our front-end API class
+
+public class $(class.name:pascal) {
+    ZContext ctx;        //  CZMQ context
+    Socket pipe;         //  Pipe through to client
+
+    //  The client runs as a background thread so that we can run multiple
+    //  engines at once. The API talks to the client thread over an inproc
+    //  pipe.
+
+
+    //  --------------------------------------------------------------------------
+    //  Create a new $(class.name:pascal) and a new client instance
+
+    public $(class.name:pascal) ()
+    {
+        ctx = new ZContext ();
+        pipe = ZThread.fork (ctx, new ClientThread ());
+    }
+
+
+    //  --------------------------------------------------------------------------
+    //  Destroy the $(class.name:pascal) and stop the client
+
+    public void destroy ()
+    {
+        pipe.send ("STOP");
+        pipe.recvStr ();
+        ctx.destroy ();
+    }
+
+
+    //  --------------------------------------------------------------------------
+    //  Load client configuration data
+
+    public void configure (final String configFile)
+    {
+        pipe.sendMore ("CONFIG");
+        pipe.send (configFile);
+    }
+
+
+    //  --------------------------------------------------------------------------
+    //  Set one configuration key value
+
+    public void setoption (final String path, final String value)
+    {
+        pipe.sendMore ("SETOPTION");
+        pipe.sendMore (path);
+        pipe.send (value);
+    }
+
+
+    //  --------------------------------------------------------------------------
+    //  Open connection to server
+
+    public void connect (final String endpoint)
+    {
+        pipe.sendMore ("CONNECT");
+        pipe.send (endpoint);
+    }
+
+
+    //  --------------------------------------------------------------------------
+    //  Wait for message from API
+
+    public ZMsg recv ()
+    {
+        return ZMsg.recvMsg (pipe);
+    }
+
+
+    //  --------------------------------------------------------------------------
+    //  Return API pipe handle for polling
+
+    public Socket handle ()
+    {
+        return pipe;
+    }
+
+
+.for class.java_method
+    //  --------------------------------------------------------------------------
+
+    public $(ctype) $(name:camel) (\
+.   java_method.send = "send"
+.   for argument
+.       java_method.send = "sendMore"
+.       if last ()
+.           argument.send = "send"
+.       else
+.           argument.send = "sendMore"
+.       endif
+.       if type = "string"
+.           argument.format = "%s"
+final String $(name)\
+.       elsif type = "number"
+.           argument.format = "%d"
+long $(name)\
+.       else
+.           echo "E: we didn't add support for $(type)s in methods"
+.       endif
+.       if last ()
+.       else
+,\
+.       endif
+.   endfor
+)
+    {
+.   for argument where type = "string"
+        assert ($(name) != null);
+.   endfor
+        pipe.$(send:no) ("$(NAME)");
+.   for argument
+.       if type = "string"
+        pipe.$(send:no) (String.format("$(format)", $(name)));
+.       elsif type = "number"
+        pipe.$(send:no) (String.format("$(format)", $(name)));
+.       endif
+.   endfor
+.   if defined (java_method.return)
+        String reply = pipe.recvStr ();
+.       if return = "string"
+        return reply;
+.       else
+        int rc = Integer.parseInt (reply);
+        return rc;
+.       endif
+.   endif
+    }
+
+
+.endfor
+.#  Inherit defaults state, if any, to all other states
+.for class.state as dstate where name = "defaults"
+.   for event as devent
+.       for class.state where count (event, name = devent.name) = 0
+.           copy devent to state
+.       endfor
+.   endfor
+.   delete dstate
+.endfor
+//  ---------------------------------------------------------------------
+//  State machine constants
+
+    private enum State {
+.for class.state
+        $(name:c)_state ($(index ()))$(last ()??";" ?",")
+.   for event
+.       for class.event as cevent where cevent.name = event.name
+.       else
+.           if "$(name:)" = "$(NAME)"
+.               event.external = 1
+.           endif
+.           copy event to class
+.       endfor
+.   endfor
+.endfor
+
+        @SuppressWarnings ("unused")
+        private final int state;
+        State (int state) 
+        {
+            this.state = state;
+        }
+    };
+
+    private enum Event {
+        terminate_event (-1),
+.for class.event
+        $(name:c)_event ($(index ()))$(last ()??";" ?",")
+.endfor
+
+        @SuppressWarnings ("unused")
+        private final int event;
+        Event (int event) 
+        {
+            this.event = event;
+        }
+    };
+
+.if switches.animate ?= 1
+//  Names for animation
+    private static String [] s_state_name = {
+        "",
+.for class.state
+        "$(Name)"$(last ()??"" ?",")
+.endfor
+    };
+
+    private static String [] s_event_name = {
+        "",
+.for class.event
+        "$(name:)"$(last ()??"" ?",")
+.endfor
+    };
+
+.endif
+  
+.for class.java_declare
+    $(string.trim (java_declare.?''):block                       )
+
+.endfor
+
+    //  ---------------------------------------------------------------------
+    //  Context for the client thread
+
+    private static class Client {
+        //  Properties accessible to client actions
+        private Event next_event;           //  Next event
+
+.for class.self
+.   for java_context
+        $(string.trim (java_context.?''):block                                      )
+.   endfor
+.endfor
+        //  Properties you should NOT touch
+        private ZContext ctx;               //  Own CZMQ context
+        private Socket pipe;                //  Socket to back to caller
+        private Socket dealer;              //  Socket to talk to server
+        private boolean stopped;            //  Has client stopped?
+        private FmqConfig config;           //  Configuration tree
+        private State state;                //  Current state
+        private Event event;                //  Current event
+        private $(codec:pascal) request;    //  Next message to send
+        private $(codec:pascal) reply;      //  Last received reply
+        private int heartbeat;              //  Heartbeat interval
+        private long expires_at;            //  Server expires at
+
+        private void config ()
+        {
+            //  Get standard client configuration
+            heartbeat = Integer.parseInt (
+                config.resolve ("client/heartbeat", "1")) * 1000;
+        }
+
+        private Client (ZContext ctx, Socket pipe)
+        {
+            this.ctx = ctx;
+            this.pipe = pipe;
+            this.config = new FmqConfig ("root", null);
+            config ();
+
+.for class.self
+.   for java_construct
+            $(string.trim (java_construct.?''):block                                      )
+.   endfor
+.endfor
+        }
+
+        private void destroy ()
+        {
+            if (config != null)
+                config.destroy ();
+            if (request != null)
+                request.destroy ();
+            if (reply != null)
+                reply.destroy ();
+.for class.self
+.   for java_destruct
+            $(string.trim (java_destruct.?''):block                                      )
+.   endfor
+.endfor
+        }
+
+        //  Apply configuration tree:
+        //   * apply client configuration
+        //   * print any echo items in top-level sections
+        //   * apply sections that match methods
+
+        private void applyConfig ()
+        {
+            //  Apply echo commands and class methods
+            FmqConfig section = config.child ();
+            while (section != null) {
+                FmqConfig entry = section.child ();
+                while (entry != null) {
+                    if (entry.name ().equals ("echo"))
+                        zclock_log (entry.value ());
+                    entry = entry.next ();
+                }
+.for class.java_method
+                if (section.name ().equals ("$(name:c)")) {
+.   for argument
+.       if type = "string"
+                    String $(name) = section.resolve ("$(name)", "?");
+.       elsif type = "number"
+                    long $(name) = Long.parseLong (section.resolve ("$(name)", ""));
+.       endif
+.   endfor
+                    $(string.trim (java_method.?''):block                                    )
+                }
+.   if !last ()
+                else
+.   endif
+.endfor
+                section = section.next ();
+            }
+            config ();
+        }
+
+.macro output_event_body
+.   for action
+.       if name = "send"
+.           if switches.animate ?= 1
+                        zclock_log ("C:    + send $(MESSAGE:C)");
+.           endif
+                        request.setId ($(codec:pascal).$(MESSAGE:C));
+.if switches.trace ?= 1
+                        zclock_log ("Send request to server");
+                        $(codec)_dump (self->request);
+.endif
+                        request.send (dealer);
+                        request = new $(codec:pascal) (0);
+.       else
+.           if switches.animate ?= 1
+                        zclock_log ("C:    + $(name)");
+.           endif
+                        $(name:camel) ();
+.           if count (class.action, name = -1.name) = 0
+.                echo 'E: you need to add <action name="$(name)">'
+.           endif
+.       endif
+.   endfor
+.   if defined (event.next)
+                        state = State.$(next:c)_state;
+.   endif
+.endmacro
+.#
+.for class.java_action
+.   if first ()
+        //  Custom actions for state machine
+
+.   endif
+        private void $(name:camel) ()
+        {
+            $(string.trim (java_action.?''):block                                            )
+        }
+
+.endfor
+        //  Execute state machine as long as we have events
+
+        private void execute (Event event)
+        {
+            next_event = event;
+            while (next_event != null) {
+                event = next_event;
+                next_event = null;
+.if switches.animate ?= 1
+                zclock_log ("C: %s:", s_state_name [self->state]);
+                zclock_log ("C: (%s)", s_event_name [self->event]);
+.endif
+                switch (state) {
+.for class.state
+                case $(name:c)_state:
+.   for event where name <> "$other"
+.       if index () > 1
+                    else
+.       endif
+                    if (event == Event.$(name:c)_event) {
+.       output_event_body ()
+                        }
+.   endfor
+.   for event where name = "$other"
+                    else {
+                        //  Process all other events
+.       output_event_body ()
+                    }
+.   endfor
+                    break;
+
+.endfor
+                }
+.if switches.animate ?= 1
+                zclock_log ("C:      -------------------> %s", s_state_name [self->state]);
+.endif
+                if (next_event == Event.terminate_event) {
+                    stopped = true;
+                    break;
+                }
+            }
+        }
+
+        //  Restart client dialog from zero
+
+        private void restart (String endpoint)
+        {
+            //  Reconnect to new endpoint if specified
+            if (endpoint != null)  {
+                if (dealer != null)
+                    ctx.destroySocket (dealer);
+                dealer = ctx.createSocket (ZMQ.DEALER);
+                dealer.connect (endpoint);
+            }
+            //  Clear out any previous request data
+            if (request != null)
+                request.destroy ();
+            request = new $(codec:pascal) (0);
+
+            //  Restart dialog state machine from zero
+.for class.state where item () = 1
+            state = State.$(name:c)_state;
+.endfor
+            expires_at = 0;
+
+            //  Application hook to reinitialize dialog
+            //  Provides us with an event to kick things off
+            initializeTheClient ();
+            execute (next_event);
+        }
+
+        private void controlMessage ()
+        {
+            ZMsg msg = ZMsg.recvMsg (pipe);
+            String method = msg.popString ();
+.for class.java_method
+            if (method.equals ("$(NAME)")) {
+.   for argument
+.       if type = "string"
+                String $(name) = msg.popString ();
+.       elsif type = "number"
+                long $(name) = Long.parseLong (msg.popString ());
+.       endif
+.   endfor
+                $(string.trim (java_method.?''):block                                        )
+.   for java_method.return
+                $(string.trim (return.?''):block                                        )
+.   endfor
+.   for argument where type = "string"
+.   endfor
+            }
+            else
+.endfor
+            if (method.equals ("CONNECT")) {
+                String endpoint = msg.popString ();
+                restart (endpoint);
+            }
+            else
+            if (method.equals ("CONFIG")) {
+                String config_file = msg.popString ();
+                config.destroy ();
+                config = FmqConfig.load (config_file);
+                if (config != null)
+                    applyConfig ();
+                else {
+                    System.out.printf ("E: cannot load config file '%s'\\n", config_file);
+                    config = new FmqConfig ("root", null);
+                }
+            }
+            else
+            if (method.equals ("SETOPTION")) {
+                String path = msg.popString ();
+                String value = msg.popString ();
+                config.setPath (path, value);
+                config ();
+            }
+            else
+            if (method.equals ("STOP")) {
+                pipe.send ("OK");
+                stopped = true;
+            }
+            msg.destroy ();
+
+            if (next_event != null)
+                execute (next_event);
+        }
+
+        private void serverMessage ()
+        {
+            if (reply != null)
+                reply.destroy ();
+            reply = FmqMsg.recv (dealer);
+            if (reply == null)
+                return;         //  Interrupted; do nothing
+.if switches.trace ?= 1
+
+            zclock_log ("Received reply from server");
+            $(codec)_dump (self->reply);
+.endif
+    
+.   for class.event where external ?= 1
+.   if index () > 1
+            else
+.   endif
+            if (reply.id () == $(codec:pascal).$(NAME:C))
+                execute (Event.$(name:c)_event);
+.   endfor
+
+            //  Any input from server counts as activity
+            expires_at = System.currentTimeMillis () + heartbeat * 2;
+        }
+
+    }
+    //  Finally here's the client thread itself, which polls its two
+    //  sockets and processes incoming messages
+
+    private static class ClientThread 
+                          implements ZThread.IAttachedRunnable {
+        @Override
+        public void run (Object [] args, ZContext ctx, Socket pipe)
+        {
+            Client self = new Client (ctx, pipe);
+
+            while (!self.stopped && !Thread.currentThread().isInterrupted ()) {
+
+                Poller items = ctx.getContext ().poller ();
+                items.register (self.pipe, Poller.POLLIN);
+
+                //  Build structure each time since self->dealer can change
+                if (self.dealer != null)
+                    items.register (self.dealer, Poller.POLLIN);
+
+                if (items.poll (self.heartbeat) == -1)
+                    break;              //  Context has been shut down
+
+                //  Process incoming messages; either of these can
+                //  throw events into the state machine
+                if (items.pollin (0))
+                    self.controlMessage ();
+
+                if (items.pollin (1))
+                    self.serverMessage ();
+
+                //  Check whether server seems dead
+                if (self.expires_at > 0 && System.currentTimeMillis () >= self.expires_at)
+                    self.restart (null);
+            }
+            self.destroy ();
+        }
+    }
+
+    public static void zclock_log (String fmt, Object ... args) 
+    {
+        System.out.println (String.format (fmt, args));
+    }
+
+}
+
+.echo "Generating ../java/src/test/java/org/filemq/Test$(class.name:pascal).java..."
+.output "../java/src/test/java/org/filemq/Test$(class.name:pascal).java"
+/*  =========================================================================
+    Test$(class.name:pascal).java
+
+    Generated class for $(class.name:pascal) protocol client
+    -------------------------------------------------------------------------
+    $(string.trim (class->license.):block                                   )
+    =========================================================================
+*/
+
+//  --------------------------------------------------------------------------
+//  Selftest
+
+package org.filemq;
+
+import org.junit.Test;
+
+public class Test$(class.name:pascal)
+{
+    @Test
+    public void test$(class.name:pascal) ()
+    {
+        System.out.printf (" * $(class.name:pascal): ");
+
+        $(class.name:pascal) self;
+.for class.selftest
+        //  Run selftest using '$(config?'')' configuration
+        self = new $(class.name:pascal) ();
+        assert (self != null);
+.   if defined (config)
+        self.configure ("src/test/resources/$(config:)");
+.   endif
+.   for java_init
+        $(string.trim (java_init.?''):block                                              )
+.   endfor
+        self.destroy ();
+
+.endfor
+        System.out.printf ("OK\\n");
+    }
+}

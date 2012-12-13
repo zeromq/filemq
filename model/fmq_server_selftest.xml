@@ -34,3 +34,40 @@ fmq_msg_response_set (request, fmq_sasl_plain_encode ("guest", "guest"));
     <step send = "HUGZ" recv = "HUGZ-OK" />
     <step recv = "HUGZ" />
 </selftest>
+
+<java_selftest>
+    <init>
+int port = self.bind ("tcp://*:5670");
+assertEquals (port, 5670);
+    </init>
+    <step send = "OHAI" recv = "SRSLY" />
+    <step send = "ICANHAZ" recv = "RTFM" />
+    <step send = "NOM" recv = "RTFM" />
+    <step send = "HUGZ" recv = "RTFM" />
+</java_selftest>
+
+<java_selftest config = "anonymous.cfg">
+    <init>
+port = self.bind ("tcp://*:5670");
+assertEquals (port, 5670);
+    </init>
+    <step send = "OHAI" recv = "OHAI-OK" />
+    <step send = "NOM" />
+    <step send = "HUGZ" recv = "HUGZ-OK" />
+    <step send = "YARLY" recv = "RTFM" />
+</java_selftest>
+
+<java_selftest config = "server_test.cfg">
+    <init>
+port = self.bind ("tcp://*:5670");
+assertEquals (port, 5670);
+    </init>
+    <step send = "OHAI" recv = "ORLY" />
+    <step send = "YARLY" recv = "OHAI-OK">
+request.setMechanism ("PLAIN");
+request.setResponse (FmqSasl.plainEncode ("guest", "guest"));
+    </step>
+    <step send = "NOM" />
+    <step send = "HUGZ" recv = "HUGZ-OK" />
+    <step recv = "HUGZ" />
+</java_selftest>

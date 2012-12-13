@@ -41,3 +41,37 @@ sub_cache (sub_t *self)
     return cache;
 }
 </declare>
+
+<java_declare>
+//  Subscription in memory
+private static class Sub {
+    private Client client;           //  Pointer to parent client
+    private String inbox;            //  Inbox location
+    private String path;             //  Path we subscribe to
+
+    private Sub (Client client, String inbox, String path)
+    {
+        this.client = client;
+        this.inbox = inbox;
+        this.path = path;
+    }
+
+    private void destroy ()
+    {
+    }
+
+    //  Return new cache object for subscription path
+
+    private Map &lt;String, String&gt; cache ()
+    {
+        //  Get directory cache for this path
+        FmqDir dir = FmqDir.newFmqDir (path.substring(1), inbox);
+        if (dir != null) {
+            Map &lt;String, String&gt; cache = dir.cache ();
+            dir.destroy ();
+            return cache;
+        }
+        return null;
+    }
+}
+</java_declare>
