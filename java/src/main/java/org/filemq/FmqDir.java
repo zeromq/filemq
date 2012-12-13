@@ -327,8 +327,8 @@ public class FmqDir
                     //  Old file was modified or replaced
                     //  Since we don't check file contents, treat as created
                     //  Could better do SHA check on file here
-                    if (new_.time () != older.time ()
-                    ||  new_.size () != older.size ())
+                    if (new_.time () != old.time ()
+                    ||  new_.size () != old.size ())
                         patches.add (new FmqPatch (newer.path, new_, FmqPatch.OP.patch_create, alias));
                 }
                 else
