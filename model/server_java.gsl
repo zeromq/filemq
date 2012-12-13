@@ -1,0 +1,742 @@
+.#  server_c.gsl
+.#
+.#  Generates a server engine for a specified protocol.
+.#
+.include "library.gsl"
+.resolve_includes ()
+.echo "Generating ../java/src/main/java/org/filemq/$(class.name:pascal).java..."
+.output "../java/src/main/java/org/filemq/$(class.name:pascal).java"
+
+/*  =========================================================================
+    $(class.name).c
+
+    Generated class for $(class.name) protocol server
+    -------------------------------------------------------------------------
+    $(string.trim (class->license.):block                                   )
+    =========================================================================
+*/
+
+package org.filemq;
+
+import java.util.List;
+import java.util.Iterator;
+import java.util.ArrayList;
+import java.util.Map;
+import java.util.HashMap;
+
+import org.zeromq.ZMQ;
+import org.zeromq.ZMQ.Socket;
+import org.zeromq.ZMQ.Poller;
+import org.zeromq.ZThread;
+import org.zeromq.ZMsg;
+import org.zeromq.ZContext;
+import org.zeromq.ZFrame;
+
+.for class.java_method
+.   if return ?= "number"
+.       java_method.ctype = "int"
+.   elsif return ?= "string"
+.       java_method.ctype = "String"
+.   else
+.       java_method.ctype = "void"
+.   endif
+.   for argument
+.       if type = "string"
+.       elsif type = "number"
+.       else
+.           echo "E: we didn't add support for $(type)s in methods"
+.       endif
+.   endfor
+.endfor
+
+
+//  ---------------------------------------------------------------------
+//  Structure of our front-end API class
+
+public class $(class.name:pascal) {
+
+    private ZContext ctx;        //  CZMQ context
+    private Socket pipe;         //  Pipe through to server
+
+
+    //  --------------------------------------------------------------------------
+    //  Create a new $(class.name) and a new server instance
+
+    public $(class.name:pascal) ()
+    {
+        ctx = new ZContext ();
+        pipe = ZThread.fork (ctx, new ServerThread ());
+    }
+
+
+    //  --------------------------------------------------------------------------
+    //  Destroy the $(class.name) and stop the server
+
+    public void destroy ()
+    {
+        pipe.send ("STOP");
+        pipe.recvStr ();
+        ctx.destroy ();
+    }
+
+
+    //  --------------------------------------------------------------------------
+    //  Load server configuration data
+    public void configure (final String config_file)
+    {
+        pipe.sendMore ("CONFIG");
+        pipe.send (config_file);
+    }
+
+
+    //  --------------------------------------------------------------------------
+    //  Set one configuration key value
+
+    public void setoption (final String path, final String value)
+    {
+        pipe.sendMore ("SETOPTION");
+        pipe.sendMore (path);
+        pipe.send (value);
+    }
+
+.for class.java_method
+    //  --------------------------------------------------------------------------
+
+    public $(ctype) $(name:camel) (\
+.   java_method.send = "send"
+.   for argument
+.       java_method.send = "sendMore"
+.       if last ()
+.           argument.send = "send"
+.       else
+.           argument.send = "sendMore"
+.       endif
+.       if type = "string"
+.           argument.format = "%s"
+final String $(name)\
+.       elsif type = "number"
+.           argument.format = "%d"
+long $(name)\
+.       else
+.           echo "E: we didn't add support for $(type)s in methods"
+.       endif
+.       if last ()
+.       else
+,\
+.       endif
+.   endfor
+)
+    {
+.   for argument where type = "string"
+        assert ($(name) != null);
+.   endfor
+        pipe.$(send:no) ("$(NAME)");
+.   for argument
+.       if type = "string"
+        pipe.$(send:no) (String.format("$(format)", $(name)));
+.       elsif type = "number"
+        pipe.$(send:no) (String.format("$(format)", $(name)));
+.       endif
+.   endfor
+.   if defined (java_method.return)
+        String reply = pipe.recvStr ();
+.       if return = "string"
+        return reply;
+.       else
+        int rc = Integer.parseInt (reply);
+        return rc;
+.       endif
+.   endif
+    }
+
+.endfor
+
+.#  Inherit defaults state, if any, to all other states
+.for class.state as dstate where name = "defaults"
+.   for event as devent
+.       for class.state where count (event, name = devent.name) = 0
+.           copy devent to state
+.       endfor
+.   endfor
+.   delete dstate
+.endfor
+
+    //  ---------------------------------------------------------------------
+    //  State machine constants
+
+    private enum State {
+.for class.state
+        $(name:c)_state ($(index ()))$(last ()??";" ?",")
+.   for event
+.       for class.event as cevent where cevent.name = event.name
+.       else
+.           if "$(name:)" = "$(NAME)"
+.               event.external = 1
+.           endif
+.           copy event to class
+.       endfor
+.   endfor
+.endfor
+
+        @SuppressWarnings ("unused")
+        private final int state;
+        State (int state) 
+        {
+            this.state = state;
+        }
+    };
+
+    private enum Event {
+        terminate_event (-1),
+.for class.event
+        $(name:c)_event ($(index ()))$(last ()??";" ?",")
+.endfor
+
+        @SuppressWarnings ("unused")
+        private final int event;
+        Event (int event) 
+        {
+            this.event = event;
+        }
+    };
+
+.if switches.animate ?= 1
+//  Names for animation
+    private static String [] s_state_name = {
+        "",
+.for class.state
+        "$(Name)"$(last ()??"" ?",")
+.endfor
+    };
+
+    private static String [] s_event_name = {
+        "",
+.for class.event
+        "$(name:)"$(last ()??"" ?",")
+.endfor
+    };
+
+.endif
+
+.for class.java_declare
+    $(string.trim (java_declare.?''):block                       )
+
+.endfor
+
+    //  ---------------------------------------------------------------------
+    //  Context for each client connection
+
+    private static class Client {
+        //  Properties accessible to client actions
+        private long heartbeat;          //  Heartbeat interval
+        private Event next_event;         //  Next event
+.for class.client
+.   for java_context
+        $(string.trim (java_context.?''):block                                           )
+.   endfor
+.endfor
+
+        //  Properties you should NOT touch
+        private Socket router;                  //  Socket to client
+        private long heartbeat_at;              //  Next heartbeat at this time
+        private long expires_at;                //  Expires at this time
+        private State state;                    //  Current state
+        private Event event;                    //  Current event
+        private String hashkey;                 //  Key into clients hash
+        private ZFrame address;                 //  Client address identity
+        private $(codec:pascal) request;        //  Last received request
+        private $(codec:pascal) reply;          //  Reply to send out, if any
+
+
+        //  Client methods
+
+        private Client (String hashkey, ZFrame address)
+        {
+            this.hashkey = hashkey;
+.for class.state where item () = 1
+            this.state = State.$(name:c)_state;
+.endfor
+            this.address = address.duplicate ();
+            reply = new $(codec:pascal) (0);
+            reply.setAddress (this.address);
+.for class.client
+.   for java_construct
+            $(string.trim (java_construct.?''):block                                         )
+.   endfor
+.endfor
+        }
+
+        private void destroy ()
+        {
+            if (address != null)
+                address.destroy ();
+            if (request != null)
+                request.destroy ();
+            if (reply != null)
+                reply.destroy ();
+.for class.client
+.   for java_destruct
+            $(string.trim (java_destruct.?''):block                                      )
+.   endfor
+.endfor
+        }
+
+        private void setRequest ($(codec:pascal) request)
+        {
+            if (this.request != null)
+                this.request.destroy ();
+            this.request = request;
+
+            //  Any input from client counts as heartbeat
+            heartbeat_at = System.currentTimeMillis () + heartbeat;
+            //  Any input from client counts as activity
+            expires_at = System.currentTimeMillis () + heartbeat * 3;
+        }
+    }
+
+    //  Client hash function that calculates tickless timer
+    private static long clientTickless (Map <String, Client> clients , long tickless)
+    {
+        for (Client self: clients.values ()) {
+            if (tickless > self.heartbeat_at)
+                tickless = self.heartbeat_at;
+        }
+        return tickless;
+    }
+
+    //  Client hash function that checks if client is alive
+    private static void clientPing (Map <String, Client> clients , Server server)
+    {
+        Iterator <Map.Entry <String, Client>> it = clients.entrySet ().iterator ();
+        while (it.hasNext ()) {
+            Client self = it.next ().getValue ();
+            //  Expire client if it's not answered us in a while
+            if (System.currentTimeMillis () >= self.expires_at && self.expires_at > 0) {
+                //  In case dialog doesn't handle expired_event by destroying
+                //  client, set expires_at to zero to prevent busy looping
+                self.expires_at = 0;
+                if (server.clientExecute (self, Event.expired_event, true))
+                    it.remove ();
+            }
+            else
+            //  Check whether to send heartbeat to client
+            if (System.currentTimeMillis () >= self.heartbeat_at) {
+                server.clientExecute (self, Event.heartbeat_event);
+                self.heartbeat_at = System.currentTimeMillis () + self.heartbeat;
+            }
+        }
+    }
+
+    //  ---------------------------------------------------------------------
+    //  Context for the server thread
+
+    private static class Server {
+        //  Properties accessible to client actions
+.for class.self
+.   for java_context
+        $(string.trim (java_context.?''):block                                           )
+.   endfor
+.endfor
+
+        //  Properties you should NOT touch
+        private ZContext ctx;                   //  Own CZMQ context
+        private Socket pipe;                    //  Socket to back to caller
+        private Socket router;                  //  Socket to talk to clients
+        private Map <String, Client> clients;   //  Clients we've connected to
+        private boolean stopped;                //  Has server stopped?
+        private FmqConfig config;               //  Configuration tree
+        private int monitor;                    //  Monitor interval
+        private long monitor_at;                //  Next monitor at this time
+        private int heartbeat;                  //  Heartbeat for clients
+
+        //  Server methods
+
+        private void config ()
+        {
+            //  Get standard server configuration
+            monitor = Integer.parseInt (
+                config.resolve ("server/monitor", "1")) * 1000;
+            heartbeat = Integer.parseInt (
+                config.resolve ("server/heartbeat", "1")) * 1000;
+            monitor_at = System.currentTimeMillis () + monitor;
+        }
+
+        private Server (ZContext ctx, Socket pipe)
+        {
+            this.ctx = ctx;
+            this.pipe = pipe;
+            router = ctx.createSocket (ZMQ.ROUTER);
+            clients = new HashMap <String, Client> ();
+            config = new FmqConfig ("root", null);
+            config ();
+.for class.self
+.   for java_construct
+            $(string.trim (java_construct.?''):block                                         )
+.   endfor
+.endfor
+        }
+
+        private void destroy ()
+        {
+            ctx.destroySocket (router);
+            config.destroy ();
+            for (Client c: clients.values ())
+                c.destroy ();
+.for class.self
+.   for java_destruct
+            $(string.trim (java_destruct.?''):block                                      )
+.   endfor
+.endfor
+        }
+
+        //  Apply configuration tree:
+        //   * apply server configuration
+        //   * print any echo items in top-level sections
+        //   * apply sections that match methods
+
+        private void applyConfig ()
+        {
+            //  Apply echo commands and class methods
+            FmqConfig section = config.child ();
+            while (section != null) {
+                FmqConfig entry = section.child ();
+                while (entry != null) {
+                    if (entry.name ().equals ("echo"))
+                        zclock_log (entry.value ());
+                    entry = entry.next ();
+                }
+.for class.java_method
+                if (section.name ().equals ("$(name:c)")) {
+.   for argument
+.       if type = "string"
+                    String $(name) = section.resolve ("$(name)", "?");
+.       elsif type = "number"
+                    long $(name) = Long.parseLong (section.resolve ("$(name)", ""));
+.       endif
+.   endfor
+                    $(string.trim (java_method.?''):block                                    )
+                }
+.   if !last ()
+                else
+.   endif
+.endfor
+                section = section.next ();
+            }
+            config ();
+        }
+
+        private void controlMessage ()
+        {
+            ZMsg msg = ZMsg.recvMsg (pipe);
+            String method = msg.popString ();
+.for class.java_method
+            if (method.equals ("$(NAME)")) {
+.   for argument
+.       if type = "string"
+                String $(name) = msg.popString ();
+.       elsif type = "number"
+                long $(name) = Long.parseLong (msg.popString ());
+.       endif
+.   endfor
+                $(string.trim (java_method.?''):block                                        )
+.   for java_method.return
+                $(string.trim (return.?''):block                                        )
+.   endfor
+.   for argument where type = "string"
+.   endfor
+            }
+            else
+.endfor
+            if (method.equals ("CONFIG")) {
+                String config_file = msg.popString ();
+                config.destroy ();
+                config = FmqConfig.load (config_file);
+                if (config != null)
+                    applyConfig ();
+                else {
+                    System.out.printf ("E: cannot load config file '%s'\\n", config_file);
+                    config = new FmqConfig ("root", null);
+                }
+            }
+            else
+            if (method.equals ("SETOPTION")) {
+                String path = msg.popString ();
+                String value = msg.popString ();
+                config.setPath (path, value);
+                config ();
+            }
+            else
+            if (method.equals ("STOP")) {
+                pipe.send ("OK");
+                stopped = true;
+            }
+            msg.destroy ();
+            msg = null;
+        }
+
+.macro output_event_body
+.   for action
+.       if name = "send"
+.           if switches.animate ?= 1
+                        zclock_log ("C:    + send $(MESSAGE:C)");
+.           endif
+                        client.reply.setId ($(codec:pascal).$(MESSAGE:C));
+.if switches.trace ?= 1
+                        zclock_log ("Send request to client");
+                        client.reply.dump ();
+.endif
+                        client.reply.send (client.router);
+                        client.reply = new $(codec:pascal) (0);
+                        client.reply.setAddress (client.address);
+.       else
+.           if switches.animate ?= 1
+                        zclock_log ("C:    + $(name)");
+.           endif
+                        $(name:camel) (client);
+.           if count (class.action, name = -1.name) = 0
+.                echo 'E: you need to add <action name="$(name)">'
+.           endif
+.       endif
+.   endfor
+.   if defined (event.next)
+                        client.state = State.$(next:c)_state;
+.   endif
+.endmacro
+.#
+.for class.java_action
+.   if first ()
+        //  Custom actions for state machine
+
+.   endif
+        private void $(name:camel) (Client client)
+        {
+            $(string.trim (java_action.?''):block                                            )
+        }
+
+.endfor
+        //  Execute state machine as long as we have events
+        //  Returns true, if it requires remove on iteration
+
+        private boolean clientExecute (Client client, Event event)
+        {
+            return clientExecute (client, event, false);
+        }
+
+        private boolean clientExecute (Client client, Event event, boolean oniter)
+        {
+            client.next_event = event;
+            while (client.next_event != null) {
+                client.event = client.next_event;
+                client.next_event = null;
+.if switches.animate ?= 1
+                zclock_log ("S: %s:", s_state_name [client->state]);
+                zclock_log ("S: (%s)", s_event_name [client->event]);
+.endif
+                switch (client.state) {
+.for class.state
+                case $(name:c)_state:
+.   for event where name <> "$other"
+.       if index () > 1
+                    else
+.       endif
+                    if (client.event == Event.$(name:c)_event) {
+.       output_event_body ()
+                    }
+.   endfor
+.   for event where name = "$other"
+                    else {
+                            //  Process all other events
+.       output_event_body ()
+                    }
+.   endfor
+                    break;
+
+.endfor
+                }
+.if switches.animate ?= 1
+                zclock_log ("S:      -------------------> %s", s_state_name [client->state]);
+.endif
+                if (client.next_event == Event.terminate_event) {
+                    //  Automatically calls client_destroy
+                    client.destroy ();
+                    if (oniter)
+                        return true;
+                    clients.remove (client.hashkey);
+                    break;
+                }
+            }
+            return false;
+        }
+
+        private void clientMessage ()
+        {
+            $(codec:pascal) request = $(codec:pascal).recv (router);
+            if (request == null)
+                return;         //  Interrupted; do nothing
+
+.if switches.trace ?= 1
+            zclock_log ("Received message from client");
+            request.dump ();
+.endif
+            String hashkey = request.address ().strhex ();
+            Client client = clients.get (hashkey);
+            if (client == null) {
+                client = new Client (hashkey, request.address ());
+                client.heartbeat = heartbeat;
+                client.router = router;
+                clients.put (hashkey, client);
+            }
+
+            client.setRequest (request);
+.   for class.event where external ?= 1
+.   if index () > 1
+            else
+.   endif
+            if (request.id () == $(codec:pascal).$(NAME:C))
+                clientExecute (client, Event.$(name:c)_event);
+.   endfor
+        }
+    }
+
+    //  The server runs as a background thread so that we can run multiple
+    //  engines at once. The API talks to the server thread over an inproc
+    //  pipe.
+
+    //  Finally here's the server thread itself, which polls its two
+    //  sockets and processes incoming messages
+
+    private static class ServerThread 
+                          implements ZThread.IAttachedRunnable {
+        @Override
+        public void run (Object [] args, ZContext ctx, Socket pipe)
+        {
+            Server self = new Server (ctx, pipe);
+
+            Poller items = ctx.getContext ().poller ();
+            items.register (self.pipe, Poller.POLLIN);
+            items.register (self.router, Poller.POLLIN);
+
+            self.monitor_at = System.currentTimeMillis () + self.monitor;
+            while (!self.stopped && !Thread.currentThread ().isInterrupted ()) {
+                //  Calculate tickless timer, up to interval seconds
+                long tickless = System.currentTimeMillis () + self.monitor;
+                tickless = clientTickless (self.clients, tickless);
+
+                //  Poll until at most next timer event
+                long rc = items.poll (tickless - System.currentTimeMillis ());
+                if (rc == -1)
+                    break;              //  Context has been shut down
+
+                //  Process incoming message from either socket
+                if (items.pollin (0))
+                    self.controlMessage ();
+
+                if (items.pollin (1))
+                    self.clientMessage ();
+
+                //  Send heartbeats to idle clients as needed
+                clientPing (self.clients, self);
+
+                //  If clock went past timeout, then monitor server
+                if (System.currentTimeMillis () >= self.monitor_at) {
+.   if count (class.action, name = "monitor the server")
+                    self.monitorTheServer (null);
+.   endif
+                    self.monitor_at = System.currentTimeMillis () + self.monitor;
+                }
+            }
+            self.destroy ();
+        }
+    }
+
+    public static void zclock_log (String fmt, Object ... args) 
+    {
+        System.out.println (String.format (fmt, args));
+    }
+
+    public static int bind (Socket sock, String addr) 
+    {
+        int pos = addr.lastIndexOf (':');
+        String port = addr.substring (pos + 1);
+        if (port.equals ("*")) 
+            return sock.bindToRandomPort (addr.substring (0, pos));
+        else {
+            sock.bind (addr);
+            return Integer.parseInt (port);
+        }
+    }
+}
+
+.echo "Generating ../java/src/test/java/org/filemq/Test$(class.name:pascal).java..."
+.output "../java/src/test/java/org/filemq/Test$(class.name:pascal).java"
+//  --------------------------------------------------------------------------
+//  Selftest
+
+package org.filemq;
+
+import static org.junit.Assert.*;
+import org.junit.Test;
+import org.zeromq.ZMQ;
+import org.zeromq.ZMQ.Socket;
+import org.zeromq.ZContext;
+
+public class Test$(class.name:pascal)
+{
+    @Test
+    public void test$(class.name:pascal) ()
+    {
+
+        System.out.printf (" * $(class.name): ");
+.if switches.trace ?= 1 | switches.animate ?= 1
+        System.out.printf ("\\n");
+.else
+.endif
+        ZContext ctx = new ZContext ();
+        
+        $(class.name:pascal) self;
+        Socket dealer = ctx.createSocket (ZMQ.DEALER);
+        dealer.setReceiveTimeOut (2000);
+        dealer.connect ("tcp://localhost:5670");
+        
+        $(codec:pascal) request, reply;
+        
+.for class.java_selftest
+        //  Run selftest using '$(config?'')' configuration
+        self = new $(class.name:pascal) ();
+        assert (self != null);
+.   if defined (config)
+        self.configure ("src/test/resources/$(config:)");
+.   endif
+.   for init
+        $(string.trim (init.?''):block                                              )
+.   endfor
+.   for step
+.       if defined (send)
+        request = new $(codec:pascal) ($(CODEC:pascal).$(SEND:C));
+.           if defined (step.)
+        $(string.trim (step.?''):block                                              )
+.           endif
+        request.send (dealer);
+.       endif
+.       if defined (recv)
+        reply = $(codec:pascal).recv (dealer);
+        assert (reply != null);
+        assertEquals (reply.id (), $(CODEC:pascal).$(RECV:C));
+        reply.destroy ();
+.       endif
+.       if defined (pause)
+        try { Thread.sleep ($(pause)); } catch (Exception e) {}
+.       endif
+
+.   endfor
+        self.destroy ();
+.endfor
+
+        ctx.destroy ();
+        //  No clean way to wait for a background thread to exit
+        //  Under valgrind this will randomly show as leakage
+        //  Reduce this by giving server thread time to exit
+        try {Thread.sleep (200);} catch (Exception e) {};
+        System.out.printf ("OK\\n");
+    }
+}

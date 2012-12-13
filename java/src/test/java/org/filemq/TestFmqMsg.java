@@ -13,8 +13,7 @@ import org.zeromq.ZContext;
 public class TestFmqMsg
 {
     @Test
-    public void
-    testFmqMsg ()
+    public void testFmqMsg ()
     {
         System.out.printf (" * fmq_msg: ");
 
@@ -37,16 +36,10 @@ public class TestFmqMsg
         //  Encode/send/decode and verify each message type
 
         self = new FmqMsg (FmqMsg.OHAI);
-        byte [] identityData = new byte [FmqMsg.IDENTITY_SIZE];
-        for (int i=0; i < FmqMsg.IDENTITY_SIZE; i++)
-            identityData [i] = 123;
-        self.setIdentity (identityData);
         self.send (output);
     
         self = FmqMsg.recv (input);
         assert (self != null);
-        assertEquals (self.identity () [0], 123);
-        assertEquals (self.identity () [FmqMsg.IDENTITY_SIZE - 1], 123);
         self.destroy ();
 
         self = new FmqMsg (FmqMsg.ORLY);
@@ -85,6 +78,8 @@ public class TestFmqMsg
         self.setPath ("Life is short but Now lasts for ever");
         self.insertOptions ("Name", "Brutus");
         self.insertOptions ("Age", "%d", 43);
+        self.insertCache ("Name", "Brutus");
+        self.insertCache ("Age", "%d", 43);
         self.send (output);
     
         self = FmqMsg.recv (input);
@@ -93,6 +88,9 @@ public class TestFmqMsg
         assertEquals (self.options ().size (), 2);
         assertEquals (self.optionsString ("Name", "?"), "Brutus");
         assertEquals (self.optionsNumber ("Age", 0), 43);
+        assertEquals (self.cache ().size (), 2);
+        assertEquals (self.cacheString ("Name", "?"), "Brutus");
+        assertEquals (self.cacheNumber ("Age", 0), 43);
         self.destroy ();
 
         self = new FmqMsg (FmqMsg.ICANHAZ_OK);
@@ -103,21 +101,22 @@ public class TestFmqMsg
         self.destroy ();
 
         self = new FmqMsg (FmqMsg.NOM);
-        self.setCredit (12345678);
-        self.setSequence (12345678);
+        self.setCredit ((byte) 123);
+        self.setSequence ((byte) 123);
         self.send (output);
     
         self = FmqMsg.recv (input);
         assert (self != null);
-        assertEquals (self.credit (), 12345678);
-        assertEquals (self.sequence (), 12345678);
+        assertEquals (self.credit (), 123);
+        assertEquals (self.sequence (), 123);
         self.destroy ();
 
         self = new FmqMsg (FmqMsg.CHEEZBURGER);
-        self.setSequence (12345678);
+        self.setSequence ((byte) 123);
         self.setOperation ((byte) 123);
         self.setFilename ("Life is short but Now lasts for ever");
-        self.setOffset (12345678);
+        self.setOffset ((byte) 123);
+        self.setEof ((byte) 123);
         self.insertHeaders ("Name", "Brutus");
         self.insertHeaders ("Age", "%d", 43);
         self.setChunk (new ZFrame ("Captcha Diem"));
@@ -125,10 +124,11 @@ public class TestFmqMsg
     
         self = FmqMsg.recv (input);
         assert (self != null);
-        assertEquals (self.sequence (), 12345678);
+        assertEquals (self.sequence (), 123);
         assertEquals (self.operation (), 123);
         assertEquals (self.filename (), "Life is short but Now lasts for ever");
-        assertEquals (self.offset (), 12345678);
+        assertEquals (self.offset (), 123);
+        assertEquals (self.eof (), 123);
         assertEquals (self.headers ().size (), 2);
         assertEquals (self.headersString ("Name", "?"), "Brutus");
         assertEquals (self.headersNumber ("Age", 0), 43);

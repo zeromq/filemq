@@ -19,9 +19,41 @@
 /*  These are the $(class.name) messages
 .for message
 .   message.name = "$(message.name:c)"
-
+.   for field where item() = 1
+.       for class.header
+.           for field as hfield
+.              copy hfield before field
+.           endfor
+.       endfor
+.   else
+.       for class.header
+.           for field as hfield
+.              copy hfield to message
+.           endfor
+.       endfor
+.   endfor
+.
     $(NAME) - $(string.trim (.?''):left)
 .   for field
+.       if type = "number"
+.           size ?= 8
+        $(name)       $(type) $(size)
+.           if size = 1
+.               field.ctype = "int"
+.           elsif size = 2
+.               field.ctype = "int"
+.           elsif size = 4
+.               field.ctype = "long"
+.           elsif size = 8
+.               field.ctype = "long"
+.           else
+.               echo "E: bad size $(size) for $(name)"
+.           endif
+.       elsif type = "octets"
+        $(name)       $(type) [$(size)]
+.       else
+        $(name)       $(type)
+.       endif
 .       field.name = "$(field.name:c)"
 .       for class.field as cfield where cfield.name = field.name
 .           if cfield.type <> field.type
@@ -30,18 +62,13 @@
 .       else
 .           copy field to class
 .       endfor
-        $(name)       $(type) \
-.       if defined (size)
-[$(size)]
-.       else
-
-.       endif
 .   endfor
 .endfor
 */
 
 package org.filemq;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.ArrayList;
@@ -71,8 +98,8 @@ public class $(ClassName)
     private int id;                     //  $(ClassName) message ID
     private ByteBuffer needle;          //  Read/write pointer for serialization
 .for class.field
-.   if type = "octet"
-    private int $(name);
+.   if type = "number"
+    private $(ctype) $(name);
 .   elsif type = "octets"
     private byte [] $(name) = new byte [$(size)];
 .   elsif type = "number"
@@ -81,7 +108,6 @@ public class $(ClassName)
     private String $(name);
 .   elsif type = "strings"
     private List <String> $(name);
-    private int $(name)Bytes;
 .   elsif type = "dictionary"
     private Map <String, String> $(name);
     private int $(name)Bytes;
@@ -103,8 +129,7 @@ public class $(ClassName)
     //  --------------------------------------------------------------------------
     //  Destroy the $(class.name)
 
-    public void
-    destroy ()
+    public void destroy ()
     {
         //  Free class properties
         if (address != null)
@@ -117,20 +142,65 @@ public class $(ClassName)
     //  Network data encoding macros
 
 
-    //  Put an octet to the frame
-    private final void putOctet (int value) 
+    //  Put a 1-byte number to the frame
+    private final void putNumber1 (int value) 
     {
         needle.put ((byte) value);
     }
 
-    //  Get an octet from the frame
-    private int getOctet () 
+    //  Get a 1-byte number to the frame
+    //  then make it unsigned
+    private int getNumber1 () 
     { 
         int value = needle.get (); 
         if (value < 0)
             value = (0xff) & value;
         return value;
     }
+
+    //  Put a 2-byte number to the frame
+    private final void putNumber2 (int value) 
+    {
+        needle.putShort ((short) value);
+    }
+
+    //  Get a 2-byte number to the frame
+    private int getNumber2 () 
+    { 
+        int value = needle.getShort (); 
+        if (value < 0)
+            value = (0xffff) & value;
+        return value;
+    }
+
+    //  Put a 4-byte number to the frame
+    private final void putNumber4 (long value) 
+    {
+        needle.putInt ((int) value);
+    }
+
+    //  Get a 4-byte number to the frame
+    //  then make it unsigned
+    private long getNumber4 () 
+    { 
+        long value = needle.getInt (); 
+        if (value < 0)
+            value = (0xffffffff) & value;
+        return value;
+    }
+
+    //  Put a 8-byte number to the frame
+    public void putNumber8 (long value) 
+    {
+        needle.putLong (value);
+    }
+
+    //  Get a 8-byte number to the frame
+    public long getNumber8 () 
+    {
+        return needle.getLong ();
+    }
+
 
     //  Put a block to the frame
     private void putBlock (byte [] value, int size) 
@@ -146,18 +216,6 @@ public class $(ClassName)
         return value;
     }
 
-    //  Put a long long integer to the frame
-    public void putNumber (long value) 
-    {
-        needle.putLong (value);
-    }
-
-    //  Get a number from the frame
-    public long getNumber () 
-    {
-        return needle.getLong ();
-    }
-
     //  Put a string to the frame
     public void putString (String value) 
     {
@@ -168,7 +226,7 @@ public class $(ClassName)
     //  Get a string from the frame
     public String getString () 
     {
-        int size = getOctet ();
+        int size = getNumber1 ();
         byte [] value = new byte [size];
         needle.get (value);
 
@@ -179,30 +237,45 @@ public class $(ClassName)
     //  Receive and parse a $(ClassName) from the socket. Returns new object or
     //  null if error. Will block if there's no message waiting.
 
-    public static $(ClassName)
-    recv (Socket socket)
+    public static $(ClassName) recv (Socket input)
     {
-        assert (socket != null);
+        assert (input != null);
         $(ClassName) self = new $(ClassName) (0);
         ZFrame frame = null;
 
         try {
-            //  If we're reading from a ROUTER socket, get address
-            if (socket.getType () == ZMQ.ROUTER) {
-                self.address = ZFrame.recvFrame (socket);
-                if (self.address == null)
-                    return null;         //  Interrupted
-                if (!socket.hasReceiveMore ())
-                    throw new IllegalArgumentException ();
+            //  Read valid message frame from socket; we loop over any
+            //  garbage data we might receive from badly-connected peers
+            while (true) {
+                //  If we're reading from a ROUTER socket, get address
+                if (input.getType () == ZMQ.ROUTER) {
+                    self.address = ZFrame.recvFrame (input);
+                    if (self.address == null)
+                        return null;         //  Interrupted
+                    if (!input.hasReceiveMore ())
+                        throw new IllegalArgumentException ();
+                }
+                //  Read and parse command in frame
+                frame = ZFrame.recvFrame (input);
+                if (frame == null)
+                    return null;             //  Interrupted
+
+                //  Get and check protocol signature
+                self.needle = ByteBuffer.wrap (frame.getData ()); 
+                int signature = self.getNumber2 ();
+                if (signature == (0xAAA0 | $(class.signature)))
+                    break;                  //  Valid signature
+
+                //  Protocol assertion, drop message
+                while (input.hasReceiveMore ()) {
+                    frame.destroy ();
+                    frame = ZFrame.recvFrame (input);
+                }
+                frame.destroy ();
             }
-            //  Read and parse command in frame
-            frame = ZFrame.recvFrame (socket);
-            if (frame == null)
-                return null;             //  Interrupted
-            self.needle = ByteBuffer.wrap (frame.getData ()); 
 
             //  Get message id, which is first byte in frame
-            self.id = self.getOctet ();
+            self.id = self.getNumber1 ();
             int listSize;
             int hashSize;
 
@@ -210,16 +283,14 @@ public class $(ClassName)
 .for class.message
             case $(MESSAGE.NAME):
 .   for field
-.       if type = "octet"
-                self.$(name) = self.getOctet ();
+.       if type = "number"
+                self.$(name) = self.getNumber$(size) ();
 .               if defined (field.value)
                 if (self.$(name) != $(field.value:))
                     throw new IllegalArgumentException ();
 .               endif
 .       elsif type = "octets"
                 self.$(name) = self.getBlock ($(size));
-.       elsif type = "number"
-                self.$(name) = self.getNumber ();
 .           if defined (field.value)
                 if (self.$(name) != $(field.value:))
                     throw new IllegalArgumentException (); 
@@ -231,28 +302,26 @@ public class $(ClassName)
                     throw new IllegalArgumentException ();
 .           endif
 .       elsif type = "strings"
-                listSize = self.getOctet ();
+                listSize = self.getNumber1 ();
                 self.$(name) = new ArrayList<String> ();
                 while (listSize-- > 0) {
                     String string = self.getString ();
                     self.$(name).add (string);
-                    self.$(name)Bytes += 1 + string.length();
                 }
 .       elsif type = "dictionary"
-                hashSize = self.getOctet ();
+                hashSize = self.getNumber1 ();
                 self.$(name) = new HashMap <String, String> ();
                 while (hashSize-- > 0) {
                     String string = self.getString ();
                     String [] kv = string.split("=");
                     self.$(name).put(kv[0], kv[1]);
-                    self.$(name)Bytes += 1 + string.length();
                 }
 
 .       elsif type = "frame"
                 //  Get next frame, leave current untouched
-                if (!socket.hasReceiveMore ())
+                if (!input.hasReceiveMore ())
                     throw new IllegalArgumentException ();
-                self.$(name) = ZFrame.recvFrame (socket);
+                self.$(name) = ZFrame.recvFrame (input);
 .       endif
 .    endfor
                 break;
@@ -262,13 +331,12 @@ public class $(ClassName)
                 throw new IllegalArgumentException ();
             }
 
-            frame.destroy ();
-            frame = null;
             return self;
 
         } catch (Exception e) {
             //  Error returns
             System.out.printf ("E: malformed message '%d'\\n", self.id);
+            self.destroy ();
             return null;
         } finally {
             if (frame != null)
@@ -278,8 +346,15 @@ public class $(ClassName)
 
 
 .for class.field where type = "dictionary"
+    //  Count size of key=value pair
+    private static void 
+    $(name)Count (final Map.Entry <String, String> entry, $(ClassName) self)
+    {
+        self.$(name)Bytes += entry.getKey ().length () + 1 + entry.getValue ().length () + 1;
+    }
+
     //  Serialize $(name) key=value pair
-    public static void
+    private static void
     $(name)Write (final Map.Entry <String, String> entry, $(ClassName) self)
     {
         String string = entry.getKey () + "=" + entry.getValue ();
@@ -291,26 +366,22 @@ public class $(ClassName)
     //  --------------------------------------------------------------------------
     //  Send the $(ClassName) to the socket, and destroy it
 
-    public void
-    send (Socket socket)
+    public boolean send (Socket socket)
     {
         assert (socket != null);
 
         //  Calculate size of serialized data
-        int frameSize = 1;
+        int frameSize = 2 + 1;          //  Signature and message ID
         switch (id) {
 .for class.message
         case $(MESSAGE.NAME):
 .   for field
-.       if type = "octet"
-            //  $(name) is an octet
-            frameSize += 1;
+.       if type = "number"
+            //  $(name) is a $(size)-byte integer
+            frameSize += $(size);
 .       elsif type = "octets"
             //  $(name) is a block of $(size) bytes
             frameSize += $(size);
-.       elsif type = "number"
-            //  $(name) is an 8-byte integer
-            frameSize += 8;
 .       elsif type = "string"
             //  $(name) is a string with 1-byte length
 .           if defined (field.value)
@@ -323,13 +394,20 @@ public class $(ClassName)
 .       elsif type = "strings"
             //  $(name) is an array of strings
             frameSize++;       //  Size is one octet
-            if ($(name) != null)
-                frameSize += $(name).size () + $(name)Bytes;
+            if ($(name) != null) {
+                for (String value : $(name)) 
+                    frameSize += 1 + value.length ();
+            }
 .       elsif type = "dictionary"
             //  $(name) is an array of key=value strings
             frameSize++;       //  Size is one octet
-            if ($(name) != null)
-                frameSize += $(name).size () + $(name)Bytes;
+            if ($(name) != null) {
+                $(name)Bytes = 0;
+                for (Map.Entry <String, String> entry: $(name).entrySet ()) {
+                    $(name)Count (entry, this);
+                }
+                frameSize += $(name)Bytes;
+            }
 .       endif
 .   endfor
             break;
@@ -337,60 +415,54 @@ public class $(ClassName)
 .endfor
         default:
             System.out.printf ("E: bad message type '%d', not sent\\n", id);
-            return;
+            assert (false);
         }
         //  Now serialize message into the frame
-        ZFrame frame = new ZFrame (new byte [frameSize + 1]);
+        ZFrame frame = new ZFrame (new byte [frameSize]);
         needle = ByteBuffer.wrap (frame.getData ()); 
         int frameFlags = 0;
-        putOctet ((byte) id);
+        putNumber2 (0xAAA0 | $(class.signature));
+        putNumber1 ((byte) id);
 
         switch (id) {
 .for class.message
         case $(MESSAGE.NAME):
 .   for field
-.       if type = "octet"
+.       if type = "number"
 .           if defined (field.value)
-            putOctet ((byte) $(field.value:));
+            putNumber$(size) ($(field.value:));
 .           else
-            putOctet ($(name));
+            putNumber$(size) ($(name));
 .           endif
 .       elsif type = "octets"
             putBlock ($(name), $(size));
-.       elsif type = "number"
-.           if defined (field.value)
-            putNumber ($(field.value:));
-.           else
-            putNumber ($(name));
-.           endif
 .       elsif type = "string"
 .           if defined (field.value)
             putString ("$(field.value:)");
 .           else
-            if ($(name) != null) {
+            if ($(name) != null)
                 putString ($(name));
-            }
             else
-                putOctet ((byte) 0);      //  Empty string
+                putNumber1 ((byte) 0);      //  Empty string
 .           endif
 .       elsif type = "strings"
             if ($(name) != null) {
-                putOctet ((byte) $(name).size ());
+                putNumber1 ((byte) $(name).size ());
                 for (String value : $(name)) {
                     putString (value);
                 }
             }
             else
-                putOctet ((byte) 0);      //  Empty string array
+                putNumber1 ((byte) 0);      //  Empty string array
 .       elsif type = "dictionary"
             if ($(name) != null) {
-                putOctet ((byte) $(name).size ());
+                putNumber1 ((byte) $(name).size ());
                 for (Map.Entry <String, String> entry: $(name).entrySet ()) {
                     $(name)Write (entry, this);
                 }
             }
             else
-                putOctet ((byte) 0);      //  Empty dictionary
+                putNumber1 ((byte) 0);      //  Empty dictionary
 .       elsif type = "frame"
             frameFlags = ZMQ.SNDMORE;
 .       endif
@@ -402,10 +474,17 @@ public class $(ClassName)
         //  If we're sending to a ROUTER, we send the address first
         if (socket.getType () == ZMQ.ROUTER) {
             assert (address != null);
-            address.sendAndKeep (socket, ZMQ.SNDMORE);
+            if (!address.sendAndDestroy (socket, ZMQ.SNDMORE)) {
+                destroy ();
+                return false;
+            }
         }
         //  Now send the data frame
-        frame.sendAndKeep (socket, frameFlags);
+        if (!frame.sendAndDestroy (socket, frameFlags)) {
+            frame.destroy ();
+            destroy ();
+            return false;
+        }
         
         //  Now send any frame fields, in order
         switch (id) {
@@ -414,25 +493,105 @@ public class $(ClassName)
 .   for field where type = "frame"
             //  If $(name) isn't set, send an empty frame
             if ($(field.name) == null)
-                $(field.name) = new ZFrame ((byte []) null);
+                $(field.name) = new ZFrame ("".getBytes ());
 .       if last ()
-            $(field.name).sendAndKeep (socket, 0);
+            if (!$(field.name).sendAndDestroy (socket, 0)) {
 .       else
-            $(field.name).sendAndKeep (socket, ZMQ.SNDMORE);
+            if (!$(field.name).sendAndDestroy (socket, ZMQ.SNDMORE)) {
 .       endif
+                frame.destroy ();
+                destroy ();
+                return false;
+            }
 .   endfor
             break;
 .endfor
         }
         //  Destroy $(ClassName) object
         destroy ();
+        return true;
     }
 
 
+.for message
+//  --------------------------------------------------------------------------
+//  Send the $(message.NAME) to the socket in one step
+
+    public static void send$(Name) (
+        Socket output\
+.for field
+,
+.   if type = "number"
+        $(ctype) $(name)\
+.   elsif type = "octets"
+        byte [] $(name)\
+.   elsif type = "string"
+        String $(name)\
+.   elsif type = "strings"
+        Collection <String> $(name)\
+.   elsif type = "dictionary"
+        Map <String, String> $(name)\
+.   elsif type = "frame"
+        ZFrame $(name)\
+.   endif
+.endfor
+) 
+    {
+        $(ClassName) self = new $(ClassName) ($(ClassName).$(MESSAGE.NAME));
+.for field
+.   if type = "number" | type = "octets" | type = "string"
+        self.set$(Name) ($(name));
+.   elsif type = "strings"
+        self.set$(Name) (new ArrayList <String> ($(name)));
+.   elsif type = "dictionary"
+        self.set$(Name) (new HashMap <String, String> ($(name)));
+.   elsif type = "frame"
+        self.set$(Name) ($(name).duplicate ());
+.   endif
+.endfor
+        self.send (output); 
+    }
+
+.endfor
+
+    //  --------------------------------------------------------------------------
+    //  Duplicate the $(ClassName) message
+
+    public $(ClassName) dup ($(ClassName) self)
+    {
+        if (self == null)
+            return null;
+
+        $(ClassName) copy = new $(ClassName) (self.id);
+        if (self.address != null)
+            copy.address = self.address.duplicate ();
+        switch (self.id) {
+.for class.message
+        case $(MESSAGE.NAME):
+.   for field
+.       if type = "number"
+            copy.$(name) = self.$(name);
+.       elsif type = "octets"
+            System.arraycopy (copy.$(name), 0, self.$(name), 0, $(size));
+.       elsif type = "string"
+            copy.$(name) = self.$(name);
+.       elsif type = "strings"
+            copy.$(name) = new ArrayList <String> (self.$(name));
+.       elsif type = "dictionary"
+            copy.$(name) = new HashMap <String, String> (self.$(name));
+.       elsif type = "frame"
+            copy.$(name) = self.$(name).duplicate ();
+.       endif
+.   endfor
+        break;
+.endfor
+        }
+        return copy;
+    }
+
 .for class.field where type = "dictionary"
     //  Dump $(name) key=value pair to stdout
-    public static void
-    $(name)Dump (Map.Entry <String, String> entry, $(ClassName) self)
+    public static void $(name)Dump (Map.Entry <String, String> entry, $(ClassName) self)
     {
         System.out.printf ("        %s=%s\\n", entry.getKey (), entry.getValue ());
     }
@@ -442,19 +601,18 @@ public class $(ClassName)
     //  --------------------------------------------------------------------------
     //  Print contents of message to stdout
 
-    public void
-    dump ()
+    public void dump ()
     {
         switch (id) {
 .for class.message
         case $(MESSAGE.NAME):
             System.out.println ("$(MESSAGE.NAME):");
 .   for field
-.       if type = "octet"
+.       if type = "number"
 .           if defined (field.value)
             System.out.printf ("    $(name)=$(field.value)\\n");
 .           else
-            System.out.printf ("    $(name)=%d\\n", $(name));
+            System.out.printf ("    $(name)=%d\\n", (long)$(name));
 .           endif
 .       elsif type = "octets"
             System.out.printf ("    $(name)=");
@@ -465,12 +623,6 @@ public class $(ClassName)
                 System.out.printf ("%02X", $(name) [$(name)Index]);
             }
             System.out.printf ("\\n");
-.       elsif type = "number"
-.           if defined (field.value)
-            System.out.printf ("    $(name)=$(field.value)\\n");
-.           else
-            System.out.printf ("    $(name)=%ld\\n", (long) $(name));
-.           endif
 .       elsif type = "string"
 .           if defined (field.value)
             System.out.printf ("    $(name)=$(field.value)\\n");
@@ -500,7 +652,7 @@ public class $(ClassName)
             if ($(name) != null) {
                 int size = $(name).size ();
                 byte [] data = $(name).getData ();
-                System.out.printf ("        size=%td\\n", $(name).size ());
+                System.out.printf ("        size=%d\\n", $(name).size ());
                 if (size > 32)
                     size = 32;
                 int $(name)Index;
@@ -523,49 +675,43 @@ public class $(ClassName)
     //  --------------------------------------------------------------------------
     //  Get/set the message address
 
-    public ZFrame
-    address ()
+    public ZFrame address ()
     {
         return address;
     }
 
-    public void
-    setAddress (ZFrame address)
+    public void setAddress (ZFrame address)
     {
         if (this.address != null)
             this.address.destroy ();
-        this.address = address;
+        this.address = address.duplicate ();
     }
 
 
     //  --------------------------------------------------------------------------
     //  Get/set the $(class.name) id
 
-    public int
-    id ()
+    public int id ()
     {
         return id;
     }
 
-    public void
-    setId (int id)
+    public void setId (int id)
     {
         this.id = id;
     }
 
-.for class.field where !defined (value)
-.   if type = "octet"
+.for class.field 
+.   if type = "number"
     //  --------------------------------------------------------------------------
     //  Get/set the $(name) field
 
-    public int
-    $(name) ()
+    public $(ctype) $(name) ()
     {
         return $(name);
     }
 
-    public void
-    set$(Name) (int $(name))
+    public void set$(Name) ($(ctype) $(name))
     {
         this.$(name) = $(name);
     }
@@ -574,46 +720,26 @@ public class $(ClassName)
     //  --------------------------------------------------------------------------
     //  Get/set the $(name) field
 
-    public byte []
-    $(name) ()
+    public byte [] $(name) ()
     {
         return $(name);
     }
 
-    public void
-    set$(Name) (byte [] $(name))
+    public void set$(Name) (byte [] $(name))
     {
         System.arraycopy ($(name), 0, this.$(name), 0, $(size));
-    }
-
-.   elsif type = "number"
-    //  --------------------------------------------------------------------------
-    //  Get/set the $(name) field
-
-    public long
-    $(name) ()
-    {
-        return $(name);
-    }
-
-    public void
-    set$(Name) (long $(name))
-    {
-        this.$(name) = $(name);
     }
 
 .   elsif type = "string"
     //  --------------------------------------------------------------------------
     //  Get/set the $(name) field
 
-    public String
-    $(name) ()
+    public String $(name) ()
     {
         return $(name);
     }
 
-    public void
-    set$(Name) (String format, Object ... args)
+    public void set$(Name) (String format, Object ... args)
     {
         //  Format into newly allocated string
         $(name) = String.format (format, args);
@@ -623,14 +749,12 @@ public class $(ClassName)
     //  --------------------------------------------------------------------------
     //  Iterate through the $(name) field, and append a $(name) value
 
-    public List <String>
-    $(name) ()
+    public List <String> $(name) ()
     {
         return $(name);
     }
 
-    public void
-    append$(Name) (String format, Object ... args)
+    public void append$(Name) (String format, Object ... args)
     {
         //  Format into newly allocated string
         
@@ -639,21 +763,23 @@ public class $(ClassName)
         if ($(name) == null)
             $(name) = new ArrayList <String> ();
         $(name).add (string);
-        $(name)Bytes += string.length ();
+    }
+
+    public void set$(Name) (Collection <String> value)
+    {
+        $(name) = new ArrayList (value); 
     }
 
 .   elsif type = "dictionary"
     //  --------------------------------------------------------------------------
     //  Get/set a value in the $(name) dictionary
 
-    public Map <String, String>
-    $(name) ()
+    public Map <String, String> $(name) ()
     {
         return $(name);
     }
 
-    public String
-    $(name)String (String key, String defaultValue)
+    public String $(name)String (String key, String defaultValue)
     {
         String value = null;
         if ($(name) != null)
@@ -664,8 +790,7 @@ public class $(ClassName)
         return value;
     }
 
-    public long
-    $(name)Number (String key, long defaultValue)
+    public long $(name)Number (String key, long defaultValue)
     {
         long value = defaultValue;
         String string = null;
@@ -677,8 +802,7 @@ public class $(ClassName)
         return value;
     }
 
-    public void
-    insert$(Name) (String key, String format, Object ... args)
+    public void insert$(Name) (String key, String format, Object ... args)
     {
         //  Format string into buffer
         String string = String.format (format, args);
@@ -690,19 +814,25 @@ public class $(ClassName)
         $(name)Bytes += key.length () + 1 + string.length ();
     }
 
+    public void set$(Name) (Map <String, String> value)
+    {
+        if (value != null)
+            $(name) = new HashMap <String, String> (value); 
+        else
+            $(name) = value;
+    }
+
 .   elsif type = "frame"
     //  --------------------------------------------------------------------------
     //  Get/set the $(name) field
 
-    public ZFrame 
-    $(name) ()
+    public ZFrame $(name) ()
     {
         return $(name);
     }
 
     //  Takes ownership of supplied frame
-    public void
-    set$(Name) (ZFrame frame)
+    public void set$(Name) (ZFrame frame)
     {
         if ($(name) != null)
             $(name).destroy ();
@@ -713,7 +843,7 @@ public class $(ClassName)
 .endfor
 }
 
-.echo "Generating ../java/src/test/java/org/filemq/Test$(ClassName).java..."
+.echo "Generating ../Java/src/test/java/org/zeromq/zyre/Test$(ClassName).java..."
 .output "../java/src/test/java/org/filemq/Test$(ClassName).java"
 //  --------------------------------------------------------------------------
 //  Selftest
@@ -730,8 +860,7 @@ import org.zeromq.ZContext;
 public class Test$(ClassName)
 {
     @Test
-    public void
-    test$(ClassName) ()
+    public void test$(ClassName) ()
     {
         System.out.printf (" * $(class.name): ");
 
@@ -756,15 +885,13 @@ public class Test$(ClassName)
 
         self = new $(ClassName) ($(ClassName).$(MESSAGE.NAME));
 .   for field where !defined (value)
-.       if type = "octet"
+.       if type = "number"
         self.set$(Name) ((byte) 123);
 .       elsif type = "octets"
         byte [] $(name)Data = new byte [$(ClassName).$(FIELD.NAME)_SIZE];
         for (int i=0; i < $(ClassName).$(FIELD.NAME)_SIZE; i++)
             $(name)Data [i] = 123;
         self.set$(Name) ($(name)Data);
-.       elsif type = "number"
-        self.set$(Name) (12345678);
 .       elsif type = "string"
         self.set$(Name) ("Life is short but Now lasts for ever");
 .       elsif type = "strings"
@@ -782,13 +909,11 @@ public class Test$(ClassName)
         self = $(ClassName).recv (input);
         assert (self != null);
 .   for field where !defined (value)
-.       if type = "octet"
+.       if type = "number"
         assertEquals (self.$(name) (), 123);
 .       elsif type = "octets"
         assertEquals (self.$(name) () [0], 123);
         assertEquals (self.$(name) () [$(ClassName).$(FIELD.NAME)_SIZE - 1], 123);
-.       elsif type = "number"
-        assertEquals (self.$(name) (), 12345678);
 .       elsif type = "string"
         assertEquals (self.$(name) (), "Life is short but Now lasts for ever");
 .       elsif type = "strings"
