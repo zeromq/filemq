@@ -31,7 +31,7 @@ struct _fmq_chunk_t {
     size_t size;                //  Current size of data part
     size_t max_size;            //  Maximum allocated size
     byte  *data;                //  Data part follows here
-};
+} __attribute__ ((aligned (8)));
 
 
 //  --------------------------------------------------------------------------
