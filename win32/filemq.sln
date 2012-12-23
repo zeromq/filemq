@@ -1,0 +1,32 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 11.00
+# Visual Studio 2010
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "filemq", "filemq.vcxproj", "{5B222ABF-7439-595C-559E-62BCDBF77F91}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "filemq_selftest", "filemq_selftest\filemq_selftest.vcxproj", "{E8EA01CA-7D12-4C45-BBCF-6CF11581DB19}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "czmq", "..\..\CommInfrastructure\class-net\oannis-libs\czmq\win32\czmq.vcxproj", "{98531A65-EFBF-4840-9760-75C361CE7FB8}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Win32 = Debug|Win32
+		Release|Win32 = Release|Win32
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{5B222ABF-7439-595C-559E-62BCDBF77F91}.Debug|Win32.ActiveCfg = Debug|Win32
+		{5B222ABF-7439-595C-559E-62BCDBF77F91}.Debug|Win32.Build.0 = Debug|Win32
+		{5B222ABF-7439-595C-559E-62BCDBF77F91}.Release|Win32.ActiveCfg = Release|Win32
+		{5B222ABF-7439-595C-559E-62BCDBF77F91}.Release|Win32.Build.0 = Release|Win32
+		{E8EA01CA-7D12-4C45-BBCF-6CF11581DB19}.Debug|Win32.ActiveCfg = Debug|Win32
+		{E8EA01CA-7D12-4C45-BBCF-6CF11581DB19}.Debug|Win32.Build.0 = Debug|Win32
+		{E8EA01CA-7D12-4C45-BBCF-6CF11581DB19}.Release|Win32.ActiveCfg = Release|Win32
+		{E8EA01CA-7D12-4C45-BBCF-6CF11581DB19}.Release|Win32.Build.0 = Release|Win32
+		{98531A65-EFBF-4840-9760-75C361CE7FB8}.Debug|Win32.ActiveCfg = Debug|Win32
+		{98531A65-EFBF-4840-9760-75C361CE7FB8}.Debug|Win32.Build.0 = Debug|Win32
+		{98531A65-EFBF-4840-9760-75C361CE7FB8}.Release|Win32.ActiveCfg = Release|Win32
+		{98531A65-EFBF-4840-9760-75C361CE7FB8}.Release|Win32.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
