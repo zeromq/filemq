@@ -1037,7 +1037,7 @@ fmq_msg_dup (fmq_msg_t *self)
 
 
 //  Dump options key=value pair to stdout
-int
+static int
 s_options_dump (const char *key, void *item, void *argument)
 {
     fmq_msg_t *self = (fmq_msg_t *) argument;
@@ -1046,7 +1046,7 @@ s_options_dump (const char *key, void *item, void *argument)
 }
 
 //  Dump cache key=value pair to stdout
-int
+static int
 s_cache_dump (const char *key, void *item, void *argument)
 {
     fmq_msg_t *self = (fmq_msg_t *) argument;
@@ -1055,7 +1055,7 @@ s_cache_dump (const char *key, void *item, void *argument)
 }
 
 //  Dump headers key=value pair to stdout
-int
+static int
 s_headers_dump (const char *key, void *item, void *argument)
 {
     fmq_msg_t *self = (fmq_msg_t *) argument;
@@ -1512,7 +1512,7 @@ fmq_msg_options_number (fmq_msg_t *self, char *key, uint64_t default_value)
 {
     assert (self);
     uint64_t value = default_value;
-    char *string;
+    char *string = NULL;
     if (self->options)
         string = (char *) (zhash_lookup (self->options, key));
     if (string)
@@ -1591,7 +1591,7 @@ fmq_msg_cache_number (fmq_msg_t *self, char *key, uint64_t default_value)
 {
     assert (self);
     uint64_t value = default_value;
-    char *string;
+    char *string = NULL;
     if (self->cache)
         string = (char *) (zhash_lookup (self->cache, key));
     if (string)
@@ -1785,7 +1785,7 @@ fmq_msg_headers_number (fmq_msg_t *self, char *key, uint64_t default_value)
 {
     assert (self);
     uint64_t value = default_value;
-    char *string;
+    char *string = NULL;
     if (self->headers)
         string = (char *) (zhash_lookup (self->headers, key));
     if (string)
