@@ -701,7 +701,7 @@ public class $(ClassName)
         this.id = id;
     }
 
-.for class.field 
+.for class.field where !defined (value)
 .   if type = "number"
     //  --------------------------------------------------------------------------
     //  Get/set the $(name) field
@@ -843,7 +843,7 @@ public class $(ClassName)
 .endfor
 }
 
-.echo "Generating ../Java/src/test/java/org/zeromq/zyre/Test$(ClassName).java..."
+.echo "Generating ../java/src/test/java/org/zeromq/zyre/Test$(ClassName).java..."
 .output "../java/src/test/java/org/$(switches.package:)/Test$(ClassName).java"
 //  --------------------------------------------------------------------------
 //  Selftest
