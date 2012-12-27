@@ -4,8 +4,8 @@
 .#
 .include "library.gsl"
 .resolve_includes ()
-.echo "Generating ../java/src/main/java/org/filemq/$(class.name:pascal).java..."
-.output "../java/src/main/java/org/filemq/$(class.name:pascal).java"
+.echo "Generating ../java/src/main/java/org/$(switches.package)/$(class.name:pascal).java..."
+.output "../java/src/main/java/org/$(switches.package)/$(class.name:pascal).java"
 /*  =========================================================================
     $(class.name:pascal).java
 
@@ -32,7 +32,7 @@
 .   endfor
 .endfor
 
-package org.filemq;
+package org.$(switches.package);
 
 import java.util.List;
 import java.util.Iterator;
@@ -586,8 +586,8 @@ long $(name)\
 
 }
 
-.echo "Generating ../java/src/test/java/org/filemq/Test$(class.name:pascal).java..."
-.output "../java/src/test/java/org/filemq/Test$(class.name:pascal).java"
+.echo "Generating ../java/src/test/java/org/$(switches.package)/Test$(class.name:pascal).java..."
+.output "../java/src/test/java/org/$(switches.package)/Test$(class.name:pascal).java"
 /*  =========================================================================
     Test$(class.name:pascal).java
 
@@ -600,7 +600,7 @@ long $(name)\
 //  --------------------------------------------------------------------------
 //  Selftest
 
-package org.filemq;
+package org.$(switches.package);
 
 import org.junit.Test;
 
