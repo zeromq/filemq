@@ -4,8 +4,8 @@
 .#
 .include "library.gsl"
 .resolve_includes ()
-.echo "Generating ../java/src/main/java/org/$(switches.package)/$(class.name:pascal).java..."
-.output "../java/src/main/java/org/$(switches.package)/$(class.name:pascal).java"
+.echo "Generating ../src/main/java/org/$(switches.package)/$(class.name:pascal).java..."
+.output "../src/main/java/org/$(switches.package)/$(class.name:pascal).java"
 
 /*  =========================================================================
     $(class.name).c
@@ -32,13 +32,13 @@ import org.zeromq.ZMsg;
 import org.zeromq.ZContext;
 import org.zeromq.ZFrame;
 
-.for class.java_method
+.for class.method
 .   if return ?= "number"
-.       java_method.ctype = "int"
+.       method.ctype = "int"
 .   elsif return ?= "string"
-.       java_method.ctype = "String"
+.       method.ctype = "String"
 .   else
-.       java_method.ctype = "void"
+.       method.ctype = "void"
 .   endif
 .   for argument
 .       if type = "string"
@@ -99,13 +99,13 @@ public class $(class.name:pascal) {
         pipe.send (value);
     }
 
-.for class.java_method
+.for class.method
     //  --------------------------------------------------------------------------
 
     public $(ctype) $(name:camel) (\
-.   java_method.send = "send"
+.   method.send = "send"
 .   for argument
-.       java_method.send = "sendMore"
+.       method.send = "sendMore"
 .       if last ()
 .           argument.send = "send"
 .       else
@@ -138,7 +138,7 @@ long $(name)\
         pipe.$(send:no) (String.format("$(format)", $(name)));
 .       endif
 .   endfor
-.   if defined (java_method.return)
+.   if defined (method.return)
         String reply = pipe.recvStr ();
 .       if return = "string"
         return reply;
@@ -218,8 +218,8 @@ long $(name)\
 
 .endif
 
-.for class.java_declare
-    $(string.trim (java_declare.?''):block                       )
+.for class.declare
+    $(string.trim (declare.?''):block                       )
 
 .endfor
 
@@ -231,8 +231,8 @@ long $(name)\
         private long heartbeat;          //  Heartbeat interval
         private Event next_event;         //  Next event
 .for class.client
-.   for java_context
-        $(string.trim (java_context.?''):block                                           )
+.   for context
+        $(string.trim (context.?''):block                                           )
 .   endfor
 .endfor
 
@@ -260,8 +260,8 @@ long $(name)\
             reply = new $(codec:pascal) (0);
             reply.setAddress (this.address);
 .for class.client
-.   for java_construct
-            $(string.trim (java_construct.?''):block                                         )
+.   for construct
+            $(string.trim (construct.?''):block                                         )
 .   endfor
 .endfor
         }
@@ -275,8 +275,8 @@ long $(name)\
             if (reply != null)
                 reply.destroy ();
 .for class.client
-.   for java_destruct
-            $(string.trim (java_destruct.?''):block                                      )
+.   for destruct
+            $(string.trim (destruct.?''):block                                      )
 .   endfor
 .endfor
         }
@@ -333,8 +333,8 @@ long $(name)\
     private static class Server {
         //  Properties accessible to client actions
 .for class.self
-.   for java_context
-        $(string.trim (java_context.?''):block                                           )
+.   for context
+        $(string.trim (context.?''):block                                           )
 .   endfor
 .endfor
 
@@ -370,8 +370,8 @@ long $(name)\
             config = new FmqConfig ("root", null);
             config ();
 .for class.self
-.   for java_construct
-            $(string.trim (java_construct.?''):block                                         )
+.   for construct
+            $(string.trim (construct.?''):block                                         )
 .   endfor
 .endfor
         }
@@ -383,8 +383,8 @@ long $(name)\
             for (Client c: clients.values ())
                 c.destroy ();
 .for class.self
-.   for java_destruct
-            $(string.trim (java_destruct.?''):block                                      )
+.   for destruct
+            $(string.trim (destruct.?''):block                                      )
 .   endfor
 .endfor
         }
@@ -405,7 +405,7 @@ long $(name)\
                         zclock_log (entry.value ());
                     entry = entry.next ();
                 }
-.for class.java_method
+.for class.method
                 if (section.name ().equals ("$(name:c)")) {
 .   for argument
 .       if type = "string"
@@ -414,7 +414,7 @@ long $(name)\
                     long $(name) = Long.parseLong (section.resolve ("$(name)", ""));
 .       endif
 .   endfor
-                    $(string.trim (java_method.?''):block                                    )
+                    $(string.trim (method.?''):block                                    )
                 }
 .   if !last ()
                 else
@@ -429,7 +429,7 @@ long $(name)\
         {
             ZMsg msg = ZMsg.recvMsg (pipe);
             String method = msg.popString ();
-.for class.java_method
+.for class.method
             if (method.equals ("$(NAME)")) {
 .   for argument
 .       if type = "string"
@@ -438,8 +438,8 @@ long $(name)\
                 long $(name) = Long.parseLong (msg.popString ());
 .       endif
 .   endfor
-                $(string.trim (java_method.?''):block                                        )
-.   for java_method.return
+                $(string.trim (method.?''):block                                        )
+.   for method.return
                 $(string.trim (return.?''):block                                        )
 .   endfor
 .   for argument where type = "string"
@@ -503,14 +503,14 @@ long $(name)\
 .   endif
 .endmacro
 .#
-.for class.java_action
+.for class.action
 .   if first ()
         //  Custom actions for state machine
 
 .   endif
         private void $(name:camel) (Client client)
         {
-            $(string.trim (java_action.?''):block                                            )
+            $(string.trim (action.?''):block                                            )
         }
 
 .endfor
@@ -667,8 +667,8 @@ long $(name)\
     }
 }
 
-.echo "Generating ../java/src/test/java/org/$(switches.package)/Test$(class.name:pascal).java..."
-.output "../java/src/test/java/org/$(switches.package)/Test$(class.name:pascal).java"
+.echo "Generating ../src/test/java/org/$(switches.package)/Test$(class.name:pascal).java..."
+.output "../src/test/java/org/$(switches.package)/Test$(class.name:pascal).java"
 //  --------------------------------------------------------------------------
 //  Selftest
 
@@ -700,7 +700,7 @@ public class Test$(class.name:pascal)
         
         $(codec:pascal) request, reply;
         
-.for class.java_selftest
+.for class.selftest
         //  Run selftest using '$(config?'')' configuration
         self = new $(class.name:pascal) ();
         assert (self != null);

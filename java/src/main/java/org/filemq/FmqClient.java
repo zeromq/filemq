@@ -241,7 +241,6 @@ public class FmqClient {
         private Sub sub;                    //  Subscription we want to send
         private int credit;                 //  Current credit pending      
         private FmqFile file;               //  File we're writing to       
-                                                                            
         private Iterator <Sub> subIterator;                                 
         //  Properties you should NOT touch
         private ZContext ctx;               //  Own CZMQ context
@@ -262,7 +261,6 @@ public class FmqClient {
             heartbeat = Integer.parseInt (
                 config.resolve ("client/heartbeat", "1")) * 1000;
         }
-
         private Client (ZContext ctx, Socket pipe)
         {
             this.ctx = ctx;
@@ -273,7 +271,6 @@ public class FmqClient {
             subs = new ArrayList <Sub> ();
             connected = false;            
         }
-
         private void destroy ()
         {
             if (config != null)

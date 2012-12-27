@@ -5,8 +5,8 @@
 .include "library.gsl"
 .resolve_includes ()
 .global.ClassName = java_class_name($(class.name)) 
-.echo "Generating ../java/src/main/java/org/$(switches.package:)/$(ClassName).java..."
-.output "../java/src/main/java/org/$(switches.package:)/$(ClassName).java"
+.echo "Generating ../src/main/java/org/$(switches.package:)/$(ClassName).java..."
+.output "../src/main/java/org/$(switches.package:)/$(ClassName).java"
 /*  =========================================================================
     $(ClassName).java
     
@@ -843,8 +843,8 @@ public class $(ClassName)
 .endfor
 }
 
-.echo "Generating ../java/src/test/java/org/zeromq/zyre/Test$(ClassName).java..."
-.output "../java/src/test/java/org/$(switches.package:)/Test$(ClassName).java"
+.echo "Generating ../src/test/java/org/zeromq/zyre/Test$(ClassName).java..."
+.output "../src/test/java/org/$(switches.package:)/Test$(ClassName).java"
 //  --------------------------------------------------------------------------
 //  Selftest
 

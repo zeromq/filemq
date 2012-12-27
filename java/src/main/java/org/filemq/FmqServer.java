@@ -175,13 +175,6 @@ public class FmqServer {
     //  There's no point making these configurable
     private static final int CHUNK_SIZE = 1000000;
 
-    //  Client hash function that checks if client is alive                         
-    private static void clientDispatch (Map <String, Client> clients, Server server)
-    {                                                                               
-        for (Client client : clients.values ())                                     
-            server.clientExecute (client, Event.dispatch_event);                    
-    }                                                                               
-
     //  --------------------------------------------------------------------------      
     //  Subscription object                                                             
                                                                                         
@@ -377,6 +370,13 @@ public class FmqServer {
             }                                                                         
         }                                                                             
     }                                                                                 
+
+    //  Client hash function that checks if client is alive                         
+    private static void clientDispatch (Map <String, Client> clients, Server server)
+    {                                                                               
+        for (Client client : clients.values ())                                     
+            server.clientExecute (client, Event.dispatch_event);                    
+    }                                                                               
 
 
     //  ---------------------------------------------------------------------
