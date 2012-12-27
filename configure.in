@@ -236,4 +236,4 @@ AM_CONDITIONAL(BUILD_DOC, test "x$fmq_build_doc" = "xyes")
 AC_TYPE_SIGNAL
 AC_CHECK_FUNCS(perror gettimeofday memset)
 
-AC_OUTPUT(Makefile src/Makefile doc/Makefile src/libfmq.pc)
+AC_OUTPUT(Makefile scripts/Makefile src/Makefile doc/Makefile src/libfmq.pc)

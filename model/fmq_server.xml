@@ -1,4 +1,4 @@
-<class name = "fmq_server" script = "server_c" codec = "fmq_msg">
+<class name = "fmq_server" codec = "fmq_msg">
 FileMQ protocol server
 <include filename = "license.xml" />
 

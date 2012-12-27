@@ -1,4 +1,4 @@
-<class name = "fmq_client" script = "client_c" codec = "fmq_msg">
+<class name = "fmq_client" codec = "fmq_msg">
 This is the FILEMQ/1.0 client protocol handler
 <include filename = "license.xml" />
 

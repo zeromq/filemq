@@ -1,7 +1,7 @@
-gsl -q fmq_msg.xml
-gsl -q -trace:0 -animate:0 fmq_server.xml
-gsl -q -script:graphs fmq_server.xml
-gsl -q -trace:0 -animate:0 fmq_client.xml
+export PATH=$PATH:../scripts
+gsl -q -script:codec_c fmq_msg.xml
+gsl -q -script:server_c -trace:0 -animate:0 fmq_server.xml
+gsl -q -script:client_c -trace:0 -animate:0 fmq_client.xml
 
 gsl -q -script:codec_java -package:filemq fmq_msg.xml
 gsl -q -script:server_java -package:filemq -trace:0 -animate:0 fmq_server.xml

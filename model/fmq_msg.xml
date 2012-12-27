@@ -1,4 +1,4 @@
-<class name = "fmq_msg" script = "codec_c.gsl" signature = "3">
+<class name = "fmq_msg" signature = "3">
 This is the FILEMQ protocol version 1.0
 <include filename = "license.xml" />
 
