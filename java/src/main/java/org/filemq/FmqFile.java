@@ -54,6 +54,11 @@ public class FmqFile
         this (new File (parent, name));
     }
 
+    public FmqFile (final File parent, final String name)
+    {
+        this (new File (parent, name));
+    }
+    
     public FmqFile (File path)
     {
         this.path = path;

@@ -99,6 +99,14 @@ public class FmqDir
         
         return new FmqDir (dir);
     }
+    
+    public static FmqDir newFmqDir (final File dir)
+    {
+        if (!dir.exists ())
+            return null;
+        
+        return new FmqDir (dir);
+    }
 
     //  --------------------------------------------------------------------------
     //  Destroy a directory item
@@ -195,10 +203,12 @@ public class FmqDir
                 file.remove ();
                 file.destroy ();
             }
+            files.clear ();
             for (FmqDir dir : subdirs) {
                 dir.remove (force);
                 dir.destroy ();
             }
+            subdirs.clear ();
             size = 0;
             count = 0;
         }
@@ -288,7 +298,7 @@ public class FmqDir
         ArrayList <FmqPatch> patches = new ArrayList <FmqPatch> ();
         FmqFile [] old_files = flatten (older);
         FmqFile [] new_files = flatten (newer);
-
+        
         int old_index = 0;
         int new_index = 0;
 
