@@ -409,7 +409,7 @@ long $(name)\
 .       endif
                     if (event == Event.$(name:c)_event) {
 .       output_event_body ()
-                        }
+                    }
 .   endfor
 .   for event where name = "$other"
                     else {
