@@ -485,18 +485,18 @@ public class FmqClient {
                         request.send (dealer);
                         request = new FmqMsg (0);
                         state = State.requesting_access_state;
-                        }
+                    }
                     else
                     if (event == Event.srsly_event) {
                         logAccessDenied ();
                         terminateTheClient ();
                         state = State.start_state;
-                        }
+                    }
                     else
                     if (event == Event.rtfm_event) {
                         logInvalidMessage ();
                         terminateTheClient ();
-                        }
+                    }
                     else {
                         //  Process all other events
                         logProtocolError ();
@@ -511,24 +511,24 @@ public class FmqClient {
                         request.send (dealer);
                         request = new FmqMsg (0);
                         state = State.requesting_access_state;
-                        }
+                    }
                     else
                     if (event == Event.ohai_ok_event) {
                         connectedToServer ();
                         getFirstSubscription ();
                         state = State.subscribing_state;
-                        }
+                    }
                     else
                     if (event == Event.srsly_event) {
                         logAccessDenied ();
                         terminateTheClient ();
                         state = State.start_state;
-                        }
+                    }
                     else
                     if (event == Event.rtfm_event) {
                         logInvalidMessage ();
                         terminateTheClient ();
-                        }
+                    }
                     else {
                         //  Process all other events
                     }
@@ -542,23 +542,23 @@ public class FmqClient {
                         request = new FmqMsg (0);
                         getNextSubscription ();
                         state = State.subscribing_state;
-                        }
+                    }
                     else
                     if (event == Event.finished_event) {
                         refillCreditAsNeeded ();
                         state = State.ready_state;
-                        }
+                    }
                     else
                     if (event == Event.srsly_event) {
                         logAccessDenied ();
                         terminateTheClient ();
                         state = State.start_state;
-                        }
+                    }
                     else
                     if (event == Event.rtfm_event) {
                         logInvalidMessage ();
                         terminateTheClient ();
-                        }
+                    }
                     else {
                         //  Process all other events
                         logProtocolError ();
@@ -570,40 +570,40 @@ public class FmqClient {
                     if (event == Event.cheezburger_event) {
                         processThePatch ();
                         refillCreditAsNeeded ();
-                        }
+                    }
                     else
                     if (event == Event.hugz_event) {
                         request.setId (FmqMsg.HUGZ_OK);
                         request.send (dealer);
                         request = new FmqMsg (0);
-                        }
+                    }
                     else
                     if (event == Event.subscribe_event) {
                         formatIcanhazCommand ();
                         request.setId (FmqMsg.ICANHAZ);
                         request.send (dealer);
                         request = new FmqMsg (0);
-                        }
+                    }
                     else
                     if (event == Event.send_credit_event) {
                         request.setId (FmqMsg.NOM);
                         request.send (dealer);
                         request = new FmqMsg (0);
-                        }
+                    }
                     else
                     if (event == Event.icanhaz_ok_event) {
-                        }
+                    }
                     else
                     if (event == Event.srsly_event) {
                         logAccessDenied ();
                         terminateTheClient ();
                         state = State.start_state;
-                        }
+                    }
                     else
                     if (event == Event.rtfm_event) {
                         logInvalidMessage ();
                         terminateTheClient ();
-                        }
+                    }
                     else {
                         //  Process all other events
                         logProtocolError ();
