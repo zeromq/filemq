@@ -430,11 +430,7 @@ fmq_dir_remove (fmq_dir_t *self, bool force)
     //  Remove if empty
     if (zlist_size (self->files) == 0
     &&  zlist_size (self->subdirs) == 0)
-#if (defined (WIN32))
-        RemoveDirectory (self->path);
-#else
-        rmdir (self->path);
-#endif
+        zsys_rmdir (self->path);
 }
 
 
@@ -470,6 +466,7 @@ fmq_dir_cache (fmq_dir_t *self)
     
     //  Load any previous cache from disk
     zhash_t *cache = zhash_new ();
+    zhash_autofree (cache);
     char *cache_file = malloc (strlen (self->path) + strlen ("/.cache") + 1);
     sprintf (cache_file, "%s/.cache", self->path);
     zhash_load (cache, cache_file);

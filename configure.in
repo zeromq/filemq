@@ -6,7 +6,7 @@ AC_PREREQ(2.61)
 # The version in git should reflect the *next* version planned.
 # Version must be MAJOR.MINOR.PATCH otherwise things will break.
 #
-AC_INIT([filemq],[1.0.0],[zeromq-dev@lists.zeromq.org])
+AC_INIT([filemq],[1.1.0],[zeromq-dev@lists.zeromq.org])
 
 AC_CONFIG_AUX_DIR(config)
 AC_CONFIG_MACRO_DIR(config)
@@ -236,4 +236,4 @@ AM_CONDITIONAL(BUILD_DOC, test "x$fmq_build_doc" = "xyes")
 AC_TYPE_SIGNAL
 AC_CHECK_FUNCS(perror gettimeofday memset)
 
-AC_OUTPUT(Makefile src/Makefile doc/Makefile src/libfmq.pc)
+AC_OUTPUT(Makefile scripts/Makefile src/Makefile doc/Makefile src/libfmq.pc)
