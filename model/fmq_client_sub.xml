@@ -1,10 +1,14 @@
+<declare type = "forward">
+//  Forward declarations
+typedef struct _sub_t sub_t;
+</declare>
 <declare>
 //  Subscription in memory
-typedef struct {
+struct _sub_t {
     client_t *client;           //  Pointer to parent client
     char *inbox;                //  Inbox location
     char *path;                 //  Path we subscribe to
-} sub_t;
+};
 
 static sub_t *
 sub_new (client_t *client, char *inbox, char *path)

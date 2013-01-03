@@ -1,5 +1,5 @@
 <state name = "start">
-    <event name = "ready" next = "requesting access">
+    <event name = "initialize" next = "requesting access">
         <action name = "send" message ="OHAI" />
     </event>
 </state>
@@ -36,10 +36,12 @@
     <event name = "HUGZ">
         <action name = "send" message = "HUGZ-OK" />
     </event>
+    <!-- Subscription after connection not supported anymore
     <event name = "subscribe">
         <action name = "format icanhaz command" />
         <action name = "send" message = "ICANHAZ" />
     </event>
+    -->
     <event name = "send credit">
         <action name = "send" message = "NOM" />
     </event>
@@ -49,14 +51,14 @@
 <state name = "defaults">
     <event name = "SRSLY" next = "start">
         <action name = "log access denied" />
-        <action name = "terminate the client" />
+        <action name = "terminate the server" />
     </event>
     <event name = "RTFM">
         <action name = "log invalid message" />
-        <action name = "terminate the client" />
+        <action name = "terminate the server" />
     </event>
     <event name = "$other">
         <action name = "log protocol error" />
-        <action name = "terminate the client" />
+        <action name = "terminate the server" />
     </event>
 </state>

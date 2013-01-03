@@ -52,10 +52,10 @@ int main (int argc, char *argv [])
     fmq_server_bind (server, "tcp://*:5670");
 
     fmq_client_t *client = fmq_client_new ();
-    fmq_client_connect (client, "tcp://localhost:5670");
     fmq_client_set_inbox (client, argv [2]);
     fmq_client_set_resync (client, true);
     fmq_client_subscribe (client, "/");
+    fmq_client_connect (client, "tcp://localhost:5670");
 
     while (true) {
         //  Get message from fmq_client API

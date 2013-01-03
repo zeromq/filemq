@@ -169,7 +169,7 @@ public class FmqClient {
 
     private enum Event {
         terminate_event (-1),
-        ready_event (1),
+        initialize_event (1),
         srsly_event (2),
         rtfm_event (3),
         _other_event (4),
@@ -179,9 +179,8 @@ public class FmqClient {
         finished_event (8),
         cheezburger_event (9),
         hugz_event (10),
-        subscribe_event (11),
-        send_credit_event (12),
-        icanhaz_ok_event (13);
+        send_credit_event (11),
+        icanhaz_ok_event (12);
 
         @SuppressWarnings ("unused")
         private final int event;
@@ -236,12 +235,6 @@ public class FmqClient {
         //  Properties accessible to client actions
         private Event next_event;           //  Next event
 
-        private boolean connected;          //  Are we connected to server? 
-        private List <Sub> subs;      //  Subscriptions                     
-        private Sub sub;                    //  Subscription we want to send
-        private int credit;                 //  Current credit pending      
-        private FmqFile file;               //  File we're writing to       
-        private Iterator <Sub> subIterator;                                 
         //  Properties you should NOT touch
         private ZContext ctx;               //  Own CZMQ context
         private Socket pipe;                //  Socket to back to caller
@@ -268,8 +261,6 @@ public class FmqClient {
             this.config = new FmqConfig ("root", null);
             config ();
 
-            subs = new ArrayList <Sub> ();
-            connected = false;            
         }
         private void destroy ()
         {
@@ -279,8 +270,6 @@ public class FmqClient {
                 request.destroy ();
             if (reply != null)
                 reply.destroy ();
-            for (Sub sub: subs)
-                sub.destroy ();
         }
 
         //  Apply configuration tree:
@@ -337,11 +326,6 @@ public class FmqClient {
         }
 
         //  Custom actions for state machine
-
-        private void initializeTheClient ()
-        {
-            next_event = Event.ready_event;
-        }
 
         private void trySecurityMechanism ()
         {
@@ -461,7 +445,7 @@ public class FmqClient {
             System.out.println ("E: protocol error");
         }
 
-        private void terminateTheClient ()
+        private void terminateTheServer ()
         {
             connected = false;                 
             next_event = Event.terminate_event;
@@ -477,7 +461,7 @@ public class FmqClient {
                 next_event = null;
                 switch (state) {
                 case start_state:
-                    if (event == Event.ready_event) {
+                    if (event == Event.initialize_event) {
                         request.setId (FmqMsg.OHAI);
                         request.send (dealer);
                         request = new FmqMsg (0);
@@ -486,18 +470,18 @@ public class FmqClient {
                     else
                     if (event == Event.srsly_event) {
                         logAccessDenied ();
-                        terminateTheClient ();
+                        terminateTheServer ();
                         state = State.start_state;
                     }
                     else
                     if (event == Event.rtfm_event) {
                         logInvalidMessage ();
-                        terminateTheClient ();
+                        terminateTheServer ();
                     }
                     else {
                         //  Process all other events
                         logProtocolError ();
-                        terminateTheClient ();
+                        terminateTheServer ();
                     }
                     break;
 
@@ -518,13 +502,13 @@ public class FmqClient {
                     else
                     if (event == Event.srsly_event) {
                         logAccessDenied ();
-                        terminateTheClient ();
+                        terminateTheServer ();
                         state = State.start_state;
                     }
                     else
                     if (event == Event.rtfm_event) {
                         logInvalidMessage ();
-                        terminateTheClient ();
+                        terminateTheServer ();
                     }
                     else {
                         //  Process all other events
@@ -548,18 +532,18 @@ public class FmqClient {
                     else
                     if (event == Event.srsly_event) {
                         logAccessDenied ();
-                        terminateTheClient ();
+                        terminateTheServer ();
                         state = State.start_state;
                     }
                     else
                     if (event == Event.rtfm_event) {
                         logInvalidMessage ();
-                        terminateTheClient ();
+                        terminateTheServer ();
                     }
                     else {
                         //  Process all other events
                         logProtocolError ();
-                        terminateTheClient ();
+                        terminateTheServer ();
                     }
                     break;
 
@@ -575,13 +559,6 @@ public class FmqClient {
                         request = new FmqMsg (0);
                     }
                     else
-                    if (event == Event.subscribe_event) {
-                        formatIcanhazCommand ();
-                        request.setId (FmqMsg.ICANHAZ);
-                        request.send (dealer);
-                        request = new FmqMsg (0);
-                    }
-                    else
                     if (event == Event.send_credit_event) {
                         request.setId (FmqMsg.NOM);
                         request.send (dealer);
@@ -593,18 +570,18 @@ public class FmqClient {
                     else
                     if (event == Event.srsly_event) {
                         logAccessDenied ();
-                        terminateTheClient ();
+                        terminateTheServer ();
                         state = State.start_state;
                     }
                     else
                     if (event == Event.rtfm_event) {
                         logInvalidMessage ();
-                        terminateTheClient ();
+                        terminateTheServer ();
                     }
                     else {
                         //  Process all other events
                         logProtocolError ();
-                        terminateTheClient ();
+                        terminateTheServer ();
                     }
                     break;
 

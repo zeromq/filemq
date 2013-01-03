@@ -350,7 +350,6 @@ long $(name)\
         private int heartbeat;                  //  Heartbeat for clients
 
         //  Server methods
-
         private void config ()
         {
             //  Get standard server configuration

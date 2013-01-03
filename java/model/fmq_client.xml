@@ -10,7 +10,7 @@ private static final int CREDIT_SLICE   = 1000000;
 private static final int CREDIT_MINIMUM = (CREDIT_SLICE * 4) + 1;
 </declare>
 
-<self>
+<client>
 <context>
 private boolean connected;          //  Are we connected to server?
 private List &lt;Sub&gt; subs;      //  Subscriptions
@@ -19,24 +19,18 @@ private int credit;                 //  Current credit pending
 private FmqFile file;               //  File we're writing to
 private Iterator &lt;Sub&gt; subIterator;
 </context>
-
 <construct>
 subs = new ArrayList &lt;Sub&gt; ();
 connected = false;
 </construct>
-
 <destruct>
 for (Sub sub: subs)
     sub.destroy ();
 </destruct>
-</self>
+</client>
 
 <!-- Embedded class for subscriptions -->
 <include filename = "fmq_client_sub.xml" />
-
-<action name = "initialize the client">
-next_event = Event.ready_event;
-</action>
 
 <action name = "try security mechanism">
 String login = config.resolve ("security/plain/login", "guest");
@@ -146,7 +140,7 @@ System.out.println ("E: server claims we sent an invalid message");
 System.out.println ("E: protocol error");
 </action>
 
-<action name = "terminate the client">
+<action name = "terminate the server">
 connected = false;
 next_event = Event.terminate_event;
 </action>

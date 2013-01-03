@@ -69,10 +69,10 @@ int main (int argc, char *argv [])
         fmq_client_t *client = fmq_client_new ();
         fmq_client_configure (client, "client_test.cfg");
         fmq_client_setoption (client, "client/inbox", "./fmqroot/recv");
-        fmq_client_connect (client, "tcp://localhost:5670");
         fmq_client_set_resync (client, true);
         fmq_client_subscribe (client, "/photos");
         fmq_client_subscribe (client, "/logs");
+        fmq_client_connect (client, "tcp://localhost:5670");
 
         while (true) {
             //  Get message from fmq_client API

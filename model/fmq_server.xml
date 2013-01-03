@@ -3,23 +3,21 @@ FileMQ protocol server
 <include filename = "license.xml" />
 <include filename = "fmq_server_fsm.xml" />
 
-
-<!-- Server and client contexts -->
-<declare>
+<declare type = "forward">
 //  There's no point making these configurable
 #define CHUNK_SIZE      1000000
 </declare>
 
+<!-- Server and client contexts -->
+<!-- self is the server, client is each incoming connection -->
 <self>
 <context>
 zlist_t *mounts;            //  Mount points
 int port;                   //  Server port
 </context>
-
 <construct>
 self->mounts = zlist_new ();
 </construct>
-
 <destruct>
 //  Destroy mount points
 while (zlist_size (self->mounts)) {
@@ -39,11 +37,9 @@ fmq_file_t *file;           //  Current file we're sending
 off_t offset;               //  Offset of next read in file
 int64_t sequence;           //  Sequence number for chunk
 </context>
-
 <construct>
 self->patches = zlist_new ();
 </construct>
-
 <destruct>
 while (zlist_size (self->patches)) {
     fmq_patch_t *patch = (fmq_patch_t *) zlist_pop (self->patches);

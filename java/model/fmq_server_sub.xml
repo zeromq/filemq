@@ -49,7 +49,7 @@ private static class Sub {
         patch.setDigest ();
         if (patch.op () == FmqPatch.OP.patch_create) {
             String digest = cache.get (patch.virtual ());
-            if (digest != null &amp;&amp; digest.compareToIgnoreCase (patch.digest ()) == 0)
+            if (digest != null && digest.compareToIgnoreCase (patch.digest ()) == 0)
                 return;             //  Just skip patch for this client
         }
         //  Remove any previous patches for the same file

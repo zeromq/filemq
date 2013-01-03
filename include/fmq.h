@@ -37,8 +37,8 @@
     FMQ_MAKE_VERSION(FMQ_VERSION_MAJOR, FMQ_VERSION_MINOR, FMQ_VERSION_PATCH)
 
 #include <czmq.h>
-#if CZMQ_VERSION < 10302
-#   error "FileMQ needs CZMQ/1.3.2 or later"
+#if CZMQ_VERSION < 10304
+#   error "FileMQ needs CZMQ/1.3.4 or later"
 #endif
 
 //  Maximum length of a path + filename

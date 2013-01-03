@@ -41,7 +41,7 @@ void
 void
     $(class.name)_setoption ($(class.name)_t *self, const char *path, const char *value);
 
-//  Open connection to server
+//  Create outgoing connection to server
 void
     $(class.name)_connect ($(class.name)_t *self, const char *endpoint);
 
@@ -173,7 +173,7 @@ $(class.name)_setoption ($(class.name)_t *self, const char *path, const char *va
 
 
 //  --------------------------------------------------------------------------
-//  Open connection to server
+//  Create outgoing connection to server
 
 void
 $(class.name)_connect ($(class.name)_t *self, const char *endpoint)
@@ -309,10 +309,14 @@ s_event_name [] = {
 
 .endif
 
+//  Maximum number of server connections we allow
+#define MAX_SERVERS     256
+
 //  Forward declarations
 typedef struct _client_t client_t;
+typedef struct _server_t server_t;
 
-.for class.declare
+.for class.declare where type ?= "forward"
 $(string.trim (declare.?''):)
 
 .endfor
@@ -322,26 +326,97 @@ $(string.trim (declare.?''):)
 
 struct _client_t {
     //  Properties accessible to client actions
-    event_t next_event;         //  Next event
 .for class.self
 .   for context
     $(string.trim (context.?''):block                                           )
 .   endfor
 .endfor
-    
     //  Properties you should NOT touch
     zctx_t *ctx;                //  Own CZMQ context
     void *pipe;                 //  Socket to back to caller
-    void *dealer;               //  Socket to talk to server
-    bool stopped;               //  Has client stopped?
+    server_t *servers [MAX_SERVERS];
+                                //  Server connections
+    uint nbr_servers;           //  How many connections we have
+    bool dirty;                 //  If true, rebuild pollset
+    bool stopped;               //  Is the client stopped?
     fmq_config_t *config;       //  Configuration tree
+    int heartbeat;              //  Heartbeat interval
+};
+
+//  ---------------------------------------------------------------------
+//  Context for each server connection
+
+struct _server_t {
+    //  Properties accessible to server actions
+    event_t next_event;         //  Next event
+.for class.server
+.   for context
+    $(string.trim (context.?''):block                                           )
+.   endfor
+.endfor
+    //  Properties you should NOT touch
+    zctx_t *ctx;                //  Own CZMQ context
+    uint index;                 //  Index into client->server_array
+    void *dealer;               //  Socket to talk to server
+    int64_t expires_at;         //  Connection expires at
     state_t state;              //  Current state
     event_t event;              //  Current event
+    char *endpoint;             //  Server endpoint
     $(codec)_t *request;        //  Next message to send
     $(codec)_t *reply;          //  Last received reply
-    int heartbeat;              //  Heartbeat interval
-    int64_t expires_at;         //  Server expires at
 };
+
+static void
+client_server_execute (client_t *self, server_t *server, int event);
+
+.for class.declare where !defined (type)
+$(string.trim (declare.?''):)
+
+.endfor
+
+//  Server methods
+
+static server_t *
+server_new (zctx_t *ctx, char *endpoint)
+{
+    server_t *self = (server_t *) zmalloc (sizeof (server_t));
+    self->ctx = ctx;
+    self->endpoint = strdup (endpoint);
+    self->dealer = zsocket_new (self->ctx, ZMQ_DEALER);
+    self->request = $(codec)_new (0);
+    zsocket_connect (self->dealer, endpoint);
+.for class.state where item () = 1
+    self->state = $(name:c)_state;
+.endfor
+.for class.server
+.   for construct
+    $(string.trim (construct.?''):block                                         )
+.   endfor
+.endfor
+    return self;
+}
+
+static void
+server_destroy (server_t **self_p)
+{
+    assert (self_p);
+    if (*self_p) {
+        server_t *self = *self_p;
+        zsocket_destroy (self->ctx, self->dealer);
+        $(codec)_destroy (&self->request);
+        $(codec)_destroy (&self->reply);
+        free (self->endpoint);
+.for class.server
+.   for destruct
+        $(string.trim (destruct.?''):block                                      )
+.   endfor
+.endfor
+        free (self);
+        *self_p = NULL;
+    }
+}
+
+//  Client methods
 
 static void
 client_config_self (client_t *self)
@@ -374,8 +449,11 @@ client_destroy (client_t **self_p)
     if (*self_p) {
         client_t *self = *self_p;
         fmq_config_destroy (&self->config);
-        $(codec)_destroy (&self->request);
-        $(codec)_destroy (&self->reply);
+        int server_nbr;
+        for (server_nbr = 0; server_nbr < self->nbr_servers; server_nbr++) {
+            server_t *server = self->servers [server_nbr];
+            server_destroy (&server);
+        }
 .for class.self
 .   for destruct
         $(string.trim (destruct.?''):block                                      )
@@ -390,7 +468,6 @@ client_destroy (client_t **self_p)
 //   * apply client configuration
 //   * print any echo items in top-level sections
 //   * apply sections that match methods
-
 static void
 client_apply_config (client_t *self)
 {
@@ -403,7 +480,7 @@ client_apply_config (client_t *self)
                 zclock_log (fmq_config_value (entry));
             entry = fmq_config_next (entry);
         }
-.for class.method
+.for class.method where count (argument) > 0
         if (streq (fmq_config_name (section), "$(name:c)")) {
 .   for argument
 .       if type = "string"
@@ -423,120 +500,9 @@ client_apply_config (client_t *self)
     client_config_self (self);
 }
 
-.macro output_event_body
-.   for action
-.       if name = "send"
-.           if switches.animate ?= 1
-                    zclock_log ("C:    + send $(MESSAGE:C)");
-.           endif
-                    $(codec)_id_set (self->request, $(CODEC)_$(MESSAGE:C));
-.if switches.trace ?= 1
-                    zclock_log ("Send request to server");
-                    $(codec)_dump (self->request);
-.endif
-                    $(codec)_send (&self->request, self->dealer);
-                    self->request = $(codec)_new (0);
-.       else
-.           if switches.animate ?= 1
-                    zclock_log ("C:    + $(name)");
-.           endif
-                    $(name:c) (self);
-.           if count (class.action, name = -1.name) = 0
-.                echo 'E: you need to add <action name="$(name)">'
-.           endif
-.       endif
-.   endfor
-.   if defined (event.next)
-                    self->state = $(next:c)_state;
-.   endif
-.endmacro
-.#
-.for class.action
-.   if first ()
-//  Custom actions for state machine
-
-.   endif
+//  Process message from pipe
 static void
-$(name:c) (client_t *self)
-{
-    $(string.trim (action.?''):block                                            )
-}
-
-.endfor
-//  Execute state machine as long as we have events
-
-static void
-client_execute (client_t *self, int event)
-{
-    self->next_event = event;
-    while (self->next_event) {
-        self->event = self->next_event;
-        self->next_event = 0;
-.if switches.animate ?= 1
-        zclock_log ("C: %s:", s_state_name [self->state]);
-        zclock_log ("C: (%s)", s_event_name [self->event]);
-.endif
-        switch (self->state) {
-.for class.state
-            case $(name:c)_state:
-.   for event where name <> "$other"
-.       if index () > 1
-                else
-.       endif
-                if (self->event == $(name:c)_event) {
-.       output_event_body ()
-                }
-.   endfor
-.   for event where name = "$other"
-                else {
-                    //  Process all other events
-.       output_event_body ()
-                }
-.   endfor
-                break;
-
-.endfor
-        }
-.if switches.animate ?= 1
-        zclock_log ("C:      -------------------> %s", s_state_name [self->state]);
-.endif
-        if (self->next_event == terminate_event) {
-            self->stopped = true;
-            break;
-        }
-    }
-}
-
-//  Restart client dialog from zero
-
-static void
-client_restart (client_t *self, char *endpoint)
-{
-    //  Reconnect to new endpoint if specified
-    if (endpoint)  {
-        if (self->dealer)
-            zsocket_destroy (self->ctx, self->dealer);
-        self->dealer = zsocket_new (self->ctx, ZMQ_DEALER);
-        zsocket_connect (self->dealer, endpoint);
-    }
-    //  Clear out any previous request data
-    $(codec)_destroy (&self->request);
-    self->request = $(codec)_new (0);
-
-    //  Restart dialog state machine from zero
-.for class.state where item () = 1
-    self->state = $(name:c)_state;
-.endfor
-    self->expires_at = 0;
-
-    //  Application hook to reinitialize dialog
-    //  Provides us with an event to kick things off
-    initialize_the_client (self);
-    client_execute (self, self->next_event);
-}
-
-static void
-control_message (client_t *self)
+client_control_message (client_t *self)
 {
     zmsg_t *msg = zmsg_recv (self->pipe);
     char *method = zmsg_popstr (msg);
@@ -561,12 +527,6 @@ control_message (client_t *self)
     }
     else
 .endfor
-    if (streq (method, "CONNECT")) {
-        char *endpoint = zmsg_popstr (msg);
-        client_restart (self, endpoint);
-        free (endpoint);
-    }
-    else
     if (streq (method, "CONFIG")) {
         char *config_file = zmsg_popstr (msg);
         fmq_config_destroy (&self->config);
@@ -593,68 +553,168 @@ control_message (client_t *self)
         zstr_send (self->pipe, "OK");
         self->stopped = true;
     }
+    else
+    if (streq (method, "CONNECT")) {
+        char *endpoint = zmsg_popstr (msg);
+        if (self->nbr_servers < MAX_SERVERS) {
+            server_t *server = server_new (self->ctx, endpoint);
+            self->servers [self->nbr_servers++] = server;
+            self->dirty = true;
+            client_server_execute (self, server, initialize_event);
+        }
+        else
+            printf ("E: too many server connections (max %d)\\n", MAX_SERVERS);
+            
+        free (endpoint);
+    }
     free (method);
     zmsg_destroy (&msg);
+}
 
-    if (self->next_event)
-        client_execute (self, self->next_event);
+.macro output_event_body
+.   for action
+.       if name = "send"
+.           if switches.animate ?= 1
+                    zclock_log ("C:    + send $(MESSAGE:C)");
+.           endif
+                    $(codec)_id_set (server->request, $(CODEC)_$(MESSAGE:C));
+.if switches.trace ?= 1
+                    zclock_log ("Send request to server");
+                    $(codec)_dump (server->request);
+.endif
+                    $(codec)_send (&server->request, server->dealer);
+                    server->request = $(codec)_new (0);
+.       else
+.           if switches.animate ?= 1
+                    zclock_log ("C:    + $(name)");
+.           endif
+                    $(name:c) (self, server);
+.           if count (class.action, name = -1.name) = 0
+.                echo 'E: you need to add <action name="$(name)">'
+.           endif
+.       endif
+.   endfor
+.   if defined (event.next)
+                    server->state = $(next:c)_state;
+.   endif
+.endmacro
+.#
+.for class.action
+.   if first ()
+//  Custom actions for state machine
+
+.   endif
+static void
+$(name:c) (client_t *self, server_t *server)
+{
+    $(string.trim (action.?''):block                                            )
+}
+
+.endfor
+//  Execute state machine as long as we have events
+static void
+client_server_execute (client_t *self, server_t *server, int event)
+{
+    server->next_event = event;
+    while (server->next_event) {
+        server->event = server->next_event;
+        server->next_event = 0;
+.if switches.animate ?= 1
+        zclock_log ("C: %s:", s_state_name [server->state]);
+        zclock_log ("C: (%s)", s_event_name [server->event]);
+.endif
+        switch (server->state) {
+.for class.state
+            case $(name:c)_state:
+.   for event where name <> "$other"
+.       if index () > 1
+                else
+.       endif
+                if (server->event == $(name:c)_event) {
+.       output_event_body ()
+                }
+.   endfor
+.   for event where name = "$other"
+                else {
+                    //  Process all other events
+.       output_event_body ()
+                }
+.   endfor
+                break;
+
+.endfor
+        }
+.if switches.animate ?= 1
+        zclock_log ("C:      -------------------> %s", s_state_name [server->state]);
+.endif
+        if (server->next_event == terminate_event) {
+            //  Automatically calls server_destroy
+            //  reset state machine
+            break;
+        }
+    }
 }
 
 static void
-server_message (client_t *self)
+client_server_message (client_t *self, server_t *server)
 {
-    if (self->reply)
-        $(codec)_destroy (&self->reply);
-    self->reply = $(codec)_recv (self->dealer);
-    if (!self->reply)
+    if (server->reply)
+        $(codec)_destroy (&server->reply);
+    server->reply = $(codec)_recv (server->dealer);
+    if (!server->reply)
         return;         //  Interrupted; do nothing
-.if switches.trace ?= 1
 
+.if switches.trace ?= 1
     zclock_log ("Received reply from server");
-    $(codec)_dump (self->reply);
+    $(codec)_dump (server->reply);
 .endif
+    //  Any input from server counts as activity
+    server->expires_at = zclock_time () + self->heartbeat * 3;
     
 .   for class.event where external ?= 1
 .   if index () > 1
     else
 .   endif
-    if ($(codec)_id (self->reply) == $(CODEC)_$(NAME:C))
-        client_execute (self, $(name:c)_event);
+    if ($(codec)_id (server->reply) == $(CODEC)_$(NAME:C))
+        client_server_execute (self, server, $(name:c)_event);
 .   endfor
-
-    //  Any input from server counts as activity
-    self->expires_at = zclock_time () + self->heartbeat * 2;
 }
-
 
 //  Finally here's the client thread itself, which polls its two
 //  sockets and processes incoming messages
-
 static void
 client_thread (void *args, zctx_t *ctx, void *pipe)
 {
     client_t *self = client_new (ctx, pipe);
+    int pollset_size = 1;
+    zmq_pollitem_t pollset [MAX_SERVERS] = {
+        { self->pipe, 0, ZMQ_POLLIN, 0 }
+    };
     while (!self->stopped && !zctx_interrupted) {
-        //  Build structure each time since self->dealer can change
-        zmq_pollitem_t items [] = {
-            { self->pipe, 0, ZMQ_POLLIN, 0 },
-            { self->dealer, 0, ZMQ_POLLIN, 0 }
-        };
-        int poll_size = self->dealer? 2: 1;
-        if (zmq_poll (items, poll_size, self->heartbeat * ZMQ_POLL_MSEC) == -1)
+        //  Rebuild pollset if we need to
+        int server_nbr;
+        if (self->dirty) {
+            for (server_nbr = 0; server_nbr < self->nbr_servers; server_nbr++) {
+                pollset [1 + server_nbr].socket = self->servers [server_nbr]->dealer;
+                pollset [1 + server_nbr].events = ZMQ_POLLIN;
+            }
+            pollset_size = 1 + self->nbr_servers;
+        }
+        if (zmq_poll (pollset, pollset_size, self->heartbeat * ZMQ_POLL_MSEC) == -1)
             break;              //  Context has been shut down
 
         //  Process incoming messages; either of these can
         //  throw events into the state machine
-        if (items [0].revents & ZMQ_POLLIN)
-            control_message (self);
+        if (pollset [0].revents & ZMQ_POLLIN)
+            client_control_message (self);
 
-        if (items [1].revents & ZMQ_POLLIN)
-            server_message (self);
-
-        //  Check whether server seems dead
-        if (self->expires_at && zclock_time () >= self->expires_at)
-            client_restart (self, NULL);
+        //  Here, array of sockets to servers
+        for (server_nbr = 0; server_nbr < self->nbr_servers; server_nbr++) {
+            if (pollset [1 + server_nbr].revents & ZMQ_POLLIN) {
+                server_t *server = self->servers [server_nbr];
+                client_server_message (self, server);
+            }
+        }
     }
     client_destroy (&self);
 }

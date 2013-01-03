@@ -173,14 +173,27 @@ typedef enum {
 } event_t;
 
 
+//  Forward declarations
+typedef struct _server_t server_t;
+typedef struct _client_t client_t;
+
+//  There's no point making these configurable
+#define CHUNK_SIZE      1000000
+
+//  Forward declarations
+typedef struct _sub_t sub_t;
+
+//  Forward declarations
+typedef struct _mount_t mount_t;
+
+
 //  ---------------------------------------------------------------------
 //  Context for the server thread
 
-typedef struct {
-    //  Properties accessible to client actions
+struct _server_t {
+    //  Properties accessible to server actions
     zlist_t *mounts;            //  Mount points
     int port;                   //  Server port 
-
     //  Properties you should NOT touch
     zctx_t *ctx;                //  Own CZMQ context
     void *pipe;                 //  Socket to back to caller
@@ -190,15 +203,15 @@ typedef struct {
     fmq_config_t *config;       //  Configuration tree
     int monitor;                //  Monitor interval
     int64_t monitor_at;         //  Next monitor at this time
-    int heartbeat;              //  Heartbeat for clients
-} server_t;
+    int heartbeat;              //  Client heartbeat interval
+};
 
 //  ---------------------------------------------------------------------
 //  Context for each client connection
 
-typedef struct {
+struct _client_t {
     //  Properties accessible to client actions
-    int64_t heartbeat;          //  Heartbeat interval
+    int heartbeat;              //  Client heartbeat interval
     event_t next_event;         //  Next event
     size_t credit;              //  Credit remaining           
     zlist_t *patches;           //  Patches to send            
@@ -206,7 +219,6 @@ typedef struct {
     fmq_file_t *file;           //  Current file we're sending 
     off_t offset;               //  Offset of next read in file
     int64_t sequence;           //  Sequence number for chunk  
-
     //  Properties you should NOT touch
     void *router;               //  Socket to client
     int64_t heartbeat_at;       //  Next heartbeat at this time
@@ -217,23 +229,27 @@ typedef struct {
     zframe_t *address;          //  Client address identity
     fmq_msg_t *request;         //  Last received request
     fmq_msg_t *reply;           //  Reply to send out, if any
-} client_t;
-
+};
 
 static void
 server_client_execute (server_t *server, client_t *client, int event);
 
-//  There's no point making these configurable
-#define CHUNK_SIZE      1000000
+//  Client hash function that checks if client is alive
+static int
+client_dispatch (const char *key, void *client, void *server)
+{
+    server_client_execute ((server_t *) server, (client_t *) client, dispatch_event);
+    return 0;
+}
 
 //  --------------------------------------------------------------------------
 //  Subscription object
 
-typedef struct {
+struct _sub_t {
     client_t *client;           //  Always refers to live client
     char *path;                 //  Path client is subscribed to
     zhash_t *cache;             //  Client's cache list
-} sub_t;
+};
 
 static int
 s_resolve_cache_path (const char *key, void *item, void *argument);
@@ -317,12 +333,12 @@ sub_patch_add (sub_t *self, fmq_patch_t *patch)
 //  --------------------------------------------------------------------------
 //  Mount point in memory
 
-typedef struct {
+struct _mount_t {
     char *location;         //  Physical location
     char *alias;            //  Alias into our tree
     fmq_dir_t *dir;         //  Directory snapshot
     zlist_t *subs;          //  Client subscriptions
-} mount_t;
+};
 
 
 //  --------------------------------------------------------------------------
@@ -471,23 +487,15 @@ mount_sub_purge (mount_t *self, client_t *client)
     }
 }
 
-//  Client hash function that checks if client is alive
-static int
-client_dispatch (const char *key, void *client, void *server)
-{
-    server_client_execute ((server_t *) server, (client_t *) client, dispatch_event);
-    return 0;
-}
-
 
 //  Client methods
 
 static client_t *
-client_new (char *hashkey, zframe_t *address)
+client_new (zframe_t *address)
 {
     client_t *self = (client_t *) zmalloc (sizeof (client_t));
-    self->hashkey = hashkey;
     self->state = start_state;
+    self->hashkey = zframe_strhex (address);
     self->address = zframe_dup (address);
     self->reply = fmq_msg_new (0);
     fmq_msg_address_set (self->reply, self->address);
@@ -515,17 +523,12 @@ client_destroy (client_t **self_p)
     }
 }
 
+//  Callback when we remove client from 'clients' hash table
 static void
-client_set_request (client_t *self, fmq_msg_t *request)
+client_free (void *argument)
 {
-    if (self->request)
-        fmq_msg_destroy (&self->request);
-    self->request = request;
-
-    //  Any input from client counts as heartbeat
-    self->heartbeat_at = zclock_time () + self->heartbeat;
-    //  Any input from client counts as activity
-    self->expires_at = zclock_time () + self->heartbeat * 3;
+    client_t *client = (client_t *) argument;
+    client_destroy (&client);
 }
 
 //  Client hash function that calculates tickless timer
@@ -559,15 +562,6 @@ client_ping (const char *key, void *client, void *argument)
     }
     return 0;
 }
-
-//  Callback when we remove client from 'clients' hash table
-static void
-client_free (void *argument)
-{
-    client_t *client = (client_t *) argument;
-    client_destroy (&client);
-}
-
 
 //  Server methods
 
@@ -620,7 +614,6 @@ server_destroy (server_t **self_p)
 //   * apply server configuration
 //   * print any echo items in top-level sections
 //   * apply sections that match methods
-
 static void
 server_apply_config (server_t *self)
 {
@@ -655,6 +648,7 @@ server_apply_config (server_t *self)
     server_config_self (self);
 }
 
+//  Process message from pipe
 static void
 server_control_message (server_t *self)
 {
@@ -875,7 +869,6 @@ get_next_patch_for_client (server_t *self, client_t *client)
 }
 
 //  Execute state machine as long as we have events
-
 static void
 server_client_execute (server_t *self, client_t *client, int event)
 {
@@ -899,6 +892,8 @@ server_client_execute (server_t *self, client_t *client, int event)
                 else {
                     //  Process all other events
                     fmq_msg_id_set (client->reply, FMQ_MSG_RTFM);
+                    zclock_log ("Send message to client");
+                    fmq_msg_dump (client->reply);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
                     fmq_msg_address_set (client->reply, client->address);
@@ -909,6 +904,8 @@ server_client_execute (server_t *self, client_t *client, int event)
             case checking_client_state:
                 if (client->event == friend_event) {
                     fmq_msg_id_set (client->reply, FMQ_MSG_OHAI_OK);
+                    zclock_log ("Send message to client");
+                    fmq_msg_dump (client->reply);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
                     fmq_msg_address_set (client->reply, client->address);
@@ -917,6 +914,8 @@ server_client_execute (server_t *self, client_t *client, int event)
                 else
                 if (client->event == foe_event) {
                     fmq_msg_id_set (client->reply, FMQ_MSG_SRSLY);
+                    zclock_log ("Send message to client");
+                    fmq_msg_dump (client->reply);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
                     fmq_msg_address_set (client->reply, client->address);
@@ -926,6 +925,8 @@ server_client_execute (server_t *self, client_t *client, int event)
                 if (client->event == maybe_event) {
                     list_security_mechanisms (self, client);
                     fmq_msg_id_set (client->reply, FMQ_MSG_ORLY);
+                    zclock_log ("Send message to client");
+                    fmq_msg_dump (client->reply);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
                     fmq_msg_address_set (client->reply, client->address);
@@ -946,6 +947,8 @@ server_client_execute (server_t *self, client_t *client, int event)
                 else {
                     //  Process all other events
                     fmq_msg_id_set (client->reply, FMQ_MSG_RTFM);
+                    zclock_log ("Send message to client");
+                    fmq_msg_dump (client->reply);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
                     fmq_msg_address_set (client->reply, client->address);
@@ -973,6 +976,8 @@ server_client_execute (server_t *self, client_t *client, int event)
                 else {
                     //  Process all other events
                     fmq_msg_id_set (client->reply, FMQ_MSG_RTFM);
+                    zclock_log ("Send message to client");
+                    fmq_msg_dump (client->reply);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
                     fmq_msg_address_set (client->reply, client->address);
@@ -984,6 +989,8 @@ server_client_execute (server_t *self, client_t *client, int event)
                 if (client->event == icanhaz_event) {
                     store_client_subscription (self, client);
                     fmq_msg_id_set (client->reply, FMQ_MSG_ICANHAZ_OK);
+                    zclock_log ("Send message to client");
+                    fmq_msg_dump (client->reply);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
                     fmq_msg_address_set (client->reply, client->address);
@@ -997,6 +1004,8 @@ server_client_execute (server_t *self, client_t *client, int event)
                 else
                 if (client->event == hugz_event) {
                     fmq_msg_id_set (client->reply, FMQ_MSG_HUGZ_OK);
+                    zclock_log ("Send message to client");
+                    fmq_msg_dump (client->reply);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
                     fmq_msg_address_set (client->reply, client->address);
@@ -1013,6 +1022,8 @@ server_client_execute (server_t *self, client_t *client, int event)
                 else
                 if (client->event == heartbeat_event) {
                     fmq_msg_id_set (client->reply, FMQ_MSG_HUGZ);
+                    zclock_log ("Send message to client");
+                    fmq_msg_dump (client->reply);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
                     fmq_msg_address_set (client->reply, client->address);
@@ -1029,6 +1040,8 @@ server_client_execute (server_t *self, client_t *client, int event)
                 else {
                     //  Process all other events
                     fmq_msg_id_set (client->reply, FMQ_MSG_RTFM);
+                    zclock_log ("Send message to client");
+                    fmq_msg_dump (client->reply);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
                     fmq_msg_address_set (client->reply, client->address);
@@ -1039,6 +1052,8 @@ server_client_execute (server_t *self, client_t *client, int event)
             case dispatching_state:
                 if (client->event == send_chunk_event) {
                     fmq_msg_id_set (client->reply, FMQ_MSG_CHEEZBURGER);
+                    zclock_log ("Send message to client");
+                    fmq_msg_dump (client->reply);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
                     fmq_msg_address_set (client->reply, client->address);
@@ -1047,6 +1062,8 @@ server_client_execute (server_t *self, client_t *client, int event)
                 else
                 if (client->event == send_delete_event) {
                     fmq_msg_id_set (client->reply, FMQ_MSG_CHEEZBURGER);
+                    zclock_log ("Send message to client");
+                    fmq_msg_dump (client->reply);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
                     fmq_msg_address_set (client->reply, client->address);
@@ -1079,6 +1096,8 @@ server_client_execute (server_t *self, client_t *client, int event)
                 else {
                     //  Process all other events
                     fmq_msg_id_set (client->reply, FMQ_MSG_RTFM);
+                    zclock_log ("Send message to client");
+                    fmq_msg_dump (client->reply);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
                     fmq_msg_address_set (client->reply, client->address);
@@ -1102,19 +1121,27 @@ server_client_message (server_t *self)
     if (!request)
         return;         //  Interrupted; do nothing
 
+    zclock_log ("Received message from client");
+    fmq_msg_dump (request);
     char *hashkey = zframe_strhex (fmq_msg_address (request));
     client_t *client = zhash_lookup (self->clients, hashkey);
     if (client == NULL) {
-        client = client_new (hashkey, fmq_msg_address (request));
+        client = client_new (fmq_msg_address (request));
         client->heartbeat = self->heartbeat;
         client->router = self->router;
         zhash_insert (self->clients, hashkey, client);
         zhash_freefn (self->clients, hashkey, client_free);
     }
-    else
-        free (hashkey);
+    free (hashkey);
+    if (client->request)
+        fmq_msg_destroy (&client->request);
+    client->request = request;
 
-    client_set_request (client, request);
+    //  Any input from client counts as heartbeat
+    client->heartbeat_at = zclock_time () + client->heartbeat;
+    //  Any input from client counts as activity
+    client->expires_at = zclock_time () + client->heartbeat * 3;
+    
     if (fmq_msg_id (request) == FMQ_MSG_OHAI)
         server_client_execute (self, client, ohai_event);
     else
@@ -1136,7 +1163,6 @@ server_client_message (server_t *self)
 
 //  Finally here's the server thread itself, which polls its two
 //  sockets and processes incoming messages
-
 static void
 server_thread (void *args, zctx_t *ctx, void *pipe)
 {
@@ -1145,7 +1171,6 @@ server_thread (void *args, zctx_t *ctx, void *pipe)
         { self->pipe, 0, ZMQ_POLLIN, 0 },
         { self->router, 0, ZMQ_POLLIN, 0 }
     };
-    
     self->monitor_at = zclock_time () + self->monitor;
     while (!self->stopped && !zctx_interrupted) {
         //  Calculate tickless timer, up to interval seconds
@@ -1185,7 +1210,7 @@ int
 fmq_server_test (bool verbose)
 {
     printf (" * fmq_server: ");
-    fflush (stdout);
+    printf ("\n");
     zctx_t *ctx = zctx_new ();
     
     fmq_server_t *self;

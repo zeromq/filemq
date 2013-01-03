@@ -9,22 +9,20 @@ FileMQ protocol server
 private static final int CHUNK_SIZE = 1000000;
 </declare>
 
-<self>
+<server>
 <context>
 private List &lt;Mount&gt; mounts;  //  Mount points
 private int port;                   //  Server port
 </context>
-
 <construct>
 mounts = new ArrayList &lt;Mount&gt; ();
 </construct>
-
 <destruct>
 //  Destroy mount points
 for (Mount mount : mounts)
     mount.destroy ();
 </destruct>
-</self>
+</server>
 
 <client>
 <context>
@@ -35,11 +33,9 @@ private FmqFile file;                   //  Current file we're sending
 private long offset;                    //  Offset of next read in file
 private long sequence;                  //  Sequence number for chunk
 </context>
-
 <construct>
 patches = new ArrayList &lt;FmqPatch&gt; ();
 </construct>
-
 <destruct>
 for (FmqPatch patch : patches)
     patch.destroy ();
@@ -81,13 +77,13 @@ client.next_event = Event.foe_event;
 String [] result = new String [2];
 String login, password;
 if (client.request.mechanism ().equals ("PLAIN")
-&amp;&amp; FmqSasl.plainDecode (client.request.response (), result)) {
+&& FmqSasl.plainDecode (client.request.response (), result)) {
     login = result [0];
     password = result [1];
     FmqConfig account = config.locate ("security/plain/account");
     while (account != null) {
         if (account.resolve ("login", "").equals (login)
-        &amp;&amp; account.resolve ("password", "").equals (password)) {
+        && account.resolve ("password", "").equals (password)) {
             client.next_event = Event.friend_event;
             break;
         }
@@ -105,7 +101,7 @@ for (Mount check : mounts) {
     //  If check->alias is prefix of path and alias is
     //  longer than current mount then we have a new mount
     if (path.startsWith (check.alias)
-    &amp;&amp;  check.alias.length () > mount.alias.length ())
+    &&  check.alias.length () > mount.alias.length ())
         mount = check;
 }
 mount.storeSub (client, client.request);
@@ -177,7 +173,7 @@ if (client.patch.op () == FmqPatch.OP.patch_create) {
     assert (chunk != null);
 
     //  Check if we have the credit to send chunk
-    if (chunk.size () &lt;= client.credit) {
+    if (chunk.size () <= client.credit) {
         client.reply.setSequence (client.sequence++);
         client.reply.setOperation (FmqMsg.FMQ_MSG_FILE_CREATE);
         client.reply.setOffset (client.offset);

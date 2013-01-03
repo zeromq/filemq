@@ -2,7 +2,3 @@ export PATH=../scripts:$PATH
 gsl -q -script:codec_c fmq_msg.xml
 gsl -q -script:server_c -trace:0 -animate:0 fmq_server.xml
 gsl -q -script:client_c -trace:0 -animate:0 fmq_client.xml
-
-gsl -q -script:codec_java -package:filemq fmq_msg.xml
-gsl -q -script:server_java -package:filemq -trace:0 -animate:0 fmq_server.xml
-gsl -q -script:client_java -package:filemq -trace:0 -animate:0 fmq_client.xml
