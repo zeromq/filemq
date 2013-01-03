@@ -1,0 +1,60 @@
+<state name = "start">
+    <event name = "initialize" next = "requesting access">
+        <action name = "send" message ="OHAI" />
+    </event>
+</state>
+
+<state name = "requesting access">
+    <event name = "ORLY" next = "requesting access">
+        <action name = "try security mechanism" />
+        <action name = "send" message = "YARLY" />
+    </event>
+    <event name = "OHAI-OK" next = "subscribing">
+        <action name = "connected to server" />
+        <action name = "get first subscription" />
+    </event>
+    <!-- Server may be sending messages from old connection; ignore -->
+    <event name = "$other" />
+</state>
+
+<state name = "subscribing">
+    <event name = "ok" next = "subscribing">
+        <action name = "format icanhaz command" />
+        <action name = "send" message = "ICANHAZ" />
+        <action name = "get next subscription" />
+    </event>
+    <event name = "finished" next = "ready">
+        <action name = "refill credit as needed" />
+    </event>
+</state>
+
+<state name = "ready">
+    <event name = "CHEEZBURGER">
+        <action name = "process the patch" />
+        <action name = "refill credit as needed" />
+    </event>
+    <event name = "HUGZ">
+        <action name = "send" message = "HUGZ-OK" />
+    </event>
+    <event name = "send credit">
+        <action name = "send" message = "NOM" />
+    </event>
+    <event name = "ICANHAZ-OK" />
+</state>
+
+<state name = "defaults">
+    <event name = "SRSLY" next = "terminated">
+        <action name = "log access denied" />
+    </event>
+    <event name = "RTFM" next = "terminated">
+        <action name = "log invalid message" />
+    </event>
+    <event name = "$other" next = "terminated">
+        <action name = "log protocol error" />
+    </event>
+</state>
+
+<!-- Ignore everything -->
+<state name = "terminated">
+    <event name = "$other" />
+</state>

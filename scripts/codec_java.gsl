@@ -5,8 +5,8 @@
 .include "library.gsl"
 .resolve_includes ()
 .global.ClassName = java_class_name($(class.name)) 
-.echo "Generating ../java/src/main/java/org/filemq/$(ClassName).java..."
-.output "../java/src/main/java/org/filemq/$(ClassName).java"
+.echo "Generating ../src/main/java/org/$(switches.package:)/$(ClassName).java..."
+.output "../src/main/java/org/$(switches.package:)/$(ClassName).java"
 /*  =========================================================================
     $(ClassName).java
     
@@ -66,7 +66,7 @@
 .endfor
 */
 
-package org.filemq;
+package org.$(switches.package:);
 
 import java.util.Collection;
 import java.util.List;
@@ -701,7 +701,7 @@ public class $(ClassName)
         this.id = id;
     }
 
-.for class.field 
+.for class.field where !defined (value)
 .   if type = "number"
     //  --------------------------------------------------------------------------
     //  Get/set the $(name) field
@@ -843,12 +843,12 @@ public class $(ClassName)
 .endfor
 }
 
-.echo "Generating ../Java/src/test/java/org/zeromq/zyre/Test$(ClassName).java..."
-.output "../java/src/test/java/org/filemq/Test$(ClassName).java"
+.echo "Generating ../src/test/java/org/zeromq/zyre/Test$(ClassName).java..."
+.output "../src/test/java/org/$(switches.package:)/Test$(ClassName).java"
 //  --------------------------------------------------------------------------
 //  Selftest
 
-package org.filemq;
+package org.$(switches.package:);
 
 import static org.junit.Assert.*;
 import org.junit.Test;

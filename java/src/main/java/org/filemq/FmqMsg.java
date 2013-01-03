@@ -1174,35 +1174,6 @@ public class FmqMsg
     }
 
     //  --------------------------------------------------------------------------
-    //  Get/set the protocol field
-
-    public String protocol ()
-    {
-        return protocol;
-    }
-
-    public void setProtocol (String format, Object ... args)
-    {
-        //  Format into newly allocated string
-        protocol = String.format (format, args);
-    }
-
-
-    //  --------------------------------------------------------------------------
-    //  Get/set the version field
-
-    public int version ()
-    {
-        return version;
-    }
-
-    public void setVersion (int version)
-    {
-        this.version = version;
-    }
-
-
-    //  --------------------------------------------------------------------------
     //  Iterate through the mechanisms field, and append a mechanisms value
 
     public List <String> mechanisms ()

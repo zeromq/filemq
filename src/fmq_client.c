@@ -100,7 +100,7 @@ fmq_client_setoption (fmq_client_t *self, const char *path, const char *value)
 
 
 //  --------------------------------------------------------------------------
-//  Open connection to server
+//  Create outgoing connection to server
 
 void
 fmq_client_connect (fmq_client_t *self, const char *endpoint)
@@ -178,7 +178,7 @@ typedef enum {
 
 typedef enum {
     terminate_event = -1,
-    ready_event = 1,
+    initialize_event = 1,
     srsly_event = 2,
     rtfm_event = 3,
     _other_event = 4,
@@ -188,25 +188,74 @@ typedef enum {
     finished_event = 8,
     cheezburger_event = 9,
     hugz_event = 10,
-    subscribe_event = 11,
-    send_credit_event = 12,
-    icanhaz_ok_event = 13
+    send_credit_event = 11,
+    icanhaz_ok_event = 12
 } event_t;
 
 
+//  Maximum number of server connections we allow
+#define MAX_SERVERS     256
+
 //  Forward declarations
 typedef struct _client_t client_t;
+typedef struct _server_t server_t;
+
+//  Forward declarations
+typedef struct _sub_t sub_t;
+
+
+//  ---------------------------------------------------------------------
+//  Context for the client thread
+
+struct _client_t {
+    //  Properties accessible to client actions
+    zlist_t *subs;              //  Subscriptions               
+    sub_t *sub;                 //  Subscription we want to send
+    //  Properties you should NOT touch
+    zctx_t *ctx;                //  Own CZMQ context
+    void *pipe;                 //  Socket to back to caller
+    server_t *servers [MAX_SERVERS];
+                                //  Server connections
+    uint nbr_servers;           //  How many connections we have
+    bool dirty;                 //  If true, rebuild pollset
+    bool stopped;               //  Is the client stopped?
+    fmq_config_t *config;       //  Configuration tree
+    int heartbeat;              //  Heartbeat interval
+};
+
+//  ---------------------------------------------------------------------
+//  Context for each server connection
+
+struct _server_t {
+    //  Properties accessible to server actions
+    event_t next_event;         //  Next event
+    size_t credit;              //  Current credit pending
+    fmq_file_t *file;           //  File we're writing to 
+    //  Properties you should NOT touch
+    zctx_t *ctx;                //  Own CZMQ context
+    uint index;                 //  Index into client->server_array
+    void *dealer;               //  Socket to talk to server
+    int64_t expires_at;         //  Connection expires at
+    state_t state;              //  Current state
+    event_t event;              //  Current event
+    char *endpoint;             //  Server endpoint
+    fmq_msg_t *request;         //  Next message to send
+    fmq_msg_t *reply;           //  Last received reply
+};
+
+static void
+client_server_execute (client_t *self, server_t *server, int event);
 
 //  There's no point making these configurable
 #define CREDIT_SLICE    1000000
 #define CREDIT_MINIMUM  (CREDIT_SLICE * 4) + 1
 
 //  Subscription in memory
-typedef struct {
+struct _sub_t {
     client_t *client;           //  Pointer to parent client
     char *inbox;                //  Inbox location
     char *path;                 //  Path we subscribe to
-} sub_t;
+};
 
 static sub_t *
 sub_new (client_t *client, char *inbox, char *path)
@@ -244,31 +293,39 @@ sub_cache (sub_t *self)
 }
 
 
-//  ---------------------------------------------------------------------
-//  Context for the client thread
+//  Server methods
 
-struct _client_t {
-    //  Properties accessible to client actions
-    event_t next_event;         //  Next event
-    bool connected;             //  Are we connected to server? 
-    zlist_t *subs;              //  Subscriptions               
-    sub_t *sub;                 //  Subscription we want to send
-    size_t credit;              //  Current credit pending      
-    fmq_file_t *file;           //  File we're writing to       
+static server_t *
+server_new (zctx_t *ctx, char *endpoint)
+{
+    server_t *self = (server_t *) zmalloc (sizeof (server_t));
+    self->ctx = ctx;
+    self->endpoint = strdup (endpoint);
+    self->dealer = zsocket_new (self->ctx, ZMQ_DEALER);
+    self->request = fmq_msg_new (0);
+    zsocket_connect (self->dealer, endpoint);
+    self->state = start_state;
     
-    //  Properties you should NOT touch
-    zctx_t *ctx;                //  Own CZMQ context
-    void *pipe;                 //  Socket to back to caller
-    void *dealer;               //  Socket to talk to server
-    bool stopped;               //  Has client stopped?
-    fmq_config_t *config;       //  Configuration tree
-    state_t state;              //  Current state
-    event_t event;              //  Current event
-    fmq_msg_t *request;         //  Next message to send
-    fmq_msg_t *reply;           //  Last received reply
-    int heartbeat;              //  Heartbeat interval
-    int64_t expires_at;         //  Server expires at
-};
+    return self;
+}
+
+static void
+server_destroy (server_t **self_p)
+{
+    assert (self_p);
+    if (*self_p) {
+        server_t *self = *self_p;
+        zsocket_destroy (self->ctx, self->dealer);
+        fmq_msg_destroy (&self->request);
+        fmq_msg_destroy (&self->reply);
+        free (self->endpoint);
+        
+        free (self);
+        *self_p = NULL;
+    }
+}
+
+//  Client methods
 
 static void
 client_config_self (client_t *self)
@@ -287,7 +344,6 @@ client_new (zctx_t *ctx, void *pipe)
     self->config = fmq_config_new ("root", NULL);
     client_config_self (self);
     self->subs = zlist_new ();
-    self->connected = false;  
     return self;
 }
 
@@ -298,8 +354,11 @@ client_destroy (client_t **self_p)
     if (*self_p) {
         client_t *self = *self_p;
         fmq_config_destroy (&self->config);
-        fmq_msg_destroy (&self->request);
-        fmq_msg_destroy (&self->reply);
+        int server_nbr;
+        for (server_nbr = 0; server_nbr < self->nbr_servers; server_nbr++) {
+            server_t *server = self->servers [server_nbr];
+            server_destroy (&server);
+        }
         //  Destroy subscriptions                         
         while (zlist_size (self->subs)) {                 
             sub_t *sub = (sub_t *) zlist_pop (self->subs);
@@ -315,7 +374,6 @@ client_destroy (client_t **self_p)
 //   * apply client configuration
 //   * print any echo items in top-level sections
 //   * apply sections that match methods
-
 static void
 client_apply_config (client_t *self)
 {
@@ -346,10 +404,6 @@ client_apply_config (client_t *self)
             char *inbox = fmq_config_resolve (self->config, "client/inbox", ".inbox");
             self->sub = sub_new (self, inbox, path);                                  
             zlist_append (self->subs, self->sub);                                     
-                                                                                      
-            //  If we're connected, then also send to server                          
-            if (self->connected)                                                      
-                self->next_event = subscribe_event;                                   
         }
         else
         if (streq (fmq_config_name (section), "set_inbox")) {
@@ -367,323 +421,9 @@ client_apply_config (client_t *self)
     client_config_self (self);
 }
 
-//  Custom actions for state machine
-
+//  Process message from pipe
 static void
-initialize_the_client (client_t *self)
-{
-    self->next_event = ready_event;
-}
-
-static void
-try_security_mechanism (client_t *self)
-{
-    char *login = fmq_config_resolve (self->config, "security/plain/login", "guest"); 
-    char *password = fmq_config_resolve (self->config, "security/plain/password", "");
-    zframe_t *frame = fmq_sasl_plain_encode (login, password);                        
-    fmq_msg_mechanism_set (self->request, "PLAIN");                                   
-    fmq_msg_response_set  (self->request, frame);                                     
-}
-
-static void
-connected_to_server (client_t *self)
-{
-    self->connected = true;
-}
-
-static void
-get_first_subscription (client_t *self)
-{
-    self->sub = (sub_t *) zlist_first (self->subs);
-    if (self->sub)                                 
-        self->next_event = ok_event;               
-    else                                           
-        self->next_event = finished_event;         
-}
-
-static void
-get_next_subscription (client_t *self)
-{
-    self->sub = (sub_t *) zlist_next (self->subs);
-    if (self->sub)                                
-        self->next_event = ok_event;              
-    else                                          
-        self->next_event = finished_event;        
-}
-
-static void
-format_icanhaz_command (client_t *self)
-{
-    fmq_msg_path_set (self->request, self->sub->path);                        
-    //  If client app wants full resync, send cache to server                 
-    if (atoi (fmq_config_resolve (self->config, "client/resync", "0")) == 1) {
-        fmq_msg_options_insert (self->request, "RESYNC", "1");                
-        fmq_msg_cache_set (self->request, sub_cache (self->sub));             
-    }                                                                         
-}
-
-static void
-refill_credit_as_needed (client_t *self)
-{
-    //  If credit has fallen too low, send more credit     
-    size_t credit_to_send = 0;                             
-    while (self->credit < CREDIT_MINIMUM) {                
-        credit_to_send += CREDIT_SLICE;                    
-        self->credit += CREDIT_SLICE;                      
-    }                                                      
-    if (credit_to_send) {                                  
-        fmq_msg_credit_set (self->request, credit_to_send);
-        self->next_event = send_credit_event;              
-    }                                                      
-}
-
-static void
-process_the_patch (client_t *self)
-{
-    char *inbox = fmq_config_resolve (self->config, "client/inbox", ".inbox");        
-    char *filename = fmq_msg_filename (self->reply);                                  
-                                                                                      
-    //  Filenames from server must start with slash, which we skip                    
-    assert (*filename == '/');                                                        
-    filename++;                                                                       
-                                                                                      
-    if (fmq_msg_operation (self->reply) == FMQ_MSG_FILE_CREATE) {                     
-        if (self->file == NULL) {                                                     
-            self->file = fmq_file_new (inbox, filename);                              
-            if (fmq_file_output (self->file)) {                                       
-                //  File not writeable, skip patch                                    
-                fmq_file_destroy (&self->file);                                       
-                return;                                                               
-            }                                                                         
-        }                                                                             
-        //  Try to write, ignore errors in this version                               
-        zframe_t *frame = fmq_msg_chunk (self->reply);                                
-        fmq_chunk_t *chunk = fmq_chunk_new (zframe_data (frame), zframe_size (frame));
-        if (fmq_chunk_size (chunk) > 0) {                                             
-            fmq_file_write (self->file, chunk, fmq_msg_offset (self->reply));         
-            self->credit -= fmq_chunk_size (chunk);                                   
-        }                                                                             
-        else {                                                                        
-            //  Zero-sized chunk means end of file, so report back to caller          
-            zstr_sendm (self->pipe, "DELIVER");                                       
-            zstr_sendm (self->pipe, filename);                                        
-            zstr_sendf (self->pipe, "%s/%s", inbox, filename);                        
-            fmq_file_destroy (&self->file);                                           
-        }                                                                             
-        fmq_chunk_destroy (&chunk);                                                   
-    }                                                                                 
-    else                                                                              
-    if (fmq_msg_operation (self->reply) == FMQ_MSG_FILE_DELETE) {                     
-        zclock_log ("I: delete %s/%s", inbox, filename);                              
-        fmq_file_t *file = fmq_file_new (inbox, filename);                            
-        fmq_file_remove (file);                                                       
-        fmq_file_destroy (&file);                                                     
-    }                                                                                 
-}
-
-static void
-log_access_denied (client_t *self)
-{
-    puts ("W: server denied us access, retrying...");
-}
-
-static void
-log_invalid_message (client_t *self)
-{
-    puts ("E: server claims we sent an invalid message");
-}
-
-static void
-log_protocol_error (client_t *self)
-{
-    puts ("E: protocol error");
-}
-
-static void
-terminate_the_client (client_t *self)
-{
-    self->connected = false;           
-    self->next_event = terminate_event;
-}
-
-//  Execute state machine as long as we have events
-
-static void
-client_execute (client_t *self, int event)
-{
-    self->next_event = event;
-    while (self->next_event) {
-        self->event = self->next_event;
-        self->next_event = 0;
-        switch (self->state) {
-            case start_state:
-                if (self->event == ready_event) {
-                    fmq_msg_id_set (self->request, FMQ_MSG_OHAI);
-                    fmq_msg_send (&self->request, self->dealer);
-                    self->request = fmq_msg_new (0);
-                    self->state = requesting_access_state;
-                }
-                else
-                if (self->event == srsly_event) {
-                    log_access_denied (self);
-                    terminate_the_client (self);
-                    self->state = start_state;
-                }
-                else
-                if (self->event == rtfm_event) {
-                    log_invalid_message (self);
-                    terminate_the_client (self);
-                }
-                else {
-                    //  Process all other events
-                    log_protocol_error (self);
-                    terminate_the_client (self);
-                }
-                break;
-
-            case requesting_access_state:
-                if (self->event == orly_event) {
-                    try_security_mechanism (self);
-                    fmq_msg_id_set (self->request, FMQ_MSG_YARLY);
-                    fmq_msg_send (&self->request, self->dealer);
-                    self->request = fmq_msg_new (0);
-                    self->state = requesting_access_state;
-                }
-                else
-                if (self->event == ohai_ok_event) {
-                    connected_to_server (self);
-                    get_first_subscription (self);
-                    self->state = subscribing_state;
-                }
-                else
-                if (self->event == srsly_event) {
-                    log_access_denied (self);
-                    terminate_the_client (self);
-                    self->state = start_state;
-                }
-                else
-                if (self->event == rtfm_event) {
-                    log_invalid_message (self);
-                    terminate_the_client (self);
-                }
-                else {
-                    //  Process all other events
-                }
-                break;
-
-            case subscribing_state:
-                if (self->event == ok_event) {
-                    format_icanhaz_command (self);
-                    fmq_msg_id_set (self->request, FMQ_MSG_ICANHAZ);
-                    fmq_msg_send (&self->request, self->dealer);
-                    self->request = fmq_msg_new (0);
-                    get_next_subscription (self);
-                    self->state = subscribing_state;
-                }
-                else
-                if (self->event == finished_event) {
-                    refill_credit_as_needed (self);
-                    self->state = ready_state;
-                }
-                else
-                if (self->event == srsly_event) {
-                    log_access_denied (self);
-                    terminate_the_client (self);
-                    self->state = start_state;
-                }
-                else
-                if (self->event == rtfm_event) {
-                    log_invalid_message (self);
-                    terminate_the_client (self);
-                }
-                else {
-                    //  Process all other events
-                    log_protocol_error (self);
-                    terminate_the_client (self);
-                }
-                break;
-
-            case ready_state:
-                if (self->event == cheezburger_event) {
-                    process_the_patch (self);
-                    refill_credit_as_needed (self);
-                }
-                else
-                if (self->event == hugz_event) {
-                    fmq_msg_id_set (self->request, FMQ_MSG_HUGZ_OK);
-                    fmq_msg_send (&self->request, self->dealer);
-                    self->request = fmq_msg_new (0);
-                }
-                else
-                if (self->event == subscribe_event) {
-                    format_icanhaz_command (self);
-                    fmq_msg_id_set (self->request, FMQ_MSG_ICANHAZ);
-                    fmq_msg_send (&self->request, self->dealer);
-                    self->request = fmq_msg_new (0);
-                }
-                else
-                if (self->event == send_credit_event) {
-                    fmq_msg_id_set (self->request, FMQ_MSG_NOM);
-                    fmq_msg_send (&self->request, self->dealer);
-                    self->request = fmq_msg_new (0);
-                }
-                else
-                if (self->event == icanhaz_ok_event) {
-                }
-                else
-                if (self->event == srsly_event) {
-                    log_access_denied (self);
-                    terminate_the_client (self);
-                    self->state = start_state;
-                }
-                else
-                if (self->event == rtfm_event) {
-                    log_invalid_message (self);
-                    terminate_the_client (self);
-                }
-                else {
-                    //  Process all other events
-                    log_protocol_error (self);
-                    terminate_the_client (self);
-                }
-                break;
-
-        }
-        if (self->next_event == terminate_event) {
-            self->stopped = true;
-            break;
-        }
-    }
-}
-
-//  Restart client dialog from zero
-
-static void
-client_restart (client_t *self, char *endpoint)
-{
-    //  Reconnect to new endpoint if specified
-    if (endpoint)  {
-        if (self->dealer)
-            zsocket_destroy (self->ctx, self->dealer);
-        self->dealer = zsocket_new (self->ctx, ZMQ_DEALER);
-        zsocket_connect (self->dealer, endpoint);
-    }
-    //  Clear out any previous request data
-    fmq_msg_destroy (&self->request);
-    self->request = fmq_msg_new (0);
-
-    //  Restart dialog state machine from zero
-    self->state = start_state;
-    self->expires_at = 0;
-
-    //  Application hook to reinitialize dialog
-    //  Provides us with an event to kick things off
-    initialize_the_client (self);
-    client_execute (self, self->next_event);
-}
-
-static void
-control_message (client_t *self)
+client_control_message (client_t *self)
 {
     zmsg_t *msg = zmsg_recv (self->pipe);
     char *method = zmsg_popstr (msg);
@@ -705,10 +445,6 @@ control_message (client_t *self)
         char *inbox = fmq_config_resolve (self->config, "client/inbox", ".inbox");
         self->sub = sub_new (self, inbox, path);                                  
         zlist_append (self->subs, self->sub);                                     
-                                                                                  
-        //  If we're connected, then also send to server                          
-        if (self->connected)                                                      
-            self->next_event = subscribe_event;                                   
         free (path);
     }
     else
@@ -724,12 +460,6 @@ control_message (client_t *self)
         free (enabled_string);
         //  Request resynchronization from server                              
         fmq_config_path_set (self->config, "client/resync", enabled? "1" :"0");
-    }
-    else
-    if (streq (method, "CONNECT")) {
-        char *endpoint = zmsg_popstr (msg);
-        client_restart (self, endpoint);
-        free (endpoint);
     }
     else
     if (streq (method, "CONFIG")) {
@@ -758,76 +488,368 @@ control_message (client_t *self)
         zstr_send (self->pipe, "OK");
         self->stopped = true;
     }
+    else
+    if (streq (method, "CONNECT")) {
+        char *endpoint = zmsg_popstr (msg);
+        if (self->nbr_servers < MAX_SERVERS) {
+            server_t *server = server_new (self->ctx, endpoint);
+            self->servers [self->nbr_servers++] = server;
+            self->dirty = true;
+            client_server_execute (self, server, initialize_event);
+        }
+        else
+            printf ("E: too many server connections (max %d)\n", MAX_SERVERS);
+            
+        free (endpoint);
+    }
     free (method);
     zmsg_destroy (&msg);
+}
 
-    if (self->next_event)
-        client_execute (self, self->next_event);
+//  Custom actions for state machine
+
+static void
+try_security_mechanism (client_t *self, server_t *server)
+{
+    char *login = fmq_config_resolve (self->config, "security/plain/login", "guest"); 
+    char *password = fmq_config_resolve (self->config, "security/plain/password", "");
+    zframe_t *frame = fmq_sasl_plain_encode (login, password);                        
+    fmq_msg_mechanism_set (server->request, "PLAIN");                                 
+    fmq_msg_response_set  (server->request, frame);                                   
 }
 
 static void
-server_message (client_t *self)
+connected_to_server (client_t *self, server_t *server)
 {
-    if (self->reply)
-        fmq_msg_destroy (&self->reply);
-    self->reply = fmq_msg_recv (self->dealer);
-    if (!self->reply)
-        return;         //  Interrupted; do nothing
     
-    if (fmq_msg_id (self->reply) == FMQ_MSG_SRSLY)
-        client_execute (self, srsly_event);
-    else
-    if (fmq_msg_id (self->reply) == FMQ_MSG_RTFM)
-        client_execute (self, rtfm_event);
-    else
-    if (fmq_msg_id (self->reply) == FMQ_MSG_ORLY)
-        client_execute (self, orly_event);
-    else
-    if (fmq_msg_id (self->reply) == FMQ_MSG_OHAI_OK)
-        client_execute (self, ohai_ok_event);
-    else
-    if (fmq_msg_id (self->reply) == FMQ_MSG_CHEEZBURGER)
-        client_execute (self, cheezburger_event);
-    else
-    if (fmq_msg_id (self->reply) == FMQ_MSG_HUGZ)
-        client_execute (self, hugz_event);
-    else
-    if (fmq_msg_id (self->reply) == FMQ_MSG_ICANHAZ_OK)
-        client_execute (self, icanhaz_ok_event);
-
-    //  Any input from server counts as activity
-    self->expires_at = zclock_time () + self->heartbeat * 2;
 }
 
+static void
+get_first_subscription (client_t *self, server_t *server)
+{
+    self->sub = (sub_t *) zlist_first (self->subs);
+    if (self->sub)                                 
+        server->next_event = ok_event;             
+    else                                           
+        server->next_event = finished_event;       
+}
+
+static void
+get_next_subscription (client_t *self, server_t *server)
+{
+    self->sub = (sub_t *) zlist_next (self->subs);
+    if (self->sub)                                
+        server->next_event = ok_event;            
+    else                                          
+        server->next_event = finished_event;      
+}
+
+static void
+format_icanhaz_command (client_t *self, server_t *server)
+{
+    fmq_msg_path_set (server->request, self->sub->path);                      
+    //  If client app wants full resync, send cache to server                 
+    if (atoi (fmq_config_resolve (self->config, "client/resync", "0")) == 1) {
+        fmq_msg_options_insert (server->request, "RESYNC", "1");              
+        fmq_msg_cache_set (server->request, sub_cache (self->sub));           
+    }                                                                         
+}
+
+static void
+refill_credit_as_needed (client_t *self, server_t *server)
+{
+    //  If credit has fallen too low, send more credit       
+    size_t credit_to_send = 0;                               
+    while (server->credit < CREDIT_MINIMUM) {                
+        credit_to_send += CREDIT_SLICE;                      
+        server->credit += CREDIT_SLICE;                      
+    }                                                        
+    if (credit_to_send) {                                    
+        fmq_msg_credit_set (server->request, credit_to_send);
+        server->next_event = send_credit_event;              
+    }                                                        
+}
+
+static void
+process_the_patch (client_t *self, server_t *server)
+{
+    char *inbox = fmq_config_resolve (self->config, "client/inbox", ".inbox");        
+    char *filename = fmq_msg_filename (server->reply);                                
+                                                                                      
+    //  Filenames from server must start with slash, which we skip                    
+    assert (*filename == '/');                                                        
+    filename++;                                                                       
+                                                                                      
+    if (fmq_msg_operation (server->reply) == FMQ_MSG_FILE_CREATE) {                   
+        if (server->file == NULL) {                                                   
+            server->file = fmq_file_new (inbox, filename);                            
+            if (fmq_file_output (server->file)) {                                     
+                //  File not writeable, skip patch                                    
+                fmq_file_destroy (&server->file);                                     
+                return;                                                               
+            }                                                                         
+        }                                                                             
+        //  Try to write, ignore errors in this version                               
+        zframe_t *frame = fmq_msg_chunk (server->reply);                              
+        fmq_chunk_t *chunk = fmq_chunk_new (zframe_data (frame), zframe_size (frame));
+        if (fmq_chunk_size (chunk) > 0) {                                             
+            fmq_file_write (server->file, chunk, fmq_msg_offset (server->reply));     
+            server->credit -= fmq_chunk_size (chunk);                                 
+        }                                                                             
+        else {                                                                        
+            //  Zero-sized chunk means end of file, so report back to caller          
+            zstr_sendm (self->pipe, "DELIVER");                                       
+            zstr_sendm (self->pipe, filename);                                        
+            zstr_sendf (self->pipe, "%s/%s", inbox, filename);                        
+            fmq_file_destroy (&server->file);                                         
+        }                                                                             
+        fmq_chunk_destroy (&chunk);                                                   
+    }                                                                                 
+    else                                                                              
+    if (fmq_msg_operation (server->reply) == FMQ_MSG_FILE_DELETE) {                   
+        zclock_log ("I: delete %s/%s", inbox, filename);                              
+        fmq_file_t *file = fmq_file_new (inbox, filename);                            
+        fmq_file_remove (file);                                                       
+        fmq_file_destroy (&file);                                                     
+    }                                                                                 
+}
+
+static void
+log_access_denied (client_t *self, server_t *server)
+{
+    puts ("W: server denied us access, retrying...");
+}
+
+static void
+log_invalid_message (client_t *self, server_t *server)
+{
+    puts ("E: server claims we sent an invalid message");
+}
+
+static void
+log_protocol_error (client_t *self, server_t *server)
+{
+    puts ("E: protocol error");
+}
+
+static void
+terminate_the_server (client_t *self, server_t *server)
+{
+    server->next_event = terminate_event;
+}
+
+//  Execute state machine as long as we have events
+static void
+client_server_execute (client_t *self, server_t *server, int event)
+{
+    server->next_event = event;
+    while (server->next_event) {
+        server->event = server->next_event;
+        server->next_event = 0;
+        switch (server->state) {
+            case start_state:
+                if (server->event == initialize_event) {
+                    fmq_msg_id_set (server->request, FMQ_MSG_OHAI);
+                    fmq_msg_send (&server->request, server->dealer);
+                    server->request = fmq_msg_new (0);
+                    server->state = requesting_access_state;
+                }
+                else
+                if (server->event == srsly_event) {
+                    log_access_denied (self, server);
+                    terminate_the_server (self, server);
+                    server->state = start_state;
+                }
+                else
+                if (server->event == rtfm_event) {
+                    log_invalid_message (self, server);
+                    terminate_the_server (self, server);
+                }
+                else {
+                    //  Process all other events
+                    log_protocol_error (self, server);
+                    terminate_the_server (self, server);
+                }
+                break;
+
+            case requesting_access_state:
+                if (server->event == orly_event) {
+                    try_security_mechanism (self, server);
+                    fmq_msg_id_set (server->request, FMQ_MSG_YARLY);
+                    fmq_msg_send (&server->request, server->dealer);
+                    server->request = fmq_msg_new (0);
+                    server->state = requesting_access_state;
+                }
+                else
+                if (server->event == ohai_ok_event) {
+                    connected_to_server (self, server);
+                    get_first_subscription (self, server);
+                    server->state = subscribing_state;
+                }
+                else
+                if (server->event == srsly_event) {
+                    log_access_denied (self, server);
+                    terminate_the_server (self, server);
+                    server->state = start_state;
+                }
+                else
+                if (server->event == rtfm_event) {
+                    log_invalid_message (self, server);
+                    terminate_the_server (self, server);
+                }
+                else {
+                    //  Process all other events
+                }
+                break;
+
+            case subscribing_state:
+                if (server->event == ok_event) {
+                    format_icanhaz_command (self, server);
+                    fmq_msg_id_set (server->request, FMQ_MSG_ICANHAZ);
+                    fmq_msg_send (&server->request, server->dealer);
+                    server->request = fmq_msg_new (0);
+                    get_next_subscription (self, server);
+                    server->state = subscribing_state;
+                }
+                else
+                if (server->event == finished_event) {
+                    refill_credit_as_needed (self, server);
+                    server->state = ready_state;
+                }
+                else
+                if (server->event == srsly_event) {
+                    log_access_denied (self, server);
+                    terminate_the_server (self, server);
+                    server->state = start_state;
+                }
+                else
+                if (server->event == rtfm_event) {
+                    log_invalid_message (self, server);
+                    terminate_the_server (self, server);
+                }
+                else {
+                    //  Process all other events
+                    log_protocol_error (self, server);
+                    terminate_the_server (self, server);
+                }
+                break;
+
+            case ready_state:
+                if (server->event == cheezburger_event) {
+                    process_the_patch (self, server);
+                    refill_credit_as_needed (self, server);
+                }
+                else
+                if (server->event == hugz_event) {
+                    fmq_msg_id_set (server->request, FMQ_MSG_HUGZ_OK);
+                    fmq_msg_send (&server->request, server->dealer);
+                    server->request = fmq_msg_new (0);
+                }
+                else
+                if (server->event == send_credit_event) {
+                    fmq_msg_id_set (server->request, FMQ_MSG_NOM);
+                    fmq_msg_send (&server->request, server->dealer);
+                    server->request = fmq_msg_new (0);
+                }
+                else
+                if (server->event == icanhaz_ok_event) {
+                }
+                else
+                if (server->event == srsly_event) {
+                    log_access_denied (self, server);
+                    terminate_the_server (self, server);
+                    server->state = start_state;
+                }
+                else
+                if (server->event == rtfm_event) {
+                    log_invalid_message (self, server);
+                    terminate_the_server (self, server);
+                }
+                else {
+                    //  Process all other events
+                    log_protocol_error (self, server);
+                    terminate_the_server (self, server);
+                }
+                break;
+
+        }
+        if (server->next_event == terminate_event) {
+            //  Automatically calls server_destroy
+            //  reset state machine
+            break;
+        }
+    }
+}
+
+static void
+client_server_message (client_t *self, server_t *server)
+{
+    if (server->reply)
+        fmq_msg_destroy (&server->reply);
+    server->reply = fmq_msg_recv (server->dealer);
+    if (!server->reply)
+        return;         //  Interrupted; do nothing
+
+    //  Any input from server counts as activity
+    server->expires_at = zclock_time () + self->heartbeat * 3;
+    
+    if (fmq_msg_id (server->reply) == FMQ_MSG_SRSLY)
+        client_server_execute (self, server, srsly_event);
+    else
+    if (fmq_msg_id (server->reply) == FMQ_MSG_RTFM)
+        client_server_execute (self, server, rtfm_event);
+    else
+    if (fmq_msg_id (server->reply) == FMQ_MSG_ORLY)
+        client_server_execute (self, server, orly_event);
+    else
+    if (fmq_msg_id (server->reply) == FMQ_MSG_OHAI_OK)
+        client_server_execute (self, server, ohai_ok_event);
+    else
+    if (fmq_msg_id (server->reply) == FMQ_MSG_CHEEZBURGER)
+        client_server_execute (self, server, cheezburger_event);
+    else
+    if (fmq_msg_id (server->reply) == FMQ_MSG_HUGZ)
+        client_server_execute (self, server, hugz_event);
+    else
+    if (fmq_msg_id (server->reply) == FMQ_MSG_ICANHAZ_OK)
+        client_server_execute (self, server, icanhaz_ok_event);
+}
 
 //  Finally here's the client thread itself, which polls its two
 //  sockets and processes incoming messages
-
 static void
 client_thread (void *args, zctx_t *ctx, void *pipe)
 {
     client_t *self = client_new (ctx, pipe);
+    int pollset_size = 1;
+    zmq_pollitem_t pollset [MAX_SERVERS] = {
+        { self->pipe, 0, ZMQ_POLLIN, 0 }
+    };
     while (!self->stopped && !zctx_interrupted) {
-        //  Build structure each time since self->dealer can change
-        zmq_pollitem_t items [] = {
-            { self->pipe, 0, ZMQ_POLLIN, 0 },
-            { self->dealer, 0, ZMQ_POLLIN, 0 }
-        };
-        int poll_size = self->dealer? 2: 1;
-        if (zmq_poll (items, poll_size, self->heartbeat * ZMQ_POLL_MSEC) == -1)
+        //  Rebuild pollset if we need to
+        int server_nbr;
+        if (self->dirty) {
+            for (server_nbr = 0; server_nbr < self->nbr_servers; server_nbr++) {
+                pollset [1 + server_nbr].socket = self->servers [server_nbr]->dealer;
+                pollset [1 + server_nbr].events = ZMQ_POLLIN;
+            }
+            pollset_size = 1 + self->nbr_servers;
+        }
+        if (zmq_poll (pollset, pollset_size, self->heartbeat * ZMQ_POLL_MSEC) == -1)
             break;              //  Context has been shut down
 
         //  Process incoming messages; either of these can
         //  throw events into the state machine
-        if (items [0].revents & ZMQ_POLLIN)
-            control_message (self);
+        if (pollset [0].revents & ZMQ_POLLIN)
+            client_control_message (self);
 
-        if (items [1].revents & ZMQ_POLLIN)
-            server_message (self);
-
-        //  Check whether server seems dead
-        if (self->expires_at && zclock_time () >= self->expires_at)
-            client_restart (self, NULL);
+        //  Here, array of sockets to servers
+        for (server_nbr = 0; server_nbr < self->nbr_servers; server_nbr++) {
+            if (pollset [1 + server_nbr].revents & ZMQ_POLLIN) {
+                server_t *server = self->servers [server_nbr];
+                client_server_message (self, server);
+            }
+        }
     }
     client_destroy (&self);
 }
@@ -847,7 +869,7 @@ fmq_client_test (bool verbose)
     assert (self);
     fmq_client_configure (self, "client_test.cfg");
     fmq_client_connect (self, "tcp://localhost:6001");
-    zclock_sleep (1000);
+    zclock_sleep (1000);                              
     fmq_client_destroy (&self);
 
     printf ("OK\n");

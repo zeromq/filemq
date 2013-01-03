@@ -49,7 +49,7 @@ void
 void
     fmq_client_setoption (fmq_client_t *self, const char *path, const char *value);
 
-//  Open connection to server
+//  Create outgoing connection to server
 void
     fmq_client_connect (fmq_client_t *self, const char *endpoint);
 

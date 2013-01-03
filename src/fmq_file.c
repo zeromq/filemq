@@ -43,36 +43,6 @@ struct _fmq_file_t {
     FILE *handle;           //  Read/write handle
 };
 
-//  Return POSIX file mode or -1 if file doesn't exist
-
-static mode_t
-s_file_mode (const char *filename)
-{
-#if (defined (WIN32))
-    DWORD dwfa = GetFileAttributes (filename);
-    if (dwfa == 0xffffffff)
-        return -1;
-
-    dbyte mode = 0;
-    if (dwfa & FILE_ATTRIBUTE_DIRECTORY)
-        mode |= S_IFDIR;
-    else
-        mode |= S_IFREG;
-    if (!(dwfa & FILE_ATTRIBUTE_HIDDEN))
-        mode |= S_IREAD;
-    if (!(dwfa & FILE_ATTRIBUTE_READONLY))
-        mode |= S_IWRITE;
-
-    return mode;
-#else
-    struct stat stat_buf;
-    if (stat ((char *) filename, &stat_buf) == 0)
-        return stat_buf.st_mode;
-    else
-        return -1;
-#endif
-}
-
 
 //  --------------------------------------------------------------------------
 //  Constructor
@@ -177,23 +147,11 @@ fmq_file_restat (fmq_file_t *self)
     struct stat stat_buf;
     char *real_name = self->link? self->link: self->name;
     if (stat (real_name, &stat_buf) == 0) {
-        //  Not sure if stat mtime is fully portable
         self->exists = true;
         self->size = stat_buf.st_size;
         self->time = stat_buf.st_mtime;
-#if (defined (WIN32))
-        self->mode = s_file_mode (real_name);
-#else
-        self->mode = stat_buf.st_mode;
-#endif
-        //  File is 'stable' if more than 1 second old
-#if (defined (WIN32))
-#define EPOCH_DIFFERENCE 11644473600LL
-        long age = (long) (zclock_time () - EPOCH_DIFFERENCE * 1000 - (self->time * 1000));
-#else
-        long age = (long) (zclock_time () - (self->time * 1000));
-#endif
-        self->stable = age > 1000;
+        self->mode = zsys_mode (real_name);
+        self->stable = zsys_stable (real_name);
     }
     else
         self->exists = false;
@@ -265,44 +223,8 @@ fmq_file_remove (fmq_file_t *self)
     if (self->link)
         //  Restore ".ln" in file name
         self->name [strlen (self->name)] = '.';
-#if (defined (WIN32))
-    DeleteFile (self->name);
-#else
-    unlink (self->name);
-#endif
-}
-
-
-static void
-s_assert_path (fmq_file_t *self)
-{
-    //  Create parent directory levels if needed
-    char *path = strdup (self->name);
-    char *slash = strchr (path + 1, '/');
-    do {
-        if (slash)
-            *slash = 0;         //  Cut at slash
-        mode_t mode = s_file_mode (path);
-        if (mode == (mode_t)-1) {
-            //  Does not exist, try to create it
-#if (defined (WIN32))
-            if (!CreateDirectory (path, NULL))
-#else
-            if (mkdir (path, 0775))
-#endif
-                return;         //  Failed
-        }
-        else
-        if ((mode & S_IFDIR) == 0) {
-            //  Not a directory, abort
-        }
-        if (!slash)             //  End if last segment
-            break;
-       *slash = '/';
-        slash = strchr (slash + 1, '/');
-    } while (slash);
-
-    free (path);
+    fmq_file_close (self);
+    zsys_unlink (self->name);
 }
 
 
@@ -346,11 +268,12 @@ fmq_file_output (fmq_file_t *self)
         free (self->link);
         self->link = NULL;
     }
-    s_assert_path (self);
-    if (self->handle)
-        fmq_file_close (self);
+    //  Create file path if it doesn't exist
+    zsys_mkdir (self->name);
     
     //  Create file if it doesn't exist
+    if (self->handle)
+        fmq_file_close (self);
     self->handle = fopen (self->name, "r+b");
     if (!self->handle)
         self->handle = fopen (self->name, "w+b");
@@ -516,12 +439,11 @@ fmq_file_test (bool verbose)
     link = fmq_file_new ("./this/is/a/test", "bilbo.ln");
     rc = fmq_file_input (link);
     assert (rc == 0);
-    chunk = fmq_file_read (file, 1000100, 0);
+    chunk = fmq_file_read (link, 1000100, 0);
     assert (chunk);
     assert (fmq_chunk_size (chunk) == 1000100);
     fmq_chunk_destroy (&chunk);
     fmq_file_destroy (&link);
-    fmq_file_close (file);		// win32 can't delete open files
 
     //  Remove file and directory
     fmq_dir_t *dir = fmq_dir_new ("./this", NULL);

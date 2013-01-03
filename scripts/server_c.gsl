@@ -264,17 +264,25 @@ s_event_name [] = {
 
 .endif
 
+//  Forward declarations
+typedef struct _server_t server_t;
+typedef struct _client_t client_t;
+
+.for class.declare where type ?= "forward"
+$(string.trim (declare.?''):)
+
+.endfor
+
 //  ---------------------------------------------------------------------
 //  Context for the server thread
 
-typedef struct {
-    //  Properties accessible to client actions
+struct _server_t {
+    //  Properties accessible to server actions
 .for class.self
 .   for context
     $(string.trim (context.?''):block                                           )
 .   endfor
 .endfor
-
     //  Properties you should NOT touch
     zctx_t *ctx;                //  Own CZMQ context
     void *pipe;                 //  Socket to back to caller
@@ -284,22 +292,21 @@ typedef struct {
     fmq_config_t *config;       //  Configuration tree
     int monitor;                //  Monitor interval
     int64_t monitor_at;         //  Next monitor at this time
-    int heartbeat;              //  Heartbeat for clients
-} server_t;
+    int heartbeat;              //  Client heartbeat interval
+};
 
 //  ---------------------------------------------------------------------
 //  Context for each client connection
 
-typedef struct {
+struct _client_t {
     //  Properties accessible to client actions
-    int64_t heartbeat;          //  Heartbeat interval
+    int heartbeat;              //  Client heartbeat interval
     event_t next_event;         //  Next event
 .for class.client
 .   for context
     $(string.trim (context.?''):block                                           )
 .   endfor
 .endfor
-
     //  Properties you should NOT touch
     void *router;               //  Socket to client
     int64_t heartbeat_at;       //  Next heartbeat at this time
@@ -310,13 +317,12 @@ typedef struct {
     zframe_t *address;          //  Client address identity
     $(codec)_t *request;        //  Last received request
     $(codec)_t *reply;          //  Reply to send out, if any
-} client_t;
-
+};
 
 static void
 server_client_execute (server_t *server, client_t *client, int event);
 
-.for class.declare
+.for class.declare where !defined (type)
 $(string.trim (declare.?''):)
 
 .endfor
@@ -324,13 +330,13 @@ $(string.trim (declare.?''):)
 //  Client methods
 
 static client_t *
-client_new (char *hashkey, zframe_t *address)
+client_new (zframe_t *address)
 {
     client_t *self = (client_t *) zmalloc (sizeof (client_t));
-    self->hashkey = hashkey;
 .for class.state where item () = 1
     self->state = $(name:c)_state;
 .endfor
+    self->hashkey = zframe_strhex (address);
     self->address = zframe_dup (address);
     self->reply = $(codec)_new (0);
     $(codec)_address_set (self->reply, self->address);
@@ -362,17 +368,12 @@ client_destroy (client_t **self_p)
     }
 }
 
+//  Callback when we remove client from 'clients' hash table
 static void
-client_set_request (client_t *self, $(codec)_t *request)
+client_free (void *argument)
 {
-    if (self->request)
-        $(codec)_destroy (&self->request);
-    self->request = request;
-
-    //  Any input from client counts as heartbeat
-    self->heartbeat_at = zclock_time () + self->heartbeat;
-    //  Any input from client counts as activity
-    self->expires_at = zclock_time () + self->heartbeat * 3;
+    client_t *client = (client_t *) argument;
+    client_destroy (&client);
 }
 
 //  Client hash function that calculates tickless timer
@@ -406,15 +407,6 @@ client_ping (const char *key, void *client, void *argument)
     }
     return 0;
 }
-
-//  Callback when we remove client from 'clients' hash table
-static void
-client_free (void *argument)
-{
-    client_t *client = (client_t *) argument;
-    client_destroy (&client);
-}
-
 
 //  Server methods
 
@@ -470,7 +462,6 @@ server_destroy (server_t **self_p)
 //   * apply server configuration
 //   * print any echo items in top-level sections
 //   * apply sections that match methods
-
 static void
 server_apply_config (server_t *self)
 {
@@ -503,6 +494,7 @@ server_apply_config (server_t *self)
     server_config_self (self);
 }
 
+//  Process message from pipe
 static void
 server_control_message (server_t *self)
 {
@@ -601,7 +593,6 @@ $(name:c) (server_t *self, client_t *client)
 
 .endfor
 //  Execute state machine as long as we have events
-
 static void
 server_client_execute (server_t *self, client_t *client, int event)
 {
@@ -659,16 +650,22 @@ server_client_message (server_t *self)
     char *hashkey = zframe_strhex ($(codec)_address (request));
     client_t *client = zhash_lookup (self->clients, hashkey);
     if (client == NULL) {
-        client = client_new (hashkey, $(codec)_address (request));
+        client = client_new ($(codec)_address (request));
         client->heartbeat = self->heartbeat;
         client->router = self->router;
         zhash_insert (self->clients, hashkey, client);
         zhash_freefn (self->clients, hashkey, client_free);
     }
-    else
-        free (hashkey);
+    free (hashkey);
+    if (client->request)
+        $(codec)_destroy (&client->request);
+    client->request = request;
 
-    client_set_request (client, request);
+    //  Any input from client counts as heartbeat
+    client->heartbeat_at = zclock_time () + client->heartbeat;
+    //  Any input from client counts as activity
+    client->expires_at = zclock_time () + client->heartbeat * 3;
+    
 .   for class.event where external ?= 1
 .   if index () > 1
     else
@@ -680,7 +677,6 @@ server_client_message (server_t *self)
 
 //  Finally here's the server thread itself, which polls its two
 //  sockets and processes incoming messages
-
 static void
 server_thread (void *args, zctx_t *ctx, void *pipe)
 {
@@ -689,7 +685,6 @@ server_thread (void *args, zctx_t *ctx, void *pipe)
         { self->pipe, 0, ZMQ_POLLIN, 0 },
         { self->router, 0, ZMQ_POLLIN, 0 }
     };
-    
     self->monitor_at = zclock_time () + self->monitor;
     while (!self->stopped && !zctx_interrupted) {
         //  Calculate tickless timer, up to interval seconds

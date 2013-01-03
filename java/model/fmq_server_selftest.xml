@@ -1,7 +1,7 @@
 <selftest>
     <init>
-int port = fmq_server_bind (self, "tcp://*:5670");
-assert (port == 5670);
+int port = self.bind ("tcp://*:5670");
+assertEquals (port, 5670);
     </init>
     <step send = "OHAI" recv = "SRSLY" />
     <step send = "ICANHAZ" recv = "RTFM" />
@@ -9,10 +9,10 @@ assert (port == 5670);
     <step send = "HUGZ" recv = "RTFM" />
 </selftest>
 
-<selftest config = "anonymous.cfg" language = "C">
+<selftest config = "anonymous.cfg">
     <init>
-port = fmq_server_bind (self, "tcp://*:5670");
-assert (port == 5670);
+port = self.bind ("tcp://*:5670");
+assertEquals (port, 5670);
     </init>
     <step send = "OHAI" recv = "OHAI-OK" />
     <step send = "NOM" />
@@ -20,15 +20,15 @@ assert (port == 5670);
     <step send = "YARLY" recv = "RTFM" />
 </selftest>
 
-<selftest config = "server_test.cfg" language = "C">
+<selftest config = "server_test.cfg">
     <init>
-port = fmq_server_bind (self, "tcp://*:5670");
-assert (port == 5670);
+port = self.bind ("tcp://*:5670");
+assertEquals (port, 5670);
     </init>
     <step send = "OHAI" recv = "ORLY" />
     <step send = "YARLY" recv = "OHAI-OK">
-fmq_msg_mechanism_set (request, "PLAIN");
-fmq_msg_response_set (request, fmq_sasl_plain_encode ("guest", "guest"));
+request.setMechanism ("PLAIN");
+request.setResponse (FmqSasl.plainEncode ("guest", "guest"));
     </step>
     <step send = "NOM" />
     <step send = "HUGZ" recv = "HUGZ-OK" />

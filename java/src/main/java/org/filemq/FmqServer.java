@@ -175,13 +175,6 @@ public class FmqServer {
     //  There's no point making these configurable
     private static final int CHUNK_SIZE = 1000000;
 
-    //  Client hash function that checks if client is alive                         
-    private static void clientDispatch (Map <String, Client> clients, Server server)
-    {                                                                               
-        for (Client client : clients.values ())                                     
-            server.clientExecute (client, Event.dispatch_event);                    
-    }                                                                               
-
     //  --------------------------------------------------------------------------      
     //  Subscription object                                                             
                                                                                         
@@ -378,6 +371,13 @@ public class FmqServer {
         }                                                                             
     }                                                                                 
 
+    //  Client hash function that checks if client is alive                         
+    private static void clientDispatch (Map <String, Client> clients, Server server)
+    {                                                                               
+        for (Client client : clients.values ())                                     
+            server.clientExecute (client, Event.dispatch_event);                    
+    }                                                                               
+
 
     //  ---------------------------------------------------------------------
     //  Context for each client connection
@@ -480,8 +480,6 @@ public class FmqServer {
 
     private static class Server {
         //  Properties accessible to client actions
-        private List <Mount> mounts;  //  Mount points     
-        private int port;                   //  Server port
 
         //  Properties you should NOT touch
         private ZContext ctx;                   //  Own CZMQ context
@@ -495,7 +493,6 @@ public class FmqServer {
         private int heartbeat;                  //  Heartbeat for clients
 
         //  Server methods
-
         private void config ()
         {
             //  Get standard server configuration
@@ -514,7 +511,6 @@ public class FmqServer {
             clients = new HashMap <String, Client> ();
             config = new FmqConfig ("root", null);
             config ();
-            mounts = new ArrayList <Mount> ();
         }
 
         private void destroy ()
@@ -523,9 +519,6 @@ public class FmqServer {
             config.destroy ();
             for (Client c: clients.values ())
                 c.destroy ();
-            //  Destroy mount points  
-            for (Mount mount : mounts)
-                mount.destroy ();     
         }
 
         //  Apply configuration tree:
