@@ -146,10 +146,6 @@ puts ("E: server claims we sent an invalid message");
 puts ("E: protocol error");
 </action>
 
-<action name = "terminate the server">
-server->next_event = terminate_event;
-</action>
-
 <!-- Must happen before any connects -->
 <method name = "subscribe">
 <argument name = "path" type = "string" />
@@ -169,10 +165,6 @@ assert (*path == '/');
 char *inbox = fmq_config_resolve (self->config, "client/inbox", ".inbox");
 self->sub = sub_new (self, inbox, path);
 zlist_append (self->subs, self->sub);
-
-<!-- disabled subscription after connect -->
-<!-- if (server->connected) -->
-<!--     server->next_event = subscribe_event; -->
 </method>
 
 <method name = "set inbox">

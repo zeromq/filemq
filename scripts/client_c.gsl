@@ -283,7 +283,6 @@ typedef enum {
 } state_t;
 
 typedef enum {
-    terminate_event = -1,
 .for class.event
     $(name:c)_event = $(index ())$(last ()??"" ?",")
 .endfor
@@ -647,11 +646,6 @@ client_server_execute (client_t *self, server_t *server, int event)
 .if switches.animate ?= 1
         zclock_log ("C:      -------------------> %s", s_state_name [server->state]);
 .endif
-        if (server->next_event == terminate_event) {
-            //  Automatically calls server_destroy
-            //  reset state machine
-            break;
-        }
     }
 }
 
