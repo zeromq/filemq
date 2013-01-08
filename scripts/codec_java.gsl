@@ -519,7 +519,7 @@ public class $(ClassName)
 
     public static void send$(Name) (
         Socket output\
-.for field
+.for field where !defined (value)
 ,
 .   if type = "number"
         $(ctype) $(name)\
@@ -538,7 +538,7 @@ public class $(ClassName)
 ) 
     {
         $(ClassName) self = new $(ClassName) ($(ClassName).$(MESSAGE.NAME));
-.for field
+.for field where !defined (value)
 .   if type = "number" | type = "octets" | type = "string"
         self.set$(Name) ($(name));
 .   elsif type = "strings"

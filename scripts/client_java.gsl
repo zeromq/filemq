@@ -51,6 +51,9 @@ import org.zeromq.ZFrame;
 //  Structure of our front-end API class
 
 public class $(class.name:pascal) {
+
+    private final static int MAX_SERVERS = 256;
+
     ZContext ctx;        //  CZMQ context
     Socket pipe;         //  Pipe through to client
 
@@ -216,7 +219,6 @@ long $(name)\
     };
 
     private enum Event {
-        terminate_event (-1),
 .for class.event
         $(name:c)_event ($(index ()))$(last ()??";" ?",")
 .endfor
@@ -257,8 +259,6 @@ long $(name)\
 
     private static class Client {
         //  Properties accessible to client actions
-        private Event next_event;           //  Next event
-
 .for class.self
 .   for context
         $(string.trim (context.?''):block                                      )
@@ -267,15 +267,12 @@ long $(name)\
         //  Properties you should NOT touch
         private ZContext ctx;               //  Own CZMQ context
         private Socket pipe;                //  Socket to back to caller
-        private Socket dealer;              //  Socket to talk to server
+        private final Server [] servers;   //  Server connections
+        private int nbrServers;             //  How many connections we have
+        private boolean dirty;              //  If true, rebuild pollset
         private boolean stopped;            //  Has client stopped?
         private FmqConfig config;           //  Configuration tree
-        private State state;                //  Current state
-        private Event event;                //  Current event
-        private $(codec:pascal) request;    //  Next message to send
-        private $(codec:pascal) reply;      //  Last received reply
         private int heartbeat;              //  Heartbeat interval
-        private long expires_at;            //  Server expires at
 
         private void config ()
         {
@@ -287,6 +284,7 @@ long $(name)\
         {
             this.ctx = ctx;
             this.pipe = pipe;
+            this.servers = new Server [MAX_SERVERS];
             this.config = new FmqConfig ("root", null);
             config ();
 
@@ -300,10 +298,10 @@ long $(name)\
         {
             if (config != null)
                 config.destroy ();
-            if (request != null)
-                request.destroy ();
-            if (reply != null)
-                reply.destroy ();
+            for (int serverNbr = 0; serverNbr < nbrServers; serverNbr++) {
+                Server server = servers [serverNbr];
+                server.destory ();
+            }
 .for class.self
 .   for destruct
             $(string.trim (destruct.?''):block                                      )
@@ -353,25 +351,25 @@ long $(name)\
 .           if switches.animate ?= 1
                         zclock_log ("C:    + send $(MESSAGE:C)");
 .           endif
-                        request.setId ($(codec:pascal).$(MESSAGE:C));
+                        server.request.setId ($(codec:pascal).$(MESSAGE:C));
 .if switches.trace ?= 1
                         zclock_log ("Send request to server");
-                        $(codec)_dump (self->request);
+                        $(codec)_dump (request);
 .endif
-                        request.send (dealer);
-                        request = new $(codec:pascal) (0);
+                        server.request.send (server.dealer);
+                        server.request = new $(codec:pascal) (0);
 .       else
 .           if switches.animate ?= 1
                         zclock_log ("C:    + $(name)");
 .           endif
-                        $(name:camel) ();
+                        $(name:camel) (server);
 .           if count (class.action, name = -1.name) = 0
 .                echo 'E: you need to add <action name="$(name)">'
 .           endif
 .       endif
 .   endfor
 .   if defined (event.next)
-                        state = State.$(next:c)_state;
+                        server.state = State.$(next:c)_state;
 .   endif
 .endmacro
 .#
@@ -380,83 +378,12 @@ long $(name)\
         //  Custom actions for state machine
 
 .   endif
-        private void $(name:camel) ()
+        private void $(name:camel) (Server server)
         {
             $(string.trim (action.?''):block                                            )
         }
 
 .endfor
-        //  Execute state machine as long as we have events
-
-        private void execute (Event event)
-        {
-            next_event = event;
-            while (next_event != null) {
-                event = next_event;
-                next_event = null;
-.if switches.animate ?= 1
-                zclock_log ("C: %s:", s_state_name [self->state]);
-                zclock_log ("C: (%s)", s_event_name [self->event]);
-.endif
-                switch (state) {
-.for class.state
-                case $(name:c)_state:
-.   for event where name <> "$other"
-.       if index () > 1
-                    else
-.       endif
-                    if (event == Event.$(name:c)_event) {
-.       output_event_body ()
-                    }
-.   endfor
-.   for event where name = "$other"
-                    else {
-                        //  Process all other events
-.       output_event_body ()
-                    }
-.   endfor
-                    break;
-
-.endfor
-                }
-.if switches.animate ?= 1
-                zclock_log ("C:      -------------------> %s", s_state_name [self->state]);
-.endif
-                if (next_event == Event.terminate_event) {
-                    stopped = true;
-                    break;
-                }
-            }
-        }
-
-        //  Restart client dialog from zero
-
-        private void restart (String endpoint)
-        {
-            //  Reconnect to new endpoint if specified
-            if (endpoint != null)  {
-                if (dealer != null)
-                    ctx.destroySocket (dealer);
-                dealer = ctx.createSocket (ZMQ.DEALER);
-                dealer.connect (endpoint);
-            }
-            //  Clear out any previous request data
-            if (request != null)
-                request.destroy ();
-            request = new $(codec:pascal) (0);
-
-            //  Restart dialog state machine from zero
-.for class.state where item () = 1
-            state = State.$(name:c)_state;
-.endfor
-            expires_at = 0;
-
-            //  Application hook to reinitialize dialog
-            //  Provides us with an event to kick things off
-            initializeTheClient ();
-            execute (next_event);
-        }
-
         private void controlMessage ()
         {
             ZMsg msg = ZMsg.recvMsg (pipe);
@@ -479,11 +406,6 @@ long $(name)\
             }
             else
 .endfor
-            if (method.equals ("CONNECT")) {
-                String endpoint = msg.popString ();
-                restart (endpoint);
-            }
-            else
             if (method.equals ("CONFIG")) {
                 String config_file = msg.popString ();
                 config.destroy ();
@@ -507,38 +429,139 @@ long $(name)\
                 pipe.send ("OK");
                 stopped = true;
             }
+            else
+            if (method.equals ("CONNECT")) {
+                String endpoint = msg.popString ();
+                if (nbrServers < MAX_SERVERS) {
+                    Server server = new Server (ctx, endpoint);
+                    servers [nbrServers++] = server;
+                    dirty = true;
+                    serverExecute (server, Event.initialize_event);
+                } else
+                    System.out.printf ("E: too many server connections (max %d)\\n", MAX_SERVERS);
+            }
             msg.destroy ();
 
-            if (next_event != null)
-                execute (next_event);
         }
 
-        private void serverMessage ()
+        //  Execute state machine as long as we have events
+        private void serverExecute (Server server, Event event)
         {
-            if (reply != null)
-                reply.destroy ();
-            reply = FmqMsg.recv (dealer);
-            if (reply == null)
+            server.next_event = event;
+            while (server.next_event != null) {
+                event = server.next_event;
+                server.next_event = null;
+.if switches.animate ?= 1
+                zclock_log ("C: %s:", s_state_name [server.state]);
+                zclock_log ("C: (%s)", s_event_name [server.event]);
+.endif
+                switch (server.state) {
+.for class.state
+                case $(name:c)_state:
+.   for event where name <> "$other"
+.       if index () > 1
+                    else
+.       endif
+                    if (event == Event.$(name:c)_event) {
+.       output_event_body ()
+                    }
+.   endfor
+.   for event where name = "$other"
+                    else {
+                        //  Process all other events
+.       output_event_body ()
+                    }
+.   endfor
+                    break;
+
+.endfor
+                }
+.if switches.animate ?= 1
+                zclock_log ("C:      -------------------> %s", s_state_name [server.state]);
+.endif
+            }
+        }
+
+        private void serverMessage (Server server)
+        {
+            if (server.reply != null)
+                server.reply.destroy ();
+            server.reply = FmqMsg.recv (server.dealer);
+            if (server.reply == null)
                 return;         //  Interrupted; do nothing
 .if switches.trace ?= 1
 
             zclock_log ("Received reply from server");
-            $(codec)_dump (self->reply);
+            $(codec)_dump (server.reply);
 .endif
+            //  Any input from server counts as activity
+            server.expires_at = System.currentTimeMillis () + heartbeat * 2;
     
 .   for class.event where external ?= 1
 .   if index () > 1
             else
 .   endif
-            if (reply.id () == $(codec:pascal).$(NAME:C))
-                execute (Event.$(name:c)_event);
+            if (server.reply.id () == $(codec:pascal).$(NAME:C))
+                serverExecute (server, Event.$(name:c)_event);
 .   endfor
 
-            //  Any input from server counts as activity
-            expires_at = System.currentTimeMillis () + heartbeat * 2;
+        }
+
+
+
+    }
+    private static class Server {
+        //  Properties accessible to server actions
+        private Event next_event;           //  Next event
+
+.for class.server
+.   for context
+        $(string.trim (context.?''):block                                      )
+.   endfor
+.endfor
+        //  Properties you should NOT touch
+        private final ZContext ctx;         //  Own CZMQ context
+        private int index;                  //  Index into client->server_array
+        private Socket dealer;              //  Socket to back to server
+        private long expires_at;            //  Connection expires at
+        private State state;                //  Current state
+        private Event event;                //  Current event
+        private final String endpoint;      //  server endpoint
+        private $(codec:pascal) request;    //  Next message to send
+        private $(codec:pascal) reply;      //  Last received reply
+
+        private Server (ZContext ctx, String endpoint)
+        {
+            this.ctx = ctx;
+            this.endpoint = endpoint;
+            dealer = ctx.createSocket (ZMQ.DEALER);
+            request = new $(codec:pascal) (0);
+            dealer.connect (endpoint);
+.for class.state where item () = 1
+            state = State.$(name:c)_state;
+.endfor
+.for class.server
+.   for construct
+            $(string.trim (construct.?''):block                                         )
+.   endfor
+.endfor
+        }
+
+        private void destory ()
+        {
+            ctx.destroySocket (dealer);
+            request.destroy ();
+            if (reply != null)
+                reply.destroy ();
+.for class.server
+.   for destruct
+            $(string.trim (destruct.?''):block                                         )
+.   endfor
+.endfor
         }
 
     }
+
     //  Finally here's the client thread itself, which polls its two
     //  sockets and processes incoming messages
 
@@ -554,9 +577,14 @@ long $(name)\
                 Poller items = ctx.getContext ().poller ();
                 items.register (self.pipe, Poller.POLLIN);
 
-                //  Build structure each time since self->dealer can change
-                if (self.dealer != null)
-                    items.register (self.dealer, Poller.POLLIN);
+                int serverNbr = 0;
+                //  Rebuild pollset if we need to
+                if (self.dirty) {
+                    for (serverNbr = 0; serverNbr < self.nbrServers; serverNbr++) {
+                        Server server = self.servers [serverNbr];
+                        items.register (server.dealer, Poller.POLLIN);
+                    }
+                }
 
                 if (items.poll (self.heartbeat) == -1)
                     break;              //  Context has been shut down
@@ -566,12 +594,13 @@ long $(name)\
                 if (items.pollin (0))
                     self.controlMessage ();
 
-                if (items.pollin (1))
-                    self.serverMessage ();
-
-                //  Check whether server seems dead
-                if (self.expires_at > 0 && System.currentTimeMillis () >= self.expires_at)
-                    self.restart (null);
+                //  Here, array of sockets to servers
+                for (serverNbr = 0; serverNbr < self.nbrServers; serverNbr++) {
+                    if (items.pollin (serverNbr + 1)) {
+                        Server server = self.servers [serverNbr];
+                        self.serverMessage (server);
+                    }
+                }
             }
             self.destroy ();
         }

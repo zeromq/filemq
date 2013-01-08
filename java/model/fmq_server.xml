@@ -9,7 +9,7 @@ FileMQ protocol server
 private static final int CHUNK_SIZE = 1000000;
 </declare>
 
-<server>
+<self>
 <context>
 private List &lt;Mount&gt; mounts;  //  Mount points
 private int port;                   //  Server port
@@ -22,7 +22,7 @@ mounts = new ArrayList &lt;Mount&gt; ();
 for (Mount mount : mounts)
     mount.destroy ();
 </destruct>
-</server>
+</self>
 
 <client>
 <context>

@@ -736,13 +736,9 @@ public class FmqMsg
 //  Send the OHAI to the socket in one step
 
     public static void sendOhai (
-        Socket output,
-        String protocol,
-        int version) 
+        Socket output) 
     {
         FmqMsg self = new FmqMsg (FmqMsg.OHAI);
-        self.setProtocol (protocol);
-        self.setVersion (version);
         self.send (output); 
     }
 
