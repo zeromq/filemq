@@ -735,7 +735,7 @@ $(class.name)_send ($(class.name)_t **self_p, void *output)
 int
 $(class.name)_send_$(name) (
     void *output\
-.for field
+.for field where !defined (value)
 ,
 .   if type = "number"
     $(ctype) $(name)\
