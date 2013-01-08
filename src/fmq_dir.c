@@ -430,7 +430,7 @@ fmq_dir_remove (fmq_dir_t *self, bool force)
     //  Remove if empty
     if (zlist_size (self->files) == 0
     &&  zlist_size (self->subdirs) == 0)
-        zsys_rmdir (self->path);
+        zfile_rmdir (self->path);
 }
 
 

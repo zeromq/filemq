@@ -150,8 +150,8 @@ fmq_file_restat (fmq_file_t *self)
         self->exists = true;
         self->size = stat_buf.st_size;
         self->time = stat_buf.st_mtime;
-        self->mode = zsys_mode (real_name);
-        self->stable = zsys_stable (real_name);
+        self->mode = zfile_mode (real_name);
+        self->stable = zfile_stable (real_name);
     }
     else
         self->exists = false;
@@ -224,7 +224,7 @@ fmq_file_remove (fmq_file_t *self)
         //  Restore ".ln" in file name
         self->name [strlen (self->name)] = '.';
     fmq_file_close (self);
-    zsys_unlink (self->name);
+    zfile_delete (self->name);
 }
 
 
@@ -269,7 +269,7 @@ fmq_file_output (fmq_file_t *self)
         self->link = NULL;
     }
     //  Create file path if it doesn't exist
-    zsys_mkdir (self->name);
+    zfile_mkdir (self->name);
     
     //  Create file if it doesn't exist
     if (self->handle)
