@@ -43,6 +43,9 @@ import org.zeromq.ZFrame;
 //  Structure of our front-end API class
 
 public class FmqClient {
+
+    private final static int MAX_SERVERS = 256;
+
     ZContext ctx;        //  CZMQ context
     Socket pipe;         //  Pipe through to client
 
@@ -157,7 +160,8 @@ public class FmqClient {
         start_state (1),
         requesting_access_state (2),
         subscribing_state (3),
-        ready_state (4);
+        ready_state (4),
+        terminated_state (5);
 
         @SuppressWarnings ("unused")
         private final int state;
@@ -168,7 +172,6 @@ public class FmqClient {
     };
 
     private enum Event {
-        terminate_event (-1),
         initialize_event (1),
         srsly_event (2),
         rtfm_event (3),
@@ -233,20 +236,21 @@ public class FmqClient {
 
     private static class Client {
         //  Properties accessible to client actions
-        private Event next_event;           //  Next event
-
+        private boolean connected;          //  Are we connected to server? 
+        private List <Sub> subs;      //  Subscriptions                     
+        private Sub sub;                    //  Subscription we want to send
+        private int credit;                 //  Current credit pending      
+        private FmqFile file;               //  File we're writing to       
+        private Iterator <Sub> subIterator;                                 
         //  Properties you should NOT touch
         private ZContext ctx;               //  Own CZMQ context
         private Socket pipe;                //  Socket to back to caller
-        private Socket dealer;              //  Socket to talk to server
+        private final Server [] servers;   //  Server connections
+        private int nbrServers;             //  How many connections we have
+        private boolean dirty;              //  If true, rebuild pollset
         private boolean stopped;            //  Has client stopped?
         private FmqConfig config;           //  Configuration tree
-        private State state;                //  Current state
-        private Event event;                //  Current event
-        private FmqMsg request;             //  Next message to send
-        private FmqMsg reply;               //  Last received reply
         private int heartbeat;              //  Heartbeat interval
-        private long expires_at;            //  Server expires at
 
         private void config ()
         {
@@ -258,18 +262,23 @@ public class FmqClient {
         {
             this.ctx = ctx;
             this.pipe = pipe;
+            this.servers = new Server [MAX_SERVERS];
             this.config = new FmqConfig ("root", null);
             config ();
 
+            subs = new ArrayList <Sub> ();
+            connected = false;            
         }
         private void destroy ()
         {
             if (config != null)
                 config.destroy ();
-            if (request != null)
-                request.destroy ();
-            if (reply != null)
-                reply.destroy ();
+            for (int serverNbr = 0; serverNbr < nbrServers; serverNbr++) {
+                Server server = servers [serverNbr];
+                server.destory ();
+            }
+            for (Sub sub: subs)
+                sub.destroy ();
         }
 
         //  Apply configuration tree:
@@ -304,10 +313,6 @@ public class FmqClient {
                     String inbox = config.resolve ("client/inbox", ".inbox");   
                     sub = new Sub (this, inbox, path);                          
                     subs.add (sub);                                             
-                                                                                
-                    //  If we're connected, then also send to server            
-                    if (connected)                                              
-                        next_event = Event.subscribe_event;                     
                 }
                 else
                 if (section.name ().equals ("set_inbox")) {
@@ -327,101 +332,101 @@ public class FmqClient {
 
         //  Custom actions for state machine
 
-        private void trySecurityMechanism ()
+        private void trySecurityMechanism (Server server)
         {
             String login = config.resolve ("security/plain/login", "guest"); 
             String password = config.resolve ("security/plain/password", "");
             ZFrame frame = FmqSasl.plainEncode (login, password);            
-            request.setMechanism ("PLAIN");                                  
-            request.setResponse (frame);                                     
+            server.request.setMechanism ("PLAIN");                           
+            server.request.setResponse (frame);                              
         }
 
-        private void connectedToServer ()
+        private void connectedToServer (Server server)
         {
             connected = true;
         }
 
-        private void getFirstSubscription ()
+        private void getFirstSubscription (Server server)
         {
-            subIterator = subs.iterator ();       
-            if (subIterator.hasNext ()) {         
-                sub = subIterator.next ();        
-                next_event = Event.ok_event;      
-            } else                                
-                next_event = Event.finished_event;
+            subIterator = subs.iterator ();              
+            if (subIterator.hasNext ()) {                
+                sub = subIterator.next ();               
+                server.next_event = Event.ok_event;      
+            } else                                       
+                server.next_event = Event.finished_event;
         }
 
-        private void getNextSubscription ()
+        private void getNextSubscription (Server server)
         {
-            if (subIterator.hasNext ()) {         
-                sub = subIterator.next ();        
-                next_event = Event.ok_event;      
-            } else                                
-                next_event = Event.finished_event;
+            if (subIterator.hasNext ()) {                
+                sub = subIterator.next ();               
+                server.next_event = Event.ok_event;      
+            } else                                       
+                server.next_event = Event.finished_event;
         }
 
-        private void formatIcanhazCommand ()
+        private void formatIcanhazCommand (Server server)
         {
-            request.setPath (sub.path);                                         
+            server.request.setPath (sub.path);                                  
             //  If client app wants full resync, send cache to server           
             if (Integer.parseInt (config.resolve ("client/resync", "0")) == 1) {
-                request.insertOptions ("RESYNC", "1");                          
-                request.setCache (sub.cache ());                                
+                server.request.insertOptions ("RESYNC", "1");                   
+                server.request.setCache (sub.cache ());                         
             }                                                                   
         }
 
-        private void refillCreditAsNeeded ()
+        private void refillCreditAsNeeded (Server server)
         {
             //  If credit has fallen too low, send more credit
             int credit_to_send = 0;                           
-            while (credit < CREDIT_MINIMUM) {                 
+            while (server.credit < CREDIT_MINIMUM) {          
                 credit_to_send += CREDIT_SLICE;               
-                credit += CREDIT_SLICE;                       
+                server.credit += CREDIT_SLICE;                
             }                                                 
             if (credit_to_send > 0) {                         
-                request.setCredit (credit_to_send);           
-                next_event = Event.send_credit_event;         
+                server.request.setCredit (credit_to_send);    
+                server.next_event = Event.send_credit_event;  
             }                                                 
         }
 
-        private void processThePatch ()
+        private void processThePatch (Server server)
         {
             String inbox = config.resolve ("client/inbox", ".inbox");               
-            String filename = reply.filename ();                                    
+            String filename = server.reply.filename ();                             
                                                                                     
             //  Filenames from server must start with slash, which we skip          
             assert (filename.startsWith ("/"));                                     
             filename = filename.substring (1);                                      
                                                                                     
-            if (reply.operation () == FmqMsg.FMQ_MSG_FILE_CREATE) {                 
-                if (file == null) {                                                 
-                    file = new FmqFile (inbox, filename);                           
-                    if (!file.output ()) {                                          
+            if (server.reply.operation () == FmqMsg.FMQ_MSG_FILE_CREATE) {          
+                if (server.file == null) {                                          
+                    server.file = new FmqFile (inbox, filename);                    
+                    if (!server.file.output ()) {                                   
                         //  File not writeable, skip patch                          
-                        file.destroy ();                                            
-                        file = null;                                                
+                        server.file.destroy ();                                     
+                        server.file = null;                                         
                         return;                                                     
                     }                                                               
                 }                                                                   
                 //  Try to write, ignore errors in this version                     
-                ZFrame frame = reply.chunk ();                                      
+                ZFrame frame = server.reply.chunk ();                               
                 FmqChunk chunk = new FmqChunk (frame.getData (), frame.size ());    
                 if (chunk.size () > 0) {                                            
-                    file.write (chunk, reply.offset ());                            
-                    credit -= chunk.size ();                                        
+                    server.file.write (chunk, server.reply.offset ());              
+                    server.credit -= chunk.size ();                                 
                 }                                                                   
                 else {                                                              
                     //  Zero-sized chunk means end of file, so report back to caller
                     pipe.sendMore ("DELIVER");                                      
                     pipe.sendMore (filename);                                       
                     pipe.send (String.format ("%s/%s", inbox, filename));           
-                    file.destroy ();                                                
-                    file = null;                                                    
+                    server.file.destroy ();                                         
+                    server.file = null;                                             
                 }                                                                   
                 chunk.destroy ();                                                   
             }                                                                       
             else                                                                    
-            if (reply.operation () == FmqMsg.FMQ_MSG_FILE_DELETE) {                 
+            if (server.reply.operation () == FmqMsg.FMQ_MSG_FILE_DELETE) {          
                 zclock_log ("I: delete %s/%s", inbox, filename);                    
                 FmqFile file = new FmqFile (inbox, filename);                       
                 file.remove ();                                                     
@@ -430,193 +435,19 @@ public class FmqClient {
             }                                                                       
         }
 
-        private void logAccessDenied ()
+        private void logAccessDenied (Server server)
         {
             System.out.println ("W: server denied us access, retrying...");
         }
 
-        private void logInvalidMessage ()
+        private void logInvalidMessage (Server server)
         {
             System.out.println ("E: server claims we sent an invalid message");
         }
 
-        private void logProtocolError ()
+        private void logProtocolError (Server server)
         {
             System.out.println ("E: protocol error");
-        }
-
-        private void terminateTheServer ()
-        {
-            connected = false;                 
-            next_event = Event.terminate_event;
-        }
-
-        //  Execute state machine as long as we have events
-
-        private void execute (Event event)
-        {
-            next_event = event;
-            while (next_event != null) {
-                event = next_event;
-                next_event = null;
-                switch (state) {
-                case start_state:
-                    if (event == Event.initialize_event) {
-                        request.setId (FmqMsg.OHAI);
-                        request.send (dealer);
-                        request = new FmqMsg (0);
-                        state = State.requesting_access_state;
-                    }
-                    else
-                    if (event == Event.srsly_event) {
-                        logAccessDenied ();
-                        terminateTheServer ();
-                        state = State.start_state;
-                    }
-                    else
-                    if (event == Event.rtfm_event) {
-                        logInvalidMessage ();
-                        terminateTheServer ();
-                    }
-                    else {
-                        //  Process all other events
-                        logProtocolError ();
-                        terminateTheServer ();
-                    }
-                    break;
-
-                case requesting_access_state:
-                    if (event == Event.orly_event) {
-                        trySecurityMechanism ();
-                        request.setId (FmqMsg.YARLY);
-                        request.send (dealer);
-                        request = new FmqMsg (0);
-                        state = State.requesting_access_state;
-                    }
-                    else
-                    if (event == Event.ohai_ok_event) {
-                        connectedToServer ();
-                        getFirstSubscription ();
-                        state = State.subscribing_state;
-                    }
-                    else
-                    if (event == Event.srsly_event) {
-                        logAccessDenied ();
-                        terminateTheServer ();
-                        state = State.start_state;
-                    }
-                    else
-                    if (event == Event.rtfm_event) {
-                        logInvalidMessage ();
-                        terminateTheServer ();
-                    }
-                    else {
-                        //  Process all other events
-                    }
-                    break;
-
-                case subscribing_state:
-                    if (event == Event.ok_event) {
-                        formatIcanhazCommand ();
-                        request.setId (FmqMsg.ICANHAZ);
-                        request.send (dealer);
-                        request = new FmqMsg (0);
-                        getNextSubscription ();
-                        state = State.subscribing_state;
-                    }
-                    else
-                    if (event == Event.finished_event) {
-                        refillCreditAsNeeded ();
-                        state = State.ready_state;
-                    }
-                    else
-                    if (event == Event.srsly_event) {
-                        logAccessDenied ();
-                        terminateTheServer ();
-                        state = State.start_state;
-                    }
-                    else
-                    if (event == Event.rtfm_event) {
-                        logInvalidMessage ();
-                        terminateTheServer ();
-                    }
-                    else {
-                        //  Process all other events
-                        logProtocolError ();
-                        terminateTheServer ();
-                    }
-                    break;
-
-                case ready_state:
-                    if (event == Event.cheezburger_event) {
-                        processThePatch ();
-                        refillCreditAsNeeded ();
-                    }
-                    else
-                    if (event == Event.hugz_event) {
-                        request.setId (FmqMsg.HUGZ_OK);
-                        request.send (dealer);
-                        request = new FmqMsg (0);
-                    }
-                    else
-                    if (event == Event.send_credit_event) {
-                        request.setId (FmqMsg.NOM);
-                        request.send (dealer);
-                        request = new FmqMsg (0);
-                    }
-                    else
-                    if (event == Event.icanhaz_ok_event) {
-                    }
-                    else
-                    if (event == Event.srsly_event) {
-                        logAccessDenied ();
-                        terminateTheServer ();
-                        state = State.start_state;
-                    }
-                    else
-                    if (event == Event.rtfm_event) {
-                        logInvalidMessage ();
-                        terminateTheServer ();
-                    }
-                    else {
-                        //  Process all other events
-                        logProtocolError ();
-                        terminateTheServer ();
-                    }
-                    break;
-
-                }
-                if (next_event == Event.terminate_event) {
-                    stopped = true;
-                    break;
-                }
-            }
-        }
-
-        //  Restart client dialog from zero
-
-        private void restart (String endpoint)
-        {
-            //  Reconnect to new endpoint if specified
-            if (endpoint != null)  {
-                if (dealer != null)
-                    ctx.destroySocket (dealer);
-                dealer = ctx.createSocket (ZMQ.DEALER);
-                dealer.connect (endpoint);
-            }
-            //  Clear out any previous request data
-            if (request != null)
-                request.destroy ();
-            request = new FmqMsg (0);
-
-            //  Restart dialog state machine from zero
-            state = State.start_state;
-            expires_at = 0;
-
-            //  Application hook to reinitialize dialog
-            //  Provides us with an event to kick things off
-            initializeTheClient ();
-            execute (next_event);
         }
 
         private void controlMessage ()
@@ -639,10 +470,6 @@ public class FmqClient {
                 String inbox = config.resolve ("client/inbox", ".inbox");   
                 sub = new Sub (this, inbox, path);                          
                 subs.add (sub);                                             
-                                                                            
-                //  If we're connected, then also send to server            
-                if (connected)                                              
-                    next_event = Event.subscribe_event;                     
             }
             else
             if (method.equals ("SET INBOX")) {
@@ -654,11 +481,6 @@ public class FmqClient {
                 long enabled = Long.parseLong (msg.popString ());
                 //  Request resynchronization from server                
                 config.setPath ("client/resync", enabled > 0 ? "1" :"0");
-            }
-            else
-            if (method.equals ("CONNECT")) {
-                String endpoint = msg.popString ();
-                restart (endpoint);
             }
             else
             if (method.equals ("CONFIG")) {
@@ -684,46 +506,244 @@ public class FmqClient {
                 pipe.send ("OK");
                 stopped = true;
             }
+            else
+            if (method.equals ("CONNECT")) {
+                String endpoint = msg.popString ();
+                if (nbrServers < MAX_SERVERS) {
+                    Server server = new Server (ctx, endpoint);
+                    servers [nbrServers++] = server;
+                    dirty = true;
+                    serverExecute (server, Event.initialize_event);
+                } else
+                    System.out.printf ("E: too many server connections (max %d)\n", MAX_SERVERS);
+            }
             msg.destroy ();
 
-            if (next_event != null)
-                execute (next_event);
         }
 
-        private void serverMessage ()
+        //  Execute state machine as long as we have events
+        private void serverExecute (Server server, Event event)
         {
+            server.next_event = event;
+            while (server.next_event != null) {
+                event = server.next_event;
+                server.next_event = null;
+                switch (server.state) {
+                case start_state:
+                    if (event == Event.initialize_event) {
+                        server.request.setId (FmqMsg.OHAI);
+                        server.request.send (server.dealer);
+                        server.request = new FmqMsg (0);
+                        server.state = State.requesting_access_state;
+                    }
+                    else
+                    if (event == Event.srsly_event) {
+                        logAccessDenied (server);
+                        server.state = State.terminated_state;
+                    }
+                    else
+                    if (event == Event.rtfm_event) {
+                        logInvalidMessage (server);
+                        server.state = State.terminated_state;
+                    }
+                    else {
+                        //  Process all other events
+                        logProtocolError (server);
+                        server.state = State.terminated_state;
+                    }
+                    break;
+
+                case requesting_access_state:
+                    if (event == Event.orly_event) {
+                        trySecurityMechanism (server);
+                        server.request.setId (FmqMsg.YARLY);
+                        server.request.send (server.dealer);
+                        server.request = new FmqMsg (0);
+                        server.state = State.requesting_access_state;
+                    }
+                    else
+                    if (event == Event.ohai_ok_event) {
+                        connectedToServer (server);
+                        getFirstSubscription (server);
+                        server.state = State.subscribing_state;
+                    }
+                    else
+                    if (event == Event.srsly_event) {
+                        logAccessDenied (server);
+                        server.state = State.terminated_state;
+                    }
+                    else
+                    if (event == Event.rtfm_event) {
+                        logInvalidMessage (server);
+                        server.state = State.terminated_state;
+                    }
+                    else {
+                        //  Process all other events
+                    }
+                    break;
+
+                case subscribing_state:
+                    if (event == Event.ok_event) {
+                        formatIcanhazCommand (server);
+                        server.request.setId (FmqMsg.ICANHAZ);
+                        server.request.send (server.dealer);
+                        server.request = new FmqMsg (0);
+                        getNextSubscription (server);
+                        server.state = State.subscribing_state;
+                    }
+                    else
+                    if (event == Event.finished_event) {
+                        refillCreditAsNeeded (server);
+                        server.state = State.ready_state;
+                    }
+                    else
+                    if (event == Event.srsly_event) {
+                        logAccessDenied (server);
+                        server.state = State.terminated_state;
+                    }
+                    else
+                    if (event == Event.rtfm_event) {
+                        logInvalidMessage (server);
+                        server.state = State.terminated_state;
+                    }
+                    else {
+                        //  Process all other events
+                        logProtocolError (server);
+                        server.state = State.terminated_state;
+                    }
+                    break;
+
+                case ready_state:
+                    if (event == Event.cheezburger_event) {
+                        processThePatch (server);
+                        refillCreditAsNeeded (server);
+                    }
+                    else
+                    if (event == Event.hugz_event) {
+                        server.request.setId (FmqMsg.HUGZ_OK);
+                        server.request.send (server.dealer);
+                        server.request = new FmqMsg (0);
+                    }
+                    else
+                    if (event == Event.send_credit_event) {
+                        server.request.setId (FmqMsg.NOM);
+                        server.request.send (server.dealer);
+                        server.request = new FmqMsg (0);
+                    }
+                    else
+                    if (event == Event.icanhaz_ok_event) {
+                    }
+                    else
+                    if (event == Event.srsly_event) {
+                        logAccessDenied (server);
+                        server.state = State.terminated_state;
+                    }
+                    else
+                    if (event == Event.rtfm_event) {
+                        logInvalidMessage (server);
+                        server.state = State.terminated_state;
+                    }
+                    else {
+                        //  Process all other events
+                        logProtocolError (server);
+                        server.state = State.terminated_state;
+                    }
+                    break;
+
+                case terminated_state:
+                    if (event == Event.srsly_event) {
+                        logAccessDenied (server);
+                        server.state = State.terminated_state;
+                    }
+                    else
+                    if (event == Event.rtfm_event) {
+                        logInvalidMessage (server);
+                        server.state = State.terminated_state;
+                    }
+                    else {
+                        //  Process all other events
+                    }
+                    break;
+
+                }
+            }
+        }
+
+        private void serverMessage (Server server)
+        {
+            if (server.reply != null)
+                server.reply.destroy ();
+            server.reply = FmqMsg.recv (server.dealer);
+            if (server.reply == null)
+                return;         //  Interrupted; do nothing
+            //  Any input from server counts as activity
+            server.expires_at = System.currentTimeMillis () + heartbeat * 2;
+    
+            if (server.reply.id () == FmqMsg.SRSLY)
+                serverExecute (server, Event.srsly_event);
+            else
+            if (server.reply.id () == FmqMsg.RTFM)
+                serverExecute (server, Event.rtfm_event);
+            else
+            if (server.reply.id () == FmqMsg.ORLY)
+                serverExecute (server, Event.orly_event);
+            else
+            if (server.reply.id () == FmqMsg.OHAI_OK)
+                serverExecute (server, Event.ohai_ok_event);
+            else
+            if (server.reply.id () == FmqMsg.CHEEZBURGER)
+                serverExecute (server, Event.cheezburger_event);
+            else
+            if (server.reply.id () == FmqMsg.HUGZ)
+                serverExecute (server, Event.hugz_event);
+            else
+            if (server.reply.id () == FmqMsg.ICANHAZ_OK)
+                serverExecute (server, Event.icanhaz_ok_event);
+
+        }
+
+
+
+    }
+    private static class Server {
+        //  Properties accessible to server actions
+        private Event next_event;           //  Next event
+
+        private int credit;              //  Current credit pending
+        private FmqFile file;            //  File we're writing to 
+        //  Properties you should NOT touch
+        private final ZContext ctx;         //  Own CZMQ context
+        private int index;                  //  Index into client->server_array
+        private Socket dealer;              //  Socket to back to server
+        private long expires_at;            //  Connection expires at
+        private State state;                //  Current state
+        private Event event;                //  Current event
+        private final String endpoint;      //  server endpoint
+        private FmqMsg request;             //  Next message to send
+        private FmqMsg reply;               //  Last received reply
+
+        private Server (ZContext ctx, String endpoint)
+        {
+            this.ctx = ctx;
+            this.endpoint = endpoint;
+            dealer = ctx.createSocket (ZMQ.DEALER);
+            request = new FmqMsg (0);
+            dealer.connect (endpoint);
+            state = State.start_state;
+            
+        }
+
+        private void destory ()
+        {
+            ctx.destroySocket (dealer);
+            request.destroy ();
             if (reply != null)
                 reply.destroy ();
-            reply = FmqMsg.recv (dealer);
-            if (reply == null)
-                return;         //  Interrupted; do nothing
-    
-            if (reply.id () == FmqMsg.SRSLY)
-                execute (Event.srsly_event);
-            else
-            if (reply.id () == FmqMsg.RTFM)
-                execute (Event.rtfm_event);
-            else
-            if (reply.id () == FmqMsg.ORLY)
-                execute (Event.orly_event);
-            else
-            if (reply.id () == FmqMsg.OHAI_OK)
-                execute (Event.ohai_ok_event);
-            else
-            if (reply.id () == FmqMsg.CHEEZBURGER)
-                execute (Event.cheezburger_event);
-            else
-            if (reply.id () == FmqMsg.HUGZ)
-                execute (Event.hugz_event);
-            else
-            if (reply.id () == FmqMsg.ICANHAZ_OK)
-                execute (Event.icanhaz_ok_event);
-
-            //  Any input from server counts as activity
-            expires_at = System.currentTimeMillis () + heartbeat * 2;
+            
         }
 
     }
+
     //  Finally here's the client thread itself, which polls its two
     //  sockets and processes incoming messages
 
@@ -739,9 +759,14 @@ public class FmqClient {
                 Poller items = ctx.getContext ().poller ();
                 items.register (self.pipe, Poller.POLLIN);
 
-                //  Build structure each time since self->dealer can change
-                if (self.dealer != null)
-                    items.register (self.dealer, Poller.POLLIN);
+                int serverNbr = 0;
+                //  Rebuild pollset if we need to
+                if (self.dirty) {
+                    for (serverNbr = 0; serverNbr < self.nbrServers; serverNbr++) {
+                        Server server = self.servers [serverNbr];
+                        items.register (server.dealer, Poller.POLLIN);
+                    }
+                }
 
                 if (items.poll (self.heartbeat) == -1)
                     break;              //  Context has been shut down
@@ -751,12 +776,13 @@ public class FmqClient {
                 if (items.pollin (0))
                     self.controlMessage ();
 
-                if (items.pollin (1))
-                    self.serverMessage ();
-
-                //  Check whether server seems dead
-                if (self.expires_at > 0 && System.currentTimeMillis () >= self.expires_at)
-                    self.restart (null);
+                //  Here, array of sockets to servers
+                for (serverNbr = 0; serverNbr < self.nbrServers; serverNbr++) {
+                    if (items.pollin (serverNbr + 1)) {
+                        Server server = self.servers [serverNbr];
+                        self.serverMessage (server);
+                    }
+                }
             }
             self.destroy ();
         }

@@ -480,6 +480,8 @@ public class FmqServer {
 
     private static class Server {
         //  Properties accessible to client actions
+        private List <Mount> mounts;  //  Mount points     
+        private int port;                   //  Server port
 
         //  Properties you should NOT touch
         private ZContext ctx;                   //  Own CZMQ context
@@ -511,6 +513,7 @@ public class FmqServer {
             clients = new HashMap <String, Client> ();
             config = new FmqConfig ("root", null);
             config ();
+            mounts = new ArrayList <Mount> ();
         }
 
         private void destroy ()
@@ -519,6 +522,9 @@ public class FmqServer {
             config.destroy ();
             for (Client c: clients.values ())
                 c.destroy ();
+            //  Destroy mount points  
+            for (Mount mount : mounts)
+                mount.destroy ();     
         }
 
         //  Apply configuration tree:
