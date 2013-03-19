@@ -113,7 +113,7 @@ fmq_hash_test (bool verbose)
 {
     printf (" * fmq_hash: ");
 
-    byte buffer [1024];
+    byte *buffer = zmalloc (1024);
     memset (buffer, 0xAA, 1024);
     
     fmq_hash_t *hash = fmq_hash_new ();
@@ -125,6 +125,7 @@ fmq_hash_test (bool verbose)
     assert (data [2] == 0x38);
     assert (data [3] == 0x07);
     fmq_hash_destroy (&hash);
+    free (buffer);
 
     printf ("OK\n");
     return 0;
