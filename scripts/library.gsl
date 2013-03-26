@@ -7,7 +7,7 @@
             if defined (my.include_file)
                 move my.include_file after include
             else
-                preproc_error ("Error loading include file: $(filename): $(xml.error?)")
+                echo "E: error loading include file: $(filename): $(xml.error?)"
             endif
         else
             echo "E: required attribute 'filename' not defined"

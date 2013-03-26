@@ -325,8 +325,10 @@ sub_patch_add (sub_t *self, fmq_patch_t *patch)
         }
         existing = (fmq_patch_t *) zlist_next (self->client->patches);
     }
+    if (fmq_patch_op (patch) == patch_create)
+        zhash_insert (self->cache,
+            fmq_patch_digest (patch), fmq_patch_virtual (patch));
     //  Track that we've queued patch for client, so we don't do it twice
-    zhash_insert (self->cache, fmq_patch_digest (patch), fmq_patch_virtual (patch));
     zlist_append (self->client->patches, fmq_patch_dup (patch));
 }
 
@@ -892,8 +894,6 @@ server_client_execute (server_t *self, client_t *client, int event)
                 else {
                     //  Process all other events
                     fmq_msg_id_set (client->reply, FMQ_MSG_RTFM);
-                    zclock_log ("Send message to client");
-                    fmq_msg_dump (client->reply);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
                     fmq_msg_address_set (client->reply, client->address);
@@ -904,8 +904,6 @@ server_client_execute (server_t *self, client_t *client, int event)
             case checking_client_state:
                 if (client->event == friend_event) {
                     fmq_msg_id_set (client->reply, FMQ_MSG_OHAI_OK);
-                    zclock_log ("Send message to client");
-                    fmq_msg_dump (client->reply);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
                     fmq_msg_address_set (client->reply, client->address);
@@ -914,8 +912,6 @@ server_client_execute (server_t *self, client_t *client, int event)
                 else
                 if (client->event == foe_event) {
                     fmq_msg_id_set (client->reply, FMQ_MSG_SRSLY);
-                    zclock_log ("Send message to client");
-                    fmq_msg_dump (client->reply);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
                     fmq_msg_address_set (client->reply, client->address);
@@ -925,8 +921,6 @@ server_client_execute (server_t *self, client_t *client, int event)
                 if (client->event == maybe_event) {
                     list_security_mechanisms (self, client);
                     fmq_msg_id_set (client->reply, FMQ_MSG_ORLY);
-                    zclock_log ("Send message to client");
-                    fmq_msg_dump (client->reply);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
                     fmq_msg_address_set (client->reply, client->address);
@@ -947,8 +941,6 @@ server_client_execute (server_t *self, client_t *client, int event)
                 else {
                     //  Process all other events
                     fmq_msg_id_set (client->reply, FMQ_MSG_RTFM);
-                    zclock_log ("Send message to client");
-                    fmq_msg_dump (client->reply);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
                     fmq_msg_address_set (client->reply, client->address);
@@ -976,8 +968,6 @@ server_client_execute (server_t *self, client_t *client, int event)
                 else {
                     //  Process all other events
                     fmq_msg_id_set (client->reply, FMQ_MSG_RTFM);
-                    zclock_log ("Send message to client");
-                    fmq_msg_dump (client->reply);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
                     fmq_msg_address_set (client->reply, client->address);
@@ -989,8 +979,6 @@ server_client_execute (server_t *self, client_t *client, int event)
                 if (client->event == icanhaz_event) {
                     store_client_subscription (self, client);
                     fmq_msg_id_set (client->reply, FMQ_MSG_ICANHAZ_OK);
-                    zclock_log ("Send message to client");
-                    fmq_msg_dump (client->reply);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
                     fmq_msg_address_set (client->reply, client->address);
@@ -1004,8 +992,6 @@ server_client_execute (server_t *self, client_t *client, int event)
                 else
                 if (client->event == hugz_event) {
                     fmq_msg_id_set (client->reply, FMQ_MSG_HUGZ_OK);
-                    zclock_log ("Send message to client");
-                    fmq_msg_dump (client->reply);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
                     fmq_msg_address_set (client->reply, client->address);
@@ -1022,8 +1008,6 @@ server_client_execute (server_t *self, client_t *client, int event)
                 else
                 if (client->event == heartbeat_event) {
                     fmq_msg_id_set (client->reply, FMQ_MSG_HUGZ);
-                    zclock_log ("Send message to client");
-                    fmq_msg_dump (client->reply);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
                     fmq_msg_address_set (client->reply, client->address);
@@ -1040,8 +1024,6 @@ server_client_execute (server_t *self, client_t *client, int event)
                 else {
                     //  Process all other events
                     fmq_msg_id_set (client->reply, FMQ_MSG_RTFM);
-                    zclock_log ("Send message to client");
-                    fmq_msg_dump (client->reply);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
                     fmq_msg_address_set (client->reply, client->address);
@@ -1052,8 +1034,6 @@ server_client_execute (server_t *self, client_t *client, int event)
             case dispatching_state:
                 if (client->event == send_chunk_event) {
                     fmq_msg_id_set (client->reply, FMQ_MSG_CHEEZBURGER);
-                    zclock_log ("Send message to client");
-                    fmq_msg_dump (client->reply);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
                     fmq_msg_address_set (client->reply, client->address);
@@ -1062,8 +1042,6 @@ server_client_execute (server_t *self, client_t *client, int event)
                 else
                 if (client->event == send_delete_event) {
                     fmq_msg_id_set (client->reply, FMQ_MSG_CHEEZBURGER);
-                    zclock_log ("Send message to client");
-                    fmq_msg_dump (client->reply);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
                     fmq_msg_address_set (client->reply, client->address);
@@ -1096,8 +1074,6 @@ server_client_execute (server_t *self, client_t *client, int event)
                 else {
                     //  Process all other events
                     fmq_msg_id_set (client->reply, FMQ_MSG_RTFM);
-                    zclock_log ("Send message to client");
-                    fmq_msg_dump (client->reply);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
                     fmq_msg_address_set (client->reply, client->address);
@@ -1121,8 +1097,6 @@ server_client_message (server_t *self)
     if (!request)
         return;         //  Interrupted; do nothing
 
-    zclock_log ("Received message from client");
-    fmq_msg_dump (request);
     char *hashkey = zframe_strhex (fmq_msg_address (request));
     client_t *client = zhash_lookup (self->clients, hashkey);
     if (client == NULL) {
@@ -1210,7 +1184,7 @@ int
 fmq_server_test (bool verbose)
 {
     printf (" * fmq_server: ");
-    printf ("\n");
+    fflush (stdout);
     zctx_t *ctx = zctx_new ();
     
     fmq_server_t *self;
