@@ -40,7 +40,7 @@ size_t
 size_t
     fmq_chunk_fill (fmq_chunk_t *self, byte filler, size_t size);
 
-//  Read chunk to an open file descriptor
+//  Read chunk from an open file descriptor
 fmq_chunk_t *
     fmq_chunk_read (FILE *handle, size_t bytes);
     
