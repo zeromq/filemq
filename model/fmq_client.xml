@@ -1,4 +1,5 @@
-<class name = "fmq_client" codec = "fmq_msg">
+<class name = "fmq_client" codec = "fmq_msg" title = "a FILEMQ client"
+  short = "The fmq_client class implements a generic FILEMQ client." >
 This is the FILEMQ/1.0 client protocol handler
 <include filename = "license.xml" />
 <include filename = "fmq_client_fsm.xml" />

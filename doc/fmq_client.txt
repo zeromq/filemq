@@ -1,0 +1,78 @@
+fmq_client(3)
+=============
+
+NAME
+----
+fmq_client - a FILEMQ client
+
+SYNOPSIS
+--------
+----
+//  Create a new fmq_client
+fmq_client_t *
+    fmq_client_new (void);
+
+//  Destroy the fmq_client
+void
+    fmq_client_destroy (fmq_client_t **self_p);
+
+//  Load client configuration data
+void
+    fmq_client_configure (fmq_client_t *self, const char *config_file);
+
+//  Set one configuration key value
+void
+    fmq_client_setoption (fmq_client_t *self, const char *path, const char *value);
+
+//  Create outgoing connection to server
+void
+    fmq_client_connect (fmq_client_t *self, const char *endpoint);
+
+//  Wait for message from API
+zmsg_t *
+    fmq_client_recv (fmq_client_t *self);
+
+//  Return API pipe handle for polling
+void *
+    fmq_client_handle (fmq_client_t *self);
+
+//  
+void
+    fmq_client_subscribe (fmq_client_t *self, const char *path);
+
+//  
+void
+    fmq_client_set_inbox (fmq_client_t *self, const char *path);
+
+//  
+void
+    fmq_client_set_resync (fmq_client_t *self, long enabled);
+
+//  Self test of this class
+int
+    fmq_client_test (bool verbose);
+----
+
+DESCRIPTION
+-----------
+
+The fmq_client class implements a generic FILEMQ client.
+
+
+EXAMPLE
+-------
+.From fmq_client_test method
+----
+    fmq_client_t *self;
+    //  Run selftest using 'client_test.cfg' configuration
+    self = fmq_client_new ();
+    assert (self);
+    fmq_client_configure (self, "client_test.cfg");
+    fmq_client_connect (self, "tcp://localhost:6001");
+    zclock_sleep (1000);                              
+    fmq_client_destroy (&self);
+----
+
+SEE ALSO
+--------
+linkfmq:filemq[1]

@@ -1,5 +1,5 @@
 /*  =========================================================================
-    fmq_server.h
+    fmq_server - a filemq server
 
     Generated header for fmq_server protocol server
     -------------------------------------------------------------------------
@@ -33,6 +33,7 @@ extern "C" {
 //  Opaque class structure
 typedef struct _fmq_server_t fmq_server_t;
 
+//  @interface
 //  Create a new fmq_server
 fmq_server_t *
     fmq_server_new (void);
@@ -64,6 +65,7 @@ void
 //  Self test of this class
 int
     fmq_server_test (bool verbose);
+//  @end
 
 #ifdef __cplusplus
 }

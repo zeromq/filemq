@@ -25,6 +25,13 @@
 #include <czmq.h>
 #include "../include/fmq.h"
 
+/*
+@header
+    The fmq_sasl class encodes and decodes a SASL challenge. Currently only
+    implements the PLAIN mechanism, which is enough to prove the concept.
+@discuss
+@end
+*/
 
 //  --------------------------------------------------------------------------
 //  Encode login and password as PLAIN response
@@ -87,6 +94,7 @@ fmq_sasl_test (bool verbose)
 {
     printf (" * fmq_sasl: ");
 
+    //  @selftest
     zframe_t *frame = fmq_sasl_plain_encode ("Happy", "Harry");
     char *login, *password;
     int rc = fmq_sasl_plain_decode (frame, &login, &password);
@@ -96,6 +104,7 @@ fmq_sasl_test (bool verbose)
     zframe_destroy (&frame);
     free (login);
     free (password);
+    //  @end
 
     printf ("OK\n");
     return 0;

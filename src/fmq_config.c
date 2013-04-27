@@ -22,6 +22,13 @@
     =========================================================================
 */
 
+/*
+@header
+    The fmq_config class represents configuration data.
+@discuss
+@end
+*/
+
 #include <czmq.h>
 #include "../include/fmq.h"
 

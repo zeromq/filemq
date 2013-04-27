@@ -1,0 +1,77 @@
+fmq_chunk(3)
+============
+
+NAME
+----
+fmq_chunk - work with memory chunks
+
+SYNOPSIS
+--------
+----
+//  Create new chunk
+fmq_chunk_t *
+    fmq_chunk_new (const void *data, size_t size);
+
+//  Destroy a chunk
+void
+    fmq_chunk_destroy (fmq_chunk_t **self_p);
+
+//  Resizes chunk max_size as requested; chunk_cur size is set to zero
+void
+    fmq_chunk_resize (fmq_chunk_t *self, size_t size);
+
+//  Return chunk cur size
+size_t
+    fmq_chunk_size (fmq_chunk_t *self);
+
+//  Return chunk max size
+size_t
+    fmq_chunk_max_size (fmq_chunk_t *self);
+
+//  Return chunk data
+byte *
+    fmq_chunk_data (fmq_chunk_t *self);
+
+//  Set chunk data from user-supplied data; truncate if too large
+size_t
+    fmq_chunk_set (fmq_chunk_t *self, const void *data, size_t size);
+
+//  Fill chunk data from user-supplied octet
+size_t
+    fmq_chunk_fill (fmq_chunk_t *self, byte filler, size_t size);
+
+//  Read chunk from an open file descriptor
+fmq_chunk_t *
+    fmq_chunk_read (FILE *handle, size_t bytes);
+    
+//  Write chunk to an open file descriptor
+int
+    fmq_chunk_write (fmq_chunk_t *self, FILE *handle);
+
+//  Self test of this class
+int
+    fmq_chunk_test (bool verbose);
+----
+
+DESCRIPTION
+-----------
+
+The fmq_chunk class works with variable sized blobs. Not as efficient as
+ØMQ's messages but they do less weirdness and so are easier to understand.
+The chunk class has methods to read and write chunks from disk.
+
+
+EXAMPLE
+-------
+.From fmq_chunk_test method
+----
+    fmq_chunk_t *chunk = fmq_chunk_new ("1234567890", 10);
+    assert (chunk);
+    assert (fmq_chunk_size (chunk) == 10);
+    assert (memcmp (fmq_chunk_data (chunk), "1234567890", 10) == 0);
+    fmq_chunk_destroy (&chunk);
+----
+
+SEE ALSO
+--------
+linkfmq:filemq[1]

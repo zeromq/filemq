@@ -32,6 +32,7 @@ extern "C" {
 //  Opaque class structure
 typedef struct _fmq_config_t fmq_config_t;
 
+//  @interface
 //  Function that executes config
 typedef int (fmq_config_fct) (fmq_config_t *self, void *arg, int level);
 
@@ -107,6 +108,7 @@ void
 //  Self test of this class
 int
     fmq_config_test (bool verbose);
+//  @end
 
 #ifdef __cplusplus
 }
