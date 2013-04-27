@@ -21,6 +21,14 @@
     along with this program. If not, see http://www.gnu.org/licenses/.
     =========================================================================*/
 
+/*
+@header
+    The fmq_chunk class works with variable sized blobs. Not as efficient as
+    ØMQ's messages but they do less weirdness and so are easier to understand.
+    The chunk class has methods to read and write chunks from disk.
+@discuss
+@end
+*/
 
 #include <czmq.h>
 #include "../include/fmq.h"
@@ -186,11 +194,13 @@ fmq_chunk_test (bool verbose)
 {
     printf (" * fmq_chunk: ");
 
+    //  @selftest
     fmq_chunk_t *chunk = fmq_chunk_new ("1234567890", 10);
     assert (chunk);
     assert (fmq_chunk_size (chunk) == 10);
     assert (memcmp (fmq_chunk_data (chunk), "1234567890", 10) == 0);
     fmq_chunk_destroy (&chunk);
+    //  @end
 
     printf ("OK\n");
     return 0;

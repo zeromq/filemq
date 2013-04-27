@@ -32,6 +32,7 @@ extern "C" {
 //  Opaque class structure
 typedef struct _fmq_hash_t fmq_hash_t;
 
+//  @interface
 //  Create new HASH object
 fmq_hash_t *
     fmq_hash_new (void);
@@ -55,6 +56,7 @@ size_t
 //  Self test of this class
 int
     fmq_hash_test (bool verbose);
+//  @end
 
 #ifdef __cplusplus
 }

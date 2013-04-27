@@ -1,0 +1,166 @@
+fmq_file(3)
+===========
+
+NAME
+----
+fmq_file - work with files
+
+SYNOPSIS
+--------
+----
+//  Create new file item
+fmq_file_t *
+    fmq_file_new (const char *path, const char *name);
+
+//  Destroy a file item
+void
+    fmq_file_destroy (fmq_file_t **self_p);
+
+//  Refreshes file properties from file system
+void
+    fmq_file_restat (fmq_file_t *self);
+
+//  Duplicate a file item
+fmq_file_t *
+    fmq_file_dup (fmq_file_t *self);
+
+//  Return file name, remove path if provided
+char *
+    fmq_file_name (fmq_file_t *self, char *path);
+
+//  Return file time
+time_t
+    fmq_file_time (fmq_file_t *self);
+
+//  Return file size
+off_t
+    fmq_file_size (fmq_file_t *self);
+    
+//  Return file mode
+mode_t
+    fmq_file_mode (fmq_file_t *self);
+    
+//  Check if file exists/ed; does not restat file
+bool
+    fmq_file_exists (fmq_file_t *self);
+
+//  Check if file is/was stable; does not restat file
+bool
+    fmq_file_stable (fmq_file_t *self);
+
+//  Remove the file
+void
+    fmq_file_remove (fmq_file_t *self);
+
+//  Open file for reading
+int
+    fmq_file_input (fmq_file_t *self);
+
+//  Open file for writing, creating directory if needed
+int
+    fmq_file_output (fmq_file_t *self);
+    
+//  Read chunk from file at specified position
+fmq_chunk_t *
+    fmq_file_read (fmq_file_t *self, size_t bytes, off_t offset);
+
+//  Write chunk to file at specified position
+int
+    fmq_file_write (fmq_file_t *self, fmq_chunk_t *chunk, off_t offset);
+
+//  Close file, if open
+void
+    fmq_file_close (fmq_file_t *self);
+    
+//  Return file handle, if opened
+FILE *
+    fmq_file_handle (fmq_file_t *self);
+
+//  Return file SHA-1 hash as string; caller has to free it
+char *
+    fmq_file_hash (fmq_file_t *self);
+
+//  Self test of this class
+int
+    fmq_file_test (bool verbose);
+----
+
+DESCRIPTION
+-----------
+
+The fmq_file class works with files, which may or may not exist on disk.
+Gives you information about a file (like size), lets you read and write to
+files, remove files, check if a file exists, and check if a file is
+"stable".
+
+
+EXAMPLE
+-------
+.From fmq_file_test method
+----
+    fmq_file_t *file = fmq_file_new (".", "bilbo");
+    assert (streq (fmq_file_name (file, "."), "bilbo"));
+    assert (fmq_file_exists (file) == false);
+    fmq_file_destroy (&file);
+
+    //  Create a test file in some random subdirectory
+    file = fmq_file_new ("./this/is/a/test", "bilbo");
+    int rc = fmq_file_output (file);
+    assert (rc == 0);
+    fmq_chunk_t *chunk = fmq_chunk_new (NULL, 100);
+    fmq_chunk_fill (chunk, 0, 100);
+    //  Write 100 bytes at position 1,000,000 in the file
+    rc = fmq_file_write (file, chunk, 1000000);
+    assert (rc == 0);
+    fmq_file_close (file);
+    assert (fmq_file_exists (file));
+    assert (fmq_file_size (file) == 1000100);
+    assert (!fmq_file_stable (file));
+    fmq_chunk_destroy (&chunk);
+    zclock_sleep (1001);
+    fmq_file_restat (file);
+    assert (fmq_file_stable (file));
+
+    //  Check we can read from file
+    rc = fmq_file_input (file);
+    assert (rc == 0);
+    chunk = fmq_file_read (file, 1000100, 0);
+    assert (chunk);
+    assert (fmq_chunk_size (chunk) == 1000100);
+    fmq_chunk_destroy (&chunk);
+
+    //  Try some fun with symbolic links
+    fmq_file_t *link = fmq_file_new ("./this/is/a/test", "bilbo.ln");
+    rc = fmq_file_output (link);
+    assert (rc == 0);
+    fprintf (fmq_file_handle (link), "./this/is/a/test/bilbo\n");
+    fmq_file_destroy (&link);
+
+    link = fmq_file_new ("./this/is/a/test", "bilbo.ln");
+    rc = fmq_file_input (link);
+    assert (rc == 0);
+    chunk = fmq_file_read (link, 1000100, 0);
+    assert (chunk);
+    assert (fmq_chunk_size (chunk) == 1000100);
+    fmq_chunk_destroy (&chunk);
+    fmq_file_destroy (&link);
+
+    //  Remove file and directory
+    fmq_dir_t *dir = fmq_dir_new ("./this", NULL);
+    assert (fmq_dir_size (dir) == 2000200);
+    fmq_dir_remove (dir, true);
+    assert (fmq_dir_size (dir) == 0);
+    fmq_dir_destroy (&dir);
+
+    //  Check we can no longer read from file
+    assert (fmq_file_exists (file));
+    fmq_file_restat (file);
+    assert (!fmq_file_exists (file));
+    rc = fmq_file_input (file);
+    assert (rc == -1);
+    fmq_file_destroy (&file);
+----
+
+SEE ALSO
+--------
+linkfmq:filemq[1]

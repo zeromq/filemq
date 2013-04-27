@@ -1,5 +1,5 @@
 /*  =========================================================================
-    fmq_client.h
+    fmq_client - a FILEMQ client
 
     Generated header for fmq_client protocol client
     -------------------------------------------------------------------------
@@ -33,6 +33,7 @@ extern "C" {
 //  Opaque class structure
 typedef struct _fmq_client_t fmq_client_t;
 
+//  @interface
 //  Create a new fmq_client
 fmq_client_t *
     fmq_client_new (void);
@@ -76,6 +77,7 @@ void
 //  Self test of this class
 int
     fmq_client_test (bool verbose);
+//  @end
 
 #ifdef __cplusplus
 }
