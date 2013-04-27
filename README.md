@@ -37,7 +37,7 @@ This code needs the freshest possible libzmq and CZMQ. To build:
 
 Contribution process:
 
-    http://rfc.zeromq.org/spec:16
+    http://rfc.zeromq.org/spec:22
 
 ## Internals
 
