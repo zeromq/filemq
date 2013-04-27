@@ -1,5 +1,5 @@
 /*  =========================================================================
-    fmq_client - a FILEMQ client
+    fmq_client - a filemq client
 
     Generated class for fmq_client protocol client
     -------------------------------------------------------------------------
@@ -25,7 +25,7 @@
 
 /*
 @header
-    The fmq_client class implements a generic FILEMQ client.
+  the fmq_client class implements a generic filemq client.
 @discuss
 @end
 */
@@ -879,6 +879,7 @@ fmq_client_test (bool verbose)
     fmq_client_connect (self, "tcp://localhost:6001");
     zclock_sleep (1000);                              
     fmq_client_destroy (&self);
+
     //  @end
 
     printf ("OK\n");

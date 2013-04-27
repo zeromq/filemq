@@ -1,5 +1,5 @@
 /*  =========================================================================
-    fmq_msg - work with FILEMQ messages
+    fmq_msg - work with filemq messages
     
     Generated codec header for fmq_msg
     -------------------------------------------------------------------------

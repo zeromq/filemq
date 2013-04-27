@@ -1,5 +1,5 @@
 /*  =========================================================================
-    fmq_server - a FILEMQ server
+    fmq_server - a filemq server
 
     Generated class for fmq_server protocol server
     -------------------------------------------------------------------------
@@ -25,7 +25,7 @@
 
 /*
 @header
-    The fmq_server class implements a generic FILEMQ server.
+    the fmq_server class implements a generic filemq server.
 @discuss
 @end
 */
@@ -1191,9 +1191,7 @@ int
 fmq_server_test (bool verbose)
 {
     printf (" * fmq_server: ");
-    printf ("\n");
-
-    //  @selftest
+    fflush (stdout);
     zctx_t *ctx = zctx_new ();
     
     fmq_server_t *self;

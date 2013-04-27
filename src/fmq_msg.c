@@ -1,5 +1,5 @@
 /*  =========================================================================
-    fmq_msg - work with FILEMQ messages
+    fmq_msg - work with filemq messages
 
     Generated codec implementation for fmq_msg
     -------------------------------------------------------------------------
@@ -25,7 +25,7 @@
 
 /*
 @header
-    The fmq_msg class represents FILEMQ messages.
+    the fmq_msg class represents filemq messages.
 @discuss
 @end
 */

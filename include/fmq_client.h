@@ -1,5 +1,5 @@
 /*  =========================================================================
-    fmq_client - a FILEMQ client
+    fmq_client - a filemq client
 
     Generated header for fmq_client protocol client
     -------------------------------------------------------------------------

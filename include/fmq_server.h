@@ -1,5 +1,5 @@
 /*  =========================================================================
-    fmq_server - a FILEMQ server
+    fmq_server - a filemq server
 
     Generated header for fmq_server protocol server
     -------------------------------------------------------------------------

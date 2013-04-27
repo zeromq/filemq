@@ -3,7 +3,7 @@ fmq_msg(3)
 
 NAME
 ----
-fmq_msg - work with FILEMQ messages
+fmq_msg - work with filemq messages
 
 SYNOPSIS
 --------
@@ -260,7 +260,7 @@ int
 DESCRIPTION
 -----------
 
-The fmq_msg class represents FILEMQ messages.
+the fmq_msg class represents filemq messages.
 
 
 EXAMPLE
