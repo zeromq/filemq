@@ -777,9 +777,7 @@ fmq_msg_send (fmq_msg_t **self_p, void *output)
 
 int
 fmq_msg_send_ohai (
-    void *output,
-    char *protocol,
-    byte version)
+    void *output)
 {
     fmq_msg_t *self = fmq_msg_new (FMQ_MSG_OHAI);
     return fmq_msg_send (&self, output);

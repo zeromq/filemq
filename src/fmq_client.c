@@ -180,11 +180,11 @@ typedef enum {
     start_state = 1,
     requesting_access_state = 2,
     subscribing_state = 3,
-    ready_state = 4
+    ready_state = 4,
+    terminated_state = 5
 } state_t;
 
 typedef enum {
-    terminate_event = -1,
     initialize_event = 1,
     srsly_event = 2,
     rtfm_event = 3,
@@ -639,12 +639,6 @@ log_protocol_error (client_t *self, server_t *server)
     puts ("E: protocol error");
 }
 
-static void
-terminate_the_server (client_t *self, server_t *server)
-{
-    server->next_event = terminate_event;
-}
-
 //  Execute state machine as long as we have events
 static void
 client_server_execute (client_t *self, server_t *server, int event)
@@ -664,18 +658,17 @@ client_server_execute (client_t *self, server_t *server, int event)
                 else
                 if (server->event == srsly_event) {
                     log_access_denied (self, server);
-                    terminate_the_server (self, server);
-                    server->state = start_state;
+                    server->state = terminated_state;
                 }
                 else
                 if (server->event == rtfm_event) {
                     log_invalid_message (self, server);
-                    terminate_the_server (self, server);
+                    server->state = terminated_state;
                 }
                 else {
                     //  Process all other events
                     log_protocol_error (self, server);
-                    terminate_the_server (self, server);
+                    server->state = terminated_state;
                 }
                 break;
 
@@ -696,13 +689,12 @@ client_server_execute (client_t *self, server_t *server, int event)
                 else
                 if (server->event == srsly_event) {
                     log_access_denied (self, server);
-                    terminate_the_server (self, server);
-                    server->state = start_state;
+                    server->state = terminated_state;
                 }
                 else
                 if (server->event == rtfm_event) {
                     log_invalid_message (self, server);
-                    terminate_the_server (self, server);
+                    server->state = terminated_state;
                 }
                 else {
                     //  Process all other events
@@ -726,18 +718,17 @@ client_server_execute (client_t *self, server_t *server, int event)
                 else
                 if (server->event == srsly_event) {
                     log_access_denied (self, server);
-                    terminate_the_server (self, server);
-                    server->state = start_state;
+                    server->state = terminated_state;
                 }
                 else
                 if (server->event == rtfm_event) {
                     log_invalid_message (self, server);
-                    terminate_the_server (self, server);
+                    server->state = terminated_state;
                 }
                 else {
                     //  Process all other events
                     log_protocol_error (self, server);
-                    terminate_the_server (self, server);
+                    server->state = terminated_state;
                 }
                 break;
 
@@ -764,26 +755,35 @@ client_server_execute (client_t *self, server_t *server, int event)
                 else
                 if (server->event == srsly_event) {
                     log_access_denied (self, server);
-                    terminate_the_server (self, server);
-                    server->state = start_state;
+                    server->state = terminated_state;
                 }
                 else
                 if (server->event == rtfm_event) {
                     log_invalid_message (self, server);
-                    terminate_the_server (self, server);
+                    server->state = terminated_state;
                 }
                 else {
                     //  Process all other events
                     log_protocol_error (self, server);
-                    terminate_the_server (self, server);
+                    server->state = terminated_state;
                 }
                 break;
 
-        }
-        if (server->next_event == terminate_event) {
-            //  Automatically calls server_destroy
-            //  reset state machine
-            break;
+            case terminated_state:
+                if (server->event == srsly_event) {
+                    log_access_denied (self, server);
+                    server->state = terminated_state;
+                }
+                else
+                if (server->event == rtfm_event) {
+                    log_invalid_message (self, server);
+                    server->state = terminated_state;
+                }
+                else {
+                    //  Process all other events
+                }
+                break;
+
         }
     }
 }

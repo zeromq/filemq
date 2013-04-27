@@ -106,9 +106,7 @@ int
 
 //  Send the OHAI to the output in one step
 int
-    fmq_msg_send_ohai (void *output,
-        char *protocol,
-        byte version);
+    fmq_msg_send_ohai (void *output);
     
 //  Send the ORLY to the output in one step
 int
