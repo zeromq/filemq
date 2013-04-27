@@ -22,6 +22,16 @@
     =========================================================================
 */
 
+/*
+@header
+    The fmq_file class works with files, which may or may not exist on disk.
+    Gives you information about a file (like size), lets you read and write to
+    files, remove files, check if a file exists, and check if a file is
+    "stable".
+@discuss
+@end
+*/
+
 #include <czmq.h>
 #include "../include/fmq.h"
 
@@ -398,6 +408,7 @@ fmq_file_test (bool verbose)
 {
     printf (" * fmq_file: ");
 
+    //  @selftest
     fmq_file_t *file = fmq_file_new (".", "bilbo");
     assert (streq (fmq_file_name (file, "."), "bilbo"));
     assert (fmq_file_exists (file) == false);
@@ -459,6 +470,7 @@ fmq_file_test (bool verbose)
     rc = fmq_file_input (file);
     assert (rc == -1);
     fmq_file_destroy (&file);
+    //  @end
 
     printf ("OK\n");
     return 0;

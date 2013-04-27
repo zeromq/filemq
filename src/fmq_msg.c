@@ -1,5 +1,5 @@
 /*  =========================================================================
-    fmq_msg.c
+    fmq_msg - work with filemq messages
 
     Generated codec implementation for fmq_msg
     -------------------------------------------------------------------------
@@ -21,6 +21,13 @@
     You should have received a copy of the GNU Lesser General Public License
     along with this program. If not, see http://www.gnu.org/licenses/.      
     =========================================================================
+*/
+
+/*
+@header
+    the fmq_msg class represents filemq messages.
+@discuss
+@end
 */
 
 #include <czmq.h>
@@ -1874,6 +1881,7 @@ fmq_msg_test (bool verbose)
 {
     printf (" * fmq_msg: ");
 
+    //  @selftest
     //  Simple create/destroy test
     fmq_msg_t *self = fmq_msg_new (0);
     assert (self);
@@ -2032,6 +2040,8 @@ fmq_msg_test (bool verbose)
     fmq_msg_destroy (&self);
 
     zctx_destroy (&ctx);
+    //  @end
+
     printf ("OK\n");
     return 0;
 }

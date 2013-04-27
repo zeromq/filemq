@@ -10,6 +10,7 @@ configure
 doc/Makefile
 doc/Makefile.in
 doc/filemq.1
+doc/*.3
 libtool
 src/.deps/
 src/Makefile

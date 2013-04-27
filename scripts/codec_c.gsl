@@ -7,7 +7,7 @@
 .echo "Generating ../include/$(class.name).h..."
 .output "../include/$(class.name).h"
 /*  =========================================================================
-    $(class.name).h
+    $(class.name) - $(class.title)
     
     Generated codec header for $(class.name)
     -------------------------------------------------------------------------
@@ -86,6 +86,7 @@ extern "C" {
 //  Opaque class structure
 typedef struct _$(class.name)_t $(class.name)_t;
 
+//  @interface
 //  Create a new $(class.name)
 $(class.name)_t *
     $(class.name)_new (int id);
@@ -218,7 +219,8 @@ void
 //  Self test of this class
 int
     $(class.name)_test (bool verbose);
-    
+//  @end
+
 #ifdef __cplusplus
 }
 #endif
@@ -227,12 +229,19 @@ int
 .echo "Generating ../src/$(class.name).c..."
 .output "../src/$(class.name).c"
 /*  =========================================================================
-    $(class.name).c
+    $(class.name) - $(class.title)
 
     Generated codec implementation for $(class.name)
     -------------------------------------------------------------------------
     $(string.trim (class->license.):block                                   )
     =========================================================================
+*/
+
+/*
+@header
+    $(class.short)
+@discuss
+@end
 */
 
 #include <czmq.h>
@@ -1193,6 +1202,7 @@ $(class.name)_test (bool verbose)
 {
     printf (" * $(class.name): ");
 
+    //  @selftest
     //  Simple create/destroy test
     $(class.name)_t *self = $(class.name)_new (0);
     assert (self);
@@ -1260,6 +1270,8 @@ $(class.name)_test (bool verbose)
 .endfor
 
     zctx_destroy (&ctx);
+    //  @end
+
     printf ("OK\\n");
     return 0;
 }

@@ -1,4 +1,5 @@
-<class name = "fmq_server" codec = "fmq_msg">
+<class name = "fmq_server" codec = "fmq_msg" title = "a FILEMQ server"
+  short = "The fmq_server class implements a generic FILEMQ server." >
 FileMQ protocol server
 <include filename = "license.xml" />
 <include filename = "fmq_server_fsm.xml" />

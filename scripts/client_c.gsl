@@ -7,7 +7,7 @@
 .echo "Generating ../include/$(class.name).h..."
 .output "../include/$(class.name).h"
 /*  =========================================================================
-    $(class.name).h
+    $(class.name) - $(class.title)
 
     Generated header for $(class.name) protocol client
     -------------------------------------------------------------------------
@@ -25,6 +25,7 @@ extern "C" {
 //  Opaque class structure
 typedef struct _$(class.name)_t $(class.name)_t;
 
+//  @interface
 //  Create a new $(class.name)
 $(class.name)_t *
     $(class.name)_new (void);
@@ -79,6 +80,7 @@ $(ctype)
 //  Self test of this class
 int
     $(class.name)_test (bool verbose);
+//  @end
 
 #ifdef __cplusplus
 }
@@ -88,12 +90,19 @@ int
 .echo "Generating ../src/$(class.name).c..."
 .output "../src/$(class.name).c"
 /*  =========================================================================
-    $(class.name).c
+    $(class.name) - $(class.title)
 
     Generated class for $(class.name) protocol client
     -------------------------------------------------------------------------
     $(string.trim (class->license.):block                                   )
     =========================================================================
+*/
+
+/*
+@header
+  $(class.short)
+@discuss
+@end
 */
 
 #include <czmq.h>
@@ -722,6 +731,7 @@ $(class.name)_test (bool verbose)
 {
     printf (" * $(class.name): ");
 
+    //  @selftest
     $(class.name)_t *self;
 .for class.selftest
     //  Run selftest using '$(config?'')' configuration
@@ -736,6 +746,8 @@ $(class.name)_test (bool verbose)
     $(class.name)_destroy (&self);
 
 .endfor
+    //  @end
+
     printf ("OK\\n");
     return 0;
 }

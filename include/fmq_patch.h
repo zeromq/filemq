@@ -37,6 +37,7 @@ extern "C" {
 //  Opaque class structure
 typedef struct _fmq_patch_t fmq_patch_t;
 
+//  @interface
 //  Create new patch
 fmq_patch_t *
     fmq_patch_new (char *path, fmq_file_t *file, fmq_patch_op_t op, char *alias);
@@ -80,6 +81,7 @@ char *
 //  Self test of this class
 int
     fmq_patch_test (bool verbose);
+//  @end
 
 #ifdef __cplusplus
 }

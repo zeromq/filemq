@@ -29,6 +29,7 @@
 extern "C" {
 #endif
 
+//  @interface
 //  Encode login and password as PLAIN response
 zframe_t *
     fmq_sasl_plain_encode (const char *login, const char *password);
@@ -40,6 +41,7 @@ int
 //  Self test of this class
 int
     fmq_sasl_test (bool verbose);
+//  @end
 
 #ifdef __cplusplus
 }

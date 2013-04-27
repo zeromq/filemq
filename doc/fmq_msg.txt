@@ -1,93 +1,13 @@
-/*  =========================================================================
-    fmq_msg - work with filemq messages
-    
-    Generated codec header for fmq_msg
-    -------------------------------------------------------------------------
-    Copyright (c) 1991-2012 iMatix Corporation -- http://www.imatix.com     
-    Copyright other contributors as noted in the AUTHORS file.              
-                                                                            
-    This file is part of FILEMQ, see http://filemq.org.                     
-                                                                            
-    This is free software; you can redistribute it and/or modify it under   
-    the terms of the GNU Lesser General Public License as published by the  
-    Free Software Foundation; either version 3 of the License, or (at your  
-    option) any later version.                                              
-                                                                            
-    This software is distributed in the hope that it will be useful, but    
-    WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTA-   
-    BILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General  
-    Public License for more details.                                        
-                                                                            
-    You should have received a copy of the GNU Lesser General Public License
-    along with this program. If not, see http://www.gnu.org/licenses/.      
-    =========================================================================
-*/
+fmq_msg(3)
+==========
 
-#ifndef __FMQ_MSG_H_INCLUDED__
-#define __FMQ_MSG_H_INCLUDED__
+NAME
+----
+fmq_msg - work with filemq messages
 
-/*  These are the fmq_msg messages
-    OHAI - Client opens peering
-        protocol      string
-        version       number 1
-    ORLY - Server challenges the client to authenticate itself
-        mechanisms    strings
-        challenge     frame
-    YARLY - Client responds with authentication information
-        mechanism     string
-        response      frame
-    OHAI_OK - Server grants the client access
-    ICANHAZ - Client subscribes to a path
-        path          string
-        options       dictionary
-        cache         dictionary
-    ICANHAZ_OK - Server confirms the subscription
-    NOM - Client sends credit to the server
-        credit        number 8
-        sequence      number 8
-    CHEEZBURGER - The server sends a file chunk
-        sequence      number 8
-        operation     number 1
-        filename      string
-        offset        number 8
-        eof           number 1
-        headers       dictionary
-        chunk         frame
-    HUGZ - Client or server sends a heartbeat
-    HUGZ_OK - Client or server answers a heartbeat
-    KTHXBAI - Client closes the peering
-    SRSLY - Server refuses client due to access rights
-        reason        string
-    RTFM - Server tells client it sent an invalid message
-        reason        string
-*/
-
-#define FMQ_MSG_VERSION                     1
-#define FMQ_MSG_FILE_CREATE                 1
-#define FMQ_MSG_FILE_DELETE                 2
-
-#define FMQ_MSG_OHAI                        1
-#define FMQ_MSG_ORLY                        2
-#define FMQ_MSG_YARLY                       3
-#define FMQ_MSG_OHAI_OK                     4
-#define FMQ_MSG_ICANHAZ                     5
-#define FMQ_MSG_ICANHAZ_OK                  6
-#define FMQ_MSG_NOM                         7
-#define FMQ_MSG_CHEEZBURGER                 8
-#define FMQ_MSG_HUGZ                        9
-#define FMQ_MSG_HUGZ_OK                     10
-#define FMQ_MSG_KTHXBAI                     11
-#define FMQ_MSG_SRSLY                       128
-#define FMQ_MSG_RTFM                        129
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-//  Opaque class structure
-typedef struct _fmq_msg_t fmq_msg_t;
-
-//  @interface
+SYNOPSIS
+--------
+----
 //  Create a new fmq_msg
 fmq_msg_t *
     fmq_msg_new (int id);
@@ -335,10 +255,178 @@ void
 //  Self test of this class
 int
     fmq_msg_test (bool verbose);
-//  @end
+----
 
-#ifdef __cplusplus
-}
-#endif
+DESCRIPTION
+-----------
 
-#endif
+the fmq_msg class represents filemq messages.
+
+
+EXAMPLE
+-------
+.From fmq_msg_test method
+----
+    //  Simple create/destroy test
+    fmq_msg_t *self = fmq_msg_new (0);
+    assert (self);
+    fmq_msg_destroy (&self);
+
+    //  Create pair of sockets we can send through
+    zctx_t *ctx = zctx_new ();
+    assert (ctx);
+
+    void *output = zsocket_new (ctx, ZMQ_DEALER);
+    assert (output);
+    zsocket_bind (output, "inproc://selftest");
+    void *input = zsocket_new (ctx, ZMQ_ROUTER);
+    assert (input);
+    zsocket_connect (input, "inproc://selftest");
+    
+    //  Encode/send/decode and verify each message type
+
+    self = fmq_msg_new (FMQ_MSG_OHAI);
+    fmq_msg_send (&self, output);
+    
+    self = fmq_msg_recv (input);
+    assert (self);
+    fmq_msg_destroy (&self);
+
+    self = fmq_msg_new (FMQ_MSG_ORLY);
+    fmq_msg_mechanisms_append (self, "Name: %s", "Brutus");
+    fmq_msg_mechanisms_append (self, "Age: %d", 43);
+    fmq_msg_challenge_set (self, zframe_new ("Captcha Diem", 12));
+    fmq_msg_send (&self, output);
+    
+    self = fmq_msg_recv (input);
+    assert (self);
+    assert (fmq_msg_mechanisms_size (self) == 2);
+    assert (streq (fmq_msg_mechanisms_first (self), "Name: Brutus"));
+    assert (streq (fmq_msg_mechanisms_next (self), "Age: 43"));
+    assert (zframe_streq (fmq_msg_challenge (self), "Captcha Diem"));
+    fmq_msg_destroy (&self);
+
+    self = fmq_msg_new (FMQ_MSG_YARLY);
+    fmq_msg_mechanism_set (self, "Life is short but Now lasts for ever");
+    fmq_msg_response_set (self, zframe_new ("Captcha Diem", 12));
+    fmq_msg_send (&self, output);
+    
+    self = fmq_msg_recv (input);
+    assert (self);
+    assert (streq (fmq_msg_mechanism (self), "Life is short but Now lasts for ever"));
+    assert (zframe_streq (fmq_msg_response (self), "Captcha Diem"));
+    fmq_msg_destroy (&self);
+
+    self = fmq_msg_new (FMQ_MSG_OHAI_OK);
+    fmq_msg_send (&self, output);
+    
+    self = fmq_msg_recv (input);
+    assert (self);
+    fmq_msg_destroy (&self);
+
+    self = fmq_msg_new (FMQ_MSG_ICANHAZ);
+    fmq_msg_path_set (self, "Life is short but Now lasts for ever");
+    fmq_msg_options_insert (self, "Name", "Brutus");
+    fmq_msg_options_insert (self, "Age", "%d", 43);
+    fmq_msg_cache_insert (self, "Name", "Brutus");
+    fmq_msg_cache_insert (self, "Age", "%d", 43);
+    fmq_msg_send (&self, output);
+    
+    self = fmq_msg_recv (input);
+    assert (self);
+    assert (streq (fmq_msg_path (self), "Life is short but Now lasts for ever"));
+    assert (fmq_msg_options_size (self) == 2);
+    assert (streq (fmq_msg_options_string (self, "Name", "?"), "Brutus"));
+    assert (fmq_msg_options_number (self, "Age", 0) == 43);
+    assert (fmq_msg_cache_size (self) == 2);
+    assert (streq (fmq_msg_cache_string (self, "Name", "?"), "Brutus"));
+    assert (fmq_msg_cache_number (self, "Age", 0) == 43);
+    fmq_msg_destroy (&self);
+
+    self = fmq_msg_new (FMQ_MSG_ICANHAZ_OK);
+    fmq_msg_send (&self, output);
+    
+    self = fmq_msg_recv (input);
+    assert (self);
+    fmq_msg_destroy (&self);
+
+    self = fmq_msg_new (FMQ_MSG_NOM);
+    fmq_msg_credit_set (self, 123);
+    fmq_msg_sequence_set (self, 123);
+    fmq_msg_send (&self, output);
+    
+    self = fmq_msg_recv (input);
+    assert (self);
+    assert (fmq_msg_credit (self) == 123);
+    assert (fmq_msg_sequence (self) == 123);
+    fmq_msg_destroy (&self);
+
+    self = fmq_msg_new (FMQ_MSG_CHEEZBURGER);
+    fmq_msg_sequence_set (self, 123);
+    fmq_msg_operation_set (self, 123);
+    fmq_msg_filename_set (self, "Life is short but Now lasts for ever");
+    fmq_msg_offset_set (self, 123);
+    fmq_msg_eof_set (self, 123);
+    fmq_msg_headers_insert (self, "Name", "Brutus");
+    fmq_msg_headers_insert (self, "Age", "%d", 43);
+    fmq_msg_chunk_set (self, zframe_new ("Captcha Diem", 12));
+    fmq_msg_send (&self, output);
+    
+    self = fmq_msg_recv (input);
+    assert (self);
+    assert (fmq_msg_sequence (self) == 123);
+    assert (fmq_msg_operation (self) == 123);
+    assert (streq (fmq_msg_filename (self), "Life is short but Now lasts for ever"));
+    assert (fmq_msg_offset (self) == 123);
+    assert (fmq_msg_eof (self) == 123);
+    assert (fmq_msg_headers_size (self) == 2);
+    assert (streq (fmq_msg_headers_string (self, "Name", "?"), "Brutus"));
+    assert (fmq_msg_headers_number (self, "Age", 0) == 43);
+    assert (zframe_streq (fmq_msg_chunk (self), "Captcha Diem"));
+    fmq_msg_destroy (&self);
+
+    self = fmq_msg_new (FMQ_MSG_HUGZ);
+    fmq_msg_send (&self, output);
+    
+    self = fmq_msg_recv (input);
+    assert (self);
+    fmq_msg_destroy (&self);
+
+    self = fmq_msg_new (FMQ_MSG_HUGZ_OK);
+    fmq_msg_send (&self, output);
+    
+    self = fmq_msg_recv (input);
+    assert (self);
+    fmq_msg_destroy (&self);
+
+    self = fmq_msg_new (FMQ_MSG_KTHXBAI);
+    fmq_msg_send (&self, output);
+    
+    self = fmq_msg_recv (input);
+    assert (self);
+    fmq_msg_destroy (&self);
+
+    self = fmq_msg_new (FMQ_MSG_SRSLY);
+    fmq_msg_reason_set (self, "Life is short but Now lasts for ever");
+    fmq_msg_send (&self, output);
+    
+    self = fmq_msg_recv (input);
+    assert (self);
+    assert (streq (fmq_msg_reason (self), "Life is short but Now lasts for ever"));
+    fmq_msg_destroy (&self);
+
+    self = fmq_msg_new (FMQ_MSG_RTFM);
+    fmq_msg_reason_set (self, "Life is short but Now lasts for ever");
+    fmq_msg_send (&self, output);
+    
+    self = fmq_msg_recv (input);
+    assert (self);
+    assert (streq (fmq_msg_reason (self), "Life is short but Now lasts for ever"));
+    fmq_msg_destroy (&self);
+
+    zctx_destroy (&ctx);
+----
+
+SEE ALSO
+--------
+linkfmq:filemq[1]
