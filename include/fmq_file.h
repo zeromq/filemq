@@ -32,6 +32,7 @@ extern "C" {
 //  Opaque class structure
 typedef struct _fmq_file_t fmq_file_t;
 
+//  @interface
 //  Create new file item
 fmq_file_t *
     fmq_file_new (const char *path, const char *name);
@@ -107,6 +108,7 @@ char *
 //  Self test of this class
 int
     fmq_file_test (bool verbose);
+//  @end
 
 #ifdef __cplusplus
 }

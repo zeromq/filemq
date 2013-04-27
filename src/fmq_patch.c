@@ -23,6 +23,14 @@
     =========================================================================
 */
 
+/*
+@header
+    The fmq_patch class works with one patch, which really just says "create
+    this file" or "delete this file" (referring to a fmq_file item each time).
+@discuss
+@end
+*/
+
 #include <czmq.h>
 #include "../include/fmq.h"
 
@@ -173,6 +181,7 @@ fmq_patch_test (bool verbose)
 {
     printf (" * fmq_patch: ");
 
+    //  @selftest
     fmq_file_t *file = fmq_file_new (".", "bilbo");
     fmq_patch_t *patch = fmq_patch_new (".", file, patch_create, "/");
     fmq_file_destroy (&file);
@@ -181,6 +190,7 @@ fmq_patch_test (bool verbose)
     assert (streq (fmq_file_name (file, "."), "bilbo"));
     assert (streq (fmq_patch_virtual (patch), "/bilbo"));
     fmq_patch_destroy (&patch);
+    //  @end
 
     printf ("OK\n");
     return 0;

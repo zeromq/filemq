@@ -22,6 +22,14 @@
     along with this program. If not, see http://www.gnu.org/licenses/.
     =========================================================================*/
 
+/*
+@header
+    The fmq_dir class works with directories, reading them from disk and
+    comparing two directories to see what changed. When there are changes,
+    returns a list of "patches".
+@discuss
+@end
+*/
 
 #include <czmq.h>
 #include "../include/fmq.h"
@@ -498,6 +506,7 @@ fmq_dir_test (bool verbose)
 {
     printf (" * fmq_dir: ");
 
+    //  @selftest
     fmq_dir_t *older = fmq_dir_new (".", NULL);
     assert (older);
     if (verbose) {
@@ -523,6 +532,7 @@ fmq_dir_test (bool verbose)
     
     fmq_dir_t *nosuch = fmq_dir_new ("does-not-exist", NULL);
     assert (nosuch == NULL);
+    //  @end
 
     printf ("OK\n");
     return 0;

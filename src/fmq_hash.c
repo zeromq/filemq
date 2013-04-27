@@ -22,6 +22,13 @@
     =========================================================================
 */
 
+/*
+@header
+    The fmq_hash class allows to hash blobs.
+@discuss
+@end
+*/
+
 #include <czmq.h>
 #if defined(__APPLE__)
 #  define COMMON_DIGEST_FOR_OPENSSL
@@ -113,6 +120,7 @@ fmq_hash_test (bool verbose)
 {
     printf (" * fmq_hash: ");
 
+    //  @selftest
     byte *buffer = zmalloc (1024);
     memset (buffer, 0xAA, 1024);
     
@@ -126,6 +134,7 @@ fmq_hash_test (bool verbose)
     assert (data [3] == 0x07);
     fmq_hash_destroy (&hash);
     free (buffer);
+    //  @end
 
     printf ("OK\n");
     return 0;

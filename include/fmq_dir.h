@@ -32,6 +32,7 @@ extern "C" {
 //  Opaque class structure
 typedef struct _fmq_dir_t fmq_dir_t;
 
+//  @interface
 //  Create new directory item
 fmq_dir_t *
     fmq_dir_new (const char *path, const char *parent);
@@ -85,6 +86,7 @@ zhash_t *
 //  Self test of this class
 int
     fmq_dir_test (bool verbose);
+//  @end
 
 #ifdef __cplusplus
 }

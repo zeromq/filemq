@@ -1,5 +1,5 @@
 /*  =========================================================================
-    fmq_server.c
+    fmq_server - a FILEMQ server
 
     Generated class for fmq_server protocol server
     -------------------------------------------------------------------------
@@ -21,6 +21,13 @@
     You should have received a copy of the GNU Lesser General Public License
     along with this program. If not, see http://www.gnu.org/licenses/.      
     =========================================================================
+*/
+
+/*
+@header
+    The fmq_server class implements a generic FILEMQ server.
+@discuss
+@end
 */
 
 #include <czmq.h>
@@ -1211,6 +1218,8 @@ fmq_server_test (bool verbose)
 {
     printf (" * fmq_server: ");
     printf ("\n");
+
+    //  @selftest
     zctx_t *ctx = zctx_new ();
     
     fmq_server_t *self;
@@ -1325,6 +1334,8 @@ fmq_server_test (bool verbose)
     fmq_server_destroy (&self);
 
     zctx_destroy (&ctx);
+    //  @end
+
     //  No clean way to wait for a background thread to exit
     //  Under valgrind this will randomly show as leakage
     //  Reduce this by giving server thread time to exit

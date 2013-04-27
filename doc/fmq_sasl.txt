@@ -1,0 +1,48 @@
+fmq_sasl(3)
+===========
+
+NAME
+----
+fmq_sasl - work with SASL mechanisms
+
+SYNOPSIS
+--------
+----
+//  Encode login and password as PLAIN response
+zframe_t *
+    fmq_sasl_plain_encode (const char *login, const char *password);
+
+//  Decode PLAIN response into new login and password
+int
+    fmq_sasl_plain_decode (zframe_t *frame, char **login, char **password);
+
+//  Self test of this class
+int
+    fmq_sasl_test (bool verbose);
+----
+
+DESCRIPTION
+-----------
+
+The fmq_sasl class encodes and decodes a SASL challenge. Currently only
+implements the PLAIN mechanism, which is enough to prove the concept.
+
+
+EXAMPLE
+-------
+.From fmq_sasl_test method
+----
+    zframe_t *frame = fmq_sasl_plain_encode ("Happy", "Harry");
+    char *login, *password;
+    int rc = fmq_sasl_plain_decode (frame, &login, &password);
+    assert (rc == 0);
+    assert (streq (login, "Happy"));
+    assert (streq (password, "Harry"));
+    zframe_destroy (&frame);
+    free (login);
+    free (password);
+----
+
+SEE ALSO
+--------
+linkfmq:filemq[1]

@@ -1,5 +1,5 @@
 /*  =========================================================================
-    fmq_client.c
+    fmq_client - a FILEMQ client
 
     Generated class for fmq_client protocol client
     -------------------------------------------------------------------------
@@ -21,6 +21,13 @@
     You should have received a copy of the GNU Lesser General Public License
     along with this program. If not, see http://www.gnu.org/licenses/.      
     =========================================================================
+*/
+
+/*
+@header
+    The fmq_client class implements a generic FILEMQ client.
+@discuss
+@end
 */
 
 #include <czmq.h>
@@ -863,6 +870,7 @@ fmq_client_test (bool verbose)
 {
     printf (" * fmq_client: ");
 
+    //  @selftest
     fmq_client_t *self;
     //  Run selftest using 'client_test.cfg' configuration
     self = fmq_client_new ();
@@ -871,6 +879,7 @@ fmq_client_test (bool verbose)
     fmq_client_connect (self, "tcp://localhost:6001");
     zclock_sleep (1000);                              
     fmq_client_destroy (&self);
+    //  @end
 
     printf ("OK\n");
     return 0;

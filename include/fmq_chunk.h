@@ -32,6 +32,7 @@ extern "C" {
 //  Opaque class structure
 typedef struct _fmq_chunk_t fmq_chunk_t;
 
+//  @interface
 //  Create new chunk
 fmq_chunk_t *
     fmq_chunk_new (const void *data, size_t size);
@@ -75,6 +76,7 @@ int
 //  Self test of this class
 int
     fmq_chunk_test (bool verbose);
+//  @end
 
 #ifdef __cplusplus
 }
