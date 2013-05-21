@@ -617,3 +617,45 @@ fmq_config_test (bool verbose)
     printf ("OK\n");
     return 0;
 }
+
+int
+zfl_config_save (zfl_config_t *self, char *filename)
+{
+    assert (self);
+
+    int rc = 0;
+    if (streq (filename, "-")) {
+        //  "-" means write to stdout
+        int rc = zfl_config_execute (self, s_config_save, stdout);
+    }
+    else {
+        FILE *file;
+        file = fopen (filename, "w");
+        if (file)
+            rc = zfl_config_execute (self, s_config_save, file);
+        else
+            rc = -1;          //  File not writeable
+    }
+    return rc;
+}
+
+static int
+s_config_save (zfl_config_t *self, void *arg, int level)
+{
+    assert (self);
+    assert (arg);
+
+    FILE *file = (FILE *) arg;
+    if (level > 0) {
+        if (self->blob)
+            fprintf (file, "%*s%s = %s\n", (level - 1) * 4, "",
+                self->name? self->name: "(Unnamed)",
+                (char *) zfl_blob_data (self->blob));
+        else
+            fprintf (file, "%*s%s\n", (level - 1) * 4, "",
+                self->name? self->name: "(Unnamed)");
+    }
+    return 0;
+}
+
+
