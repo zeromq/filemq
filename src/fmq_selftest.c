@@ -27,7 +27,7 @@
 
 int main (int argc, char *argv [])
 {
-    bool verbose;
+    Bool verbose;
     if (argc == 2 && streq (argv [1], "-v")) {
         argc--;
         verbose = true;
