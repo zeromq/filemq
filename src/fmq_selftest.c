@@ -27,7 +27,7 @@
 
 int main (int argc, char *argv [])
 {
-    Bool verbose;
+    bool verbose;
     if (argc == 2 && streq (argv [1], "-v")) {
         argc--;
         verbose = true;
@@ -45,7 +45,6 @@ int main (int argc, char *argv [])
         fmq_msg_test (verbose);
         fmq_sasl_test (verbose);
         fmq_hash_test (verbose);
-        fmq_config_test (verbose);
         fmq_server_test (verbose);
         fmq_client_test (verbose);
         printf ("Tests passed OK\n");

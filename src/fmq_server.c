@@ -207,7 +207,7 @@ struct _server_t {
     void *router;               //  Socket to talk to clients
     zhash_t *clients;           //  Clients we've connected to
     bool stopped;               //  Has server stopped?
-    fmq_config_t *config;       //  Configuration tree
+    zconfig_t *config;          //  Configuration tree
     int monitor;                //  Monitor interval
     int64_t monitor_at;         //  Next monitor at this time
     int heartbeat;              //  Client heartbeat interval
@@ -579,9 +579,9 @@ server_config_self (server_t *self)
 {
     //  Get standard server configuration
     self->monitor = atoi (
-        fmq_config_resolve (self->config, "server/monitor", "1")) * 1000;
+        zconfig_resolve (self->config, "server/monitor", "1")) * 1000;
     self->heartbeat = atoi (
-        fmq_config_resolve (self->config, "server/heartbeat", "1")) * 1000;
+        zconfig_resolve (self->config, "server/heartbeat", "1")) * 1000;
     self->monitor_at = zclock_time () + self->monitor;
 }
 
@@ -593,7 +593,7 @@ server_new (zctx_t *ctx, void *pipe)
     self->pipe = pipe;
     self->router = zsocket_new (self->ctx, ZMQ_ROUTER);
     self->clients = zhash_new ();
-    self->config = fmq_config_new ("root", NULL);
+    self->config = zconfig_new ("root", NULL);
     server_config_self (self);
     self->mounts = zlist_new ();
     return self;
@@ -606,7 +606,7 @@ server_destroy (server_t **self_p)
     if (*self_p) {
         server_t *self = *self_p;
         zsocket_destroy (self->ctx, self->router);
-        fmq_config_destroy (&self->config);
+        zconfig_destroy (&self->config);
         zhash_destroy (&self->clients);
         //  Destroy mount points                                  
         while (zlist_size (self->mounts)) {                       
@@ -627,32 +627,32 @@ static void
 server_apply_config (server_t *self)
 {
     //  Apply echo commands and class methods
-    fmq_config_t *section = fmq_config_child (self->config);
+    zconfig_t *section = zconfig_child (self->config);
     while (section) {
-        fmq_config_t *entry = fmq_config_child (section);
+        zconfig_t *entry = zconfig_child (section);
         while (entry) {
-            if (streq (fmq_config_name (entry), "echo"))
-                zclock_log (fmq_config_value (entry));
-            entry = fmq_config_next (entry);
+            if (streq (zconfig_name (entry), "echo"))
+                zclock_log (zconfig_value (entry));
+            entry = zconfig_next (entry);
         }
-        if (streq (fmq_config_name (section), "bind")) {
-            char *endpoint = fmq_config_resolve (section, "endpoint", "?");
+        if (streq (zconfig_name (section), "bind")) {
+            char *endpoint = zconfig_resolve (section, "endpoint", "?");
             self->port = zsocket_bind (self->router, endpoint);
         }
         else
-        if (streq (fmq_config_name (section), "publish")) {
-            char *location = fmq_config_resolve (section, "location", "?");
-            char *alias = fmq_config_resolve (section, "alias", "?");
+        if (streq (zconfig_name (section), "publish")) {
+            char *location = zconfig_resolve (section, "location", "?");
+            char *alias = zconfig_resolve (section, "alias", "?");
             mount_t *mount = mount_new (location, alias);
             zlist_append (self->mounts, mount);          
         }
         else
-        if (streq (fmq_config_name (section), "set_anonymous")) {
-            long enabled = atoi (fmq_config_resolve (section, "enabled", ""));
-            //  Enable anonymous access without a config file                           
-            fmq_config_path_set (self->config, "security/anonymous", enabled? "1" :"0");
+        if (streq (zconfig_name (section), "set_anonymous")) {
+            long enabled = atoi (zconfig_resolve (section, "enabled", ""));
+            //  Enable anonymous access without a config file                        
+            zconfig_path_set (self->config, "security/anonymous", enabled? "1" :"0");
         }
-        section = fmq_config_next (section);
+        section = zconfig_next (section);
     }
     server_config_self (self);
 }
@@ -683,19 +683,19 @@ server_control_message (server_t *self)
         char *enabled_string = zmsg_popstr (msg);
         long enabled = atoi (enabled_string);
         free (enabled_string);
-        //  Enable anonymous access without a config file                           
-        fmq_config_path_set (self->config, "security/anonymous", enabled? "1" :"0");
+        //  Enable anonymous access without a config file                        
+        zconfig_path_set (self->config, "security/anonymous", enabled? "1" :"0");
     }
     else
     if (streq (method, "CONFIG")) {
         char *config_file = zmsg_popstr (msg);
-        fmq_config_destroy (&self->config);
-        self->config = fmq_config_load (config_file);
+        zconfig_destroy (&self->config);
+        self->config = zconfig_load (config_file);
         if (self->config)
             server_apply_config (self);
         else {
             printf ("E: cannot load config file '%s'\n", config_file);
-            self->config = fmq_config_new ("root", NULL);
+            self->config = zconfig_new ("root", NULL);
         }
         free (config_file);
     }
@@ -703,7 +703,7 @@ server_control_message (server_t *self)
     if (streq (method, "SETOPTION")) {
         char *path = zmsg_popstr (msg);
         char *value = zmsg_popstr (msg);
-        fmq_config_path_set (self->config, path, value);
+        zconfig_path_set (self->config, path, value);
         server_config_self (self);
         free (path);
         free (value);
@@ -733,22 +733,22 @@ terminate_the_client (server_t *self, client_t *client)
 static void
 try_anonymous_access (server_t *self, client_t *client)
 {
-    if (atoi (fmq_config_resolve (self->config, "security/anonymous", "0")) == 1)
-        client->next_event = friend_event;                                       
-    else                                                                         
-    if (atoi (fmq_config_resolve (self->config, "security/plain", "0")) == 1)    
-        client->next_event = maybe_event;                                        
-    else                                                                         
-        client->next_event = foe_event;                                          
+    if (atoi (zconfig_resolve (self->config, "security/anonymous", "0")) == 1)
+        client->next_event = friend_event;                                    
+    else                                                                      
+    if (atoi (zconfig_resolve (self->config, "security/plain", "0")) == 1)    
+        client->next_event = maybe_event;                                     
+    else                                                                      
+        client->next_event = foe_event;                                       
 }
 
 static void
 list_security_mechanisms (server_t *self, client_t *client)
 {
-    if (atoi (fmq_config_resolve (self->config, "security/anonymous", "0")) == 1)
-        fmq_msg_mechanisms_append (client->reply, "ANONYMOUS");                  
-    if (atoi (fmq_config_resolve (self->config, "security/plain", "0")) == 1)    
-        fmq_msg_mechanisms_append (client->reply, "PLAIN");                      
+    if (atoi (zconfig_resolve (self->config, "security/anonymous", "0")) == 1)
+        fmq_msg_mechanisms_append (client->reply, "ANONYMOUS");               
+    if (atoi (zconfig_resolve (self->config, "security/plain", "0")) == 1)    
+        fmq_msg_mechanisms_append (client->reply, "PLAIN");                   
 }
 
 static void
@@ -758,14 +758,14 @@ try_security_mechanism (server_t *self, client_t *client)
     char *login, *password;                                                                  
     if (streq (fmq_msg_mechanism (client->request), "PLAIN")                                 
     &&  fmq_sasl_plain_decode (fmq_msg_response (client->request), &login, &password) == 0) {
-        fmq_config_t *account = fmq_config_locate (self->config, "security/plain/account");  
+        zconfig_t *account = zconfig_locate (self->config, "security/plain/account");        
         while (account) {                                                                    
-            if (streq (fmq_config_resolve (account, "login", ""), login)                     
-            &&  streq (fmq_config_resolve (account, "password", ""), password)) {            
+            if (streq (zconfig_resolve (account, "login", ""), login)                        
+            &&  streq (zconfig_resolve (account, "password", ""), password)) {               
                 client->next_event = friend_event;                                           
                 break;                                                                       
             }                                                                                
-            account = fmq_config_next (account);                                             
+            account = zconfig_next (account);                                                
         }                                                                                    
     }                                                                                        
     free (login);                                                                            

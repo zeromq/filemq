@@ -66,19 +66,19 @@ client->next_event = terminate_event;
 </action>
 
 <action name = "try anonymous access">
-if (atoi (fmq_config_resolve (self->config, "security/anonymous", "0")) == 1)
+if (atoi (zconfig_resolve (self->config, "security/anonymous", "0")) == 1)
     client->next_event = friend_event;
 else
-if (atoi (fmq_config_resolve (self->config, "security/plain", "0")) == 1)
+if (atoi (zconfig_resolve (self->config, "security/plain", "0")) == 1)
     client->next_event = maybe_event;
 else
     client->next_event = foe_event;
 </action>
     
 <action name = "list security mechanisms">
-if (atoi (fmq_config_resolve (self->config, "security/anonymous", "0")) == 1)
+if (atoi (zconfig_resolve (self->config, "security/anonymous", "0")) == 1)
     fmq_msg_mechanisms_append (client->reply, "ANONYMOUS");
-if (atoi (fmq_config_resolve (self->config, "security/plain", "0")) == 1)
+if (atoi (zconfig_resolve (self->config, "security/plain", "0")) == 1)
     fmq_msg_mechanisms_append (client->reply, "PLAIN");
 </action>
 
@@ -87,14 +87,14 @@ client->next_event = foe_event;
 char *login, *password;
 if (streq (fmq_msg_mechanism (client->request), "PLAIN")
 &&  fmq_sasl_plain_decode (fmq_msg_response (client->request), &login, &password) == 0) {
-    fmq_config_t *account = fmq_config_locate (self->config, "security/plain/account");
+    zconfig_t *account = zconfig_locate (self->config, "security/plain/account");
     while (account) {
-        if (streq (fmq_config_resolve (account, "login", ""), login)
-        &&  streq (fmq_config_resolve (account, "password", ""), password)) {
+        if (streq (zconfig_resolve (account, "login", ""), login)
+        &&  streq (zconfig_resolve (account, "password", ""), password)) {
             client->next_event = friend_event;
             break;
         }
-        account = fmq_config_next (account);
+        account = zconfig_next (account);
     }
 }
 free (login);
@@ -227,7 +227,7 @@ zlist_append (self->mounts, mount);
 <method name = "set anonymous">
 <argument name = "enabled" type = "number" />
 //  Enable anonymous access without a config file
-fmq_config_path_set (self->config, "security/anonymous", enabled? "1" :"0");
+zconfig_path_set (self->config, "security/anonymous", enabled? "1" :"0");
 </method>
 
 <include filename = "fmq_server_selftest.xml" />

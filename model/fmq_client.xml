@@ -45,8 +45,8 @@ fmq_file_t *file;           //  File we're writing to
 <include filename = "fmq_client_sub.xml" />
 
 <action name = "try security mechanism">
-char *login = fmq_config_resolve (self->config, "security/plain/login", "guest");
-char *password = fmq_config_resolve (self->config, "security/plain/password", "");
+char *login = zconfig_resolve (self->config, "security/plain/login", "guest");
+char *password = zconfig_resolve (self->config, "security/plain/password", "");
 zframe_t *frame = fmq_sasl_plain_encode (login, password);
 fmq_msg_mechanism_set (server->request, "PLAIN");
 fmq_msg_response_set  (server->request, frame);
@@ -74,7 +74,7 @@ else
 <action name = "format icanhaz command">
 fmq_msg_path_set (server->request, self->sub->path);
 //  If client app wants full resync, send cache to server
-if (atoi (fmq_config_resolve (self->config, "client/resync", "0")) == 1) {
+if (atoi (zconfig_resolve (self->config, "client/resync", "0")) == 1) {
     fmq_msg_options_insert (server->request, "RESYNC", "1");
     fmq_msg_cache_set (server->request, sub_cache (self->sub));
 }
@@ -94,7 +94,7 @@ if (credit_to_send) {
 </action>
 
 <action name = "process the patch">
-char *inbox = fmq_config_resolve (self->config, "client/inbox", ".inbox");
+char *inbox = zconfig_resolve (self->config, "client/inbox", ".inbox");
 char *filename = fmq_msg_filename (server->reply);
 
 //  Filenames from server must start with slash, which we skip
@@ -163,20 +163,20 @@ while (self->sub) {
 assert (*path == '/');
 
 //  New subscription, store it for later replay
-char *inbox = fmq_config_resolve (self->config, "client/inbox", ".inbox");
+char *inbox = zconfig_resolve (self->config, "client/inbox", ".inbox");
 self->sub = sub_new (self, inbox, path);
 zlist_append (self->subs, self->sub);
 </method>
 
 <method name = "set inbox">
 <argument name = "path" type = "string" />
-fmq_config_path_set (self->config, "client/inbox", path);
+zconfig_path_set (self->config, "client/inbox", path);
 </method>
 
 <method name = "set resync">
 <argument name = "enabled" type = "number" />
 //  Request resynchronization from server
-fmq_config_path_set (self->config, "client/resync", enabled? "1" :"0");
+zconfig_path_set (self->config, "client/resync", enabled? "1" :"0");
 </method>
 
 <selftest config = "client_test.cfg">
