@@ -226,7 +226,7 @@ struct _client_t {
     uint nbr_servers;           //  How many connections we have
     bool dirty;                 //  If true, rebuild pollset
     bool stopped;               //  Is the client stopped?
-    fmq_config_t *config;       //  Configuration tree
+    zconfig_t *config;          //  Configuration tree
     int heartbeat;              //  Heartbeat interval
 };
 
@@ -339,7 +339,7 @@ client_config_self (client_t *self)
 {
     //  Get standard client configuration
     self->heartbeat = atoi (
-        fmq_config_resolve (self->config, "client/heartbeat", "1")) * 1000;
+        zconfig_resolve (self->config, "client/heartbeat", "1")) * 1000;
 }
 
 static client_t *
@@ -348,7 +348,7 @@ client_new (zctx_t *ctx, void *pipe)
     client_t *self = (client_t *) zmalloc (sizeof (client_t));
     self->ctx = ctx;
     self->pipe = pipe;
-    self->config = fmq_config_new ("root", NULL);
+    self->config = zconfig_new ("root", NULL);
     client_config_self (self);
     self->subs = zlist_new ();
     return self;
@@ -360,7 +360,7 @@ client_destroy (client_t **self_p)
     assert (self_p);
     if (*self_p) {
         client_t *self = *self_p;
-        fmq_config_destroy (&self->config);
+        zconfig_destroy (&self->config);
         int server_nbr;
         for (server_nbr = 0; server_nbr < self->nbr_servers; server_nbr++) {
             server_t *server = self->servers [server_nbr];
@@ -385,45 +385,45 @@ static void
 client_apply_config (client_t *self)
 {
     //  Apply echo commands and class methods
-    fmq_config_t *section = fmq_config_child (self->config);
+    zconfig_t *section = zconfig_child (self->config);
     while (section) {
-        fmq_config_t *entry = fmq_config_child (section);
+        zconfig_t *entry = zconfig_child (section);
         while (entry) {
-            if (streq (fmq_config_name (entry), "echo"))
-                zclock_log (fmq_config_value (entry));
-            entry = fmq_config_next (entry);
+            if (streq (zconfig_name (entry), "echo"))
+                zclock_log (zconfig_value (entry));
+            entry = zconfig_next (entry);
         }
-        if (streq (fmq_config_name (section), "subscribe")) {
-            char *path = fmq_config_resolve (section, "path", "?");
-            //  Store subscription along with any previous ones                       
-            //  Check we don't already have a subscription for this path              
-            self->sub = (sub_t *) zlist_first (self->subs);                           
-            while (self->sub) {                                                       
-                if (streq (path, self->sub->path))                                    
-                    return;                                                           
-                self->sub = (sub_t *) zlist_next (self->subs);                        
-            }                                                                         
-            //  Subscription path must start with '/'                                 
-            //  We'll do better error handling later                                  
-            assert (*path == '/');                                                    
-                                                                                      
-            //  New subscription, store it for later replay                           
-            char *inbox = fmq_config_resolve (self->config, "client/inbox", ".inbox");
-            self->sub = sub_new (self, inbox, path);                                  
-            zlist_append (self->subs, self->sub);                                     
-        }
-        else
-        if (streq (fmq_config_name (section), "set_inbox")) {
-            char *path = fmq_config_resolve (section, "path", "?");
-            fmq_config_path_set (self->config, "client/inbox", path);
+        if (streq (zconfig_name (section), "subscribe")) {
+            char *path = zconfig_resolve (section, "path", "?");
+            //  Store subscription along with any previous ones                    
+            //  Check we don't already have a subscription for this path           
+            self->sub = (sub_t *) zlist_first (self->subs);                        
+            while (self->sub) {                                                    
+                if (streq (path, self->sub->path))                                 
+                    return;                                                        
+                self->sub = (sub_t *) zlist_next (self->subs);                     
+            }                                                                      
+            //  Subscription path must start with '/'                              
+            //  We'll do better error handling later                               
+            assert (*path == '/');                                                 
+                                                                                   
+            //  New subscription, store it for later replay                        
+            char *inbox = zconfig_resolve (self->config, "client/inbox", ".inbox");
+            self->sub = sub_new (self, inbox, path);                               
+            zlist_append (self->subs, self->sub);                                  
         }
         else
-        if (streq (fmq_config_name (section), "set_resync")) {
-            long enabled = atoi (fmq_config_resolve (section, "enabled", ""));
-            //  Request resynchronization from server                              
-            fmq_config_path_set (self->config, "client/resync", enabled? "1" :"0");
+        if (streq (zconfig_name (section), "set_inbox")) {
+            char *path = zconfig_resolve (section, "path", "?");
+            zconfig_path_set (self->config, "client/inbox", path);
         }
-        section = fmq_config_next (section);
+        else
+        if (streq (zconfig_name (section), "set_resync")) {
+            long enabled = atoi (zconfig_resolve (section, "enabled", ""));
+            //  Request resynchronization from server                           
+            zconfig_path_set (self->config, "client/resync", enabled? "1" :"0");
+        }
+        section = zconfig_next (section);
     }
     client_config_self (self);
 }
@@ -436,28 +436,28 @@ client_control_message (client_t *self)
     char *method = zmsg_popstr (msg);
     if (streq (method, "SUBSCRIBE")) {
         char *path = zmsg_popstr (msg);
-        //  Store subscription along with any previous ones                       
-        //  Check we don't already have a subscription for this path              
-        self->sub = (sub_t *) zlist_first (self->subs);                           
-        while (self->sub) {                                                       
-            if (streq (path, self->sub->path))                                    
-                return;                                                           
-            self->sub = (sub_t *) zlist_next (self->subs);                        
-        }                                                                         
-        //  Subscription path must start with '/'                                 
-        //  We'll do better error handling later                                  
-        assert (*path == '/');                                                    
-                                                                                  
-        //  New subscription, store it for later replay                           
-        char *inbox = fmq_config_resolve (self->config, "client/inbox", ".inbox");
-        self->sub = sub_new (self, inbox, path);                                  
-        zlist_append (self->subs, self->sub);                                     
+        //  Store subscription along with any previous ones                    
+        //  Check we don't already have a subscription for this path           
+        self->sub = (sub_t *) zlist_first (self->subs);                        
+        while (self->sub) {                                                    
+            if (streq (path, self->sub->path))                                 
+                return;                                                        
+            self->sub = (sub_t *) zlist_next (self->subs);                     
+        }                                                                      
+        //  Subscription path must start with '/'                              
+        //  We'll do better error handling later                               
+        assert (*path == '/');                                                 
+                                                                               
+        //  New subscription, store it for later replay                        
+        char *inbox = zconfig_resolve (self->config, "client/inbox", ".inbox");
+        self->sub = sub_new (self, inbox, path);                               
+        zlist_append (self->subs, self->sub);                                  
         free (path);
     }
     else
     if (streq (method, "SET INBOX")) {
         char *path = zmsg_popstr (msg);
-        fmq_config_path_set (self->config, "client/inbox", path);
+        zconfig_path_set (self->config, "client/inbox", path);
         free (path);
     }
     else
@@ -465,19 +465,19 @@ client_control_message (client_t *self)
         char *enabled_string = zmsg_popstr (msg);
         long enabled = atoi (enabled_string);
         free (enabled_string);
-        //  Request resynchronization from server                              
-        fmq_config_path_set (self->config, "client/resync", enabled? "1" :"0");
+        //  Request resynchronization from server                           
+        zconfig_path_set (self->config, "client/resync", enabled? "1" :"0");
     }
     else
     if (streq (method, "CONFIG")) {
         char *config_file = zmsg_popstr (msg);
-        fmq_config_destroy (&self->config);
-        self->config = fmq_config_load (config_file);
+        zconfig_destroy (&self->config);
+        self->config = zconfig_load (config_file);
         if (self->config)
             client_apply_config (self);
         else {
             printf ("E: cannot load config file '%s'\n", config_file);
-            self->config = fmq_config_new ("root", NULL);
+            self->config = zconfig_new ("root", NULL);
         }
         free (config_file);
     }
@@ -485,7 +485,7 @@ client_control_message (client_t *self)
     if (streq (method, "SETOPTION")) {
         char *path = zmsg_popstr (msg);
         char *value = zmsg_popstr (msg);
-        fmq_config_path_set (self->config, path, value);
+        zconfig_path_set (self->config, path, value);
         client_config_self (self);
         free (path);
         free (value);
@@ -518,11 +518,11 @@ client_control_message (client_t *self)
 static void
 try_security_mechanism (client_t *self, server_t *server)
 {
-    char *login = fmq_config_resolve (self->config, "security/plain/login", "guest"); 
-    char *password = fmq_config_resolve (self->config, "security/plain/password", "");
-    zframe_t *frame = fmq_sasl_plain_encode (login, password);                        
-    fmq_msg_mechanism_set (server->request, "PLAIN");                                 
-    fmq_msg_response_set  (server->request, frame);                                   
+    char *login = zconfig_resolve (self->config, "security/plain/login", "guest"); 
+    char *password = zconfig_resolve (self->config, "security/plain/password", "");
+    zframe_t *frame = fmq_sasl_plain_encode (login, password);                     
+    fmq_msg_mechanism_set (server->request, "PLAIN");                              
+    fmq_msg_response_set  (server->request, frame);                                
 }
 
 static void
@@ -554,12 +554,12 @@ get_next_subscription (client_t *self, server_t *server)
 static void
 format_icanhaz_command (client_t *self, server_t *server)
 {
-    fmq_msg_path_set (server->request, self->sub->path);                      
-    //  If client app wants full resync, send cache to server                 
-    if (atoi (fmq_config_resolve (self->config, "client/resync", "0")) == 1) {
-        fmq_msg_options_insert (server->request, "RESYNC", "1");              
-        fmq_msg_cache_set (server->request, sub_cache (self->sub));           
-    }                                                                         
+    fmq_msg_path_set (server->request, self->sub->path);                   
+    //  If client app wants full resync, send cache to server              
+    if (atoi (zconfig_resolve (self->config, "client/resync", "0")) == 1) {
+        fmq_msg_options_insert (server->request, "RESYNC", "1");           
+        fmq_msg_cache_set (server->request, sub_cache (self->sub));        
+    }                                                                      
 }
 
 static void
@@ -580,7 +580,7 @@ refill_credit_as_needed (client_t *self, server_t *server)
 static void
 process_the_patch (client_t *self, server_t *server)
 {
-    char *inbox = fmq_config_resolve (self->config, "client/inbox", ".inbox");        
+    char *inbox = zconfig_resolve (self->config, "client/inbox", ".inbox");           
     char *filename = fmq_msg_filename (server->reply);                                
                                                                                       
     //  Filenames from server must start with slash, which we skip                    

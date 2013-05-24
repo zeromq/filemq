@@ -347,7 +347,7 @@ struct _client_t {
     uint nbr_servers;           //  How many connections we have
     bool dirty;                 //  If true, rebuild pollset
     bool stopped;               //  Is the client stopped?
-    fmq_config_t *config;       //  Configuration tree
+    zconfig_t *config;          //  Configuration tree
     int heartbeat;              //  Heartbeat interval
 };
 
@@ -431,7 +431,7 @@ client_config_self (client_t *self)
 {
     //  Get standard client configuration
     self->heartbeat = atoi (
-        fmq_config_resolve (self->config, "client/heartbeat", "1")) * 1000;
+        zconfig_resolve (self->config, "client/heartbeat", "1")) * 1000;
 }
 
 static client_t *
@@ -440,7 +440,7 @@ client_new (zctx_t *ctx, void *pipe)
     client_t *self = (client_t *) zmalloc (sizeof (client_t));
     self->ctx = ctx;
     self->pipe = pipe;
-    self->config = fmq_config_new ("root", NULL);
+    self->config = zconfig_new ("root", NULL);
     client_config_self (self);
 .for class.self
 .   for construct
@@ -456,7 +456,7 @@ client_destroy (client_t **self_p)
     assert (self_p);
     if (*self_p) {
         client_t *self = *self_p;
-        fmq_config_destroy (&self->config);
+        zconfig_destroy (&self->config);
         int server_nbr;
         for (server_nbr = 0; server_nbr < self->nbr_servers; server_nbr++) {
             server_t *server = self->servers [server_nbr];
@@ -480,21 +480,21 @@ static void
 client_apply_config (client_t *self)
 {
     //  Apply echo commands and class methods
-    fmq_config_t *section = fmq_config_child (self->config);
+    zconfig_t *section = zconfig_child (self->config);
     while (section) {
-        fmq_config_t *entry = fmq_config_child (section);
+        zconfig_t *entry = zconfig_child (section);
         while (entry) {
-            if (streq (fmq_config_name (entry), "echo"))
-                zclock_log (fmq_config_value (entry));
-            entry = fmq_config_next (entry);
+            if (streq (zconfig_name (entry), "echo"))
+                zclock_log (zconfig_value (entry));
+            entry = zconfig_next (entry);
         }
 .for class.method where count (argument) > 0
-        if (streq (fmq_config_name (section), "$(name:c)")) {
+        if (streq (zconfig_name (section), "$(name:c)")) {
 .   for argument
 .       if type = "string"
-            char *$(name) = fmq_config_resolve (section, "$(name)", "?");
+            char *$(name) = zconfig_resolve (section, "$(name)", "?");
 .       elsif type = "number"
-            long $(name) = atoi (fmq_config_resolve (section, "$(name)", ""));
+            long $(name) = atoi (zconfig_resolve (section, "$(name)", ""));
 .       endif
 .   endfor
             $(string.trim (method.?''):block                                    )
@@ -503,7 +503,7 @@ client_apply_config (client_t *self)
         else
 .   endif
 .endfor
-        section = fmq_config_next (section);
+        section = zconfig_next (section);
     }
     client_config_self (self);
 }
@@ -537,13 +537,13 @@ client_control_message (client_t *self)
 .endfor
     if (streq (method, "CONFIG")) {
         char *config_file = zmsg_popstr (msg);
-        fmq_config_destroy (&self->config);
-        self->config = fmq_config_load (config_file);
+        zconfig_destroy (&self->config);
+        self->config = zconfig_load (config_file);
         if (self->config)
             client_apply_config (self);
         else {
             printf ("E: cannot load config file '%s'\\n", config_file);
-            self->config = fmq_config_new ("root", NULL);
+            self->config = zconfig_new ("root", NULL);
         }
         free (config_file);
     }
@@ -551,7 +551,7 @@ client_control_message (client_t *self)
     if (streq (method, "SETOPTION")) {
         char *path = zmsg_popstr (msg);
         char *value = zmsg_popstr (msg);
-        fmq_config_path_set (self->config, path, value);
+        zconfig_path_set (self->config, path, value);
         client_config_self (self);
         free (path);
         free (value);
