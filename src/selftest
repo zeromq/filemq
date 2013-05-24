@@ -12,7 +12,6 @@ VG="valgrind --tool=memcheck --leak-check=full --show-reachable=yes --suppressio
 gcc -g -o fmq_selftest fmq_selftest.c  \
     fmq_chunk.c \
     fmq_client.c \
-    fmq_config.c \
     fmq_dir.c \
     fmq_file.c \
     fmq_msg.c \

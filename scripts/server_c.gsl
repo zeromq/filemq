@@ -298,7 +298,7 @@ struct _server_t {
     void *router;               //  Socket to talk to clients
     zhash_t *clients;           //  Clients we've connected to
     bool stopped;               //  Has server stopped?
-    fmq_config_t *config;       //  Configuration tree
+    zconfig_t *config;          //  Configuration tree
     int monitor;                //  Monitor interval
     int64_t monitor_at;         //  Next monitor at this time
     int heartbeat;              //  Client heartbeat interval
@@ -424,9 +424,9 @@ server_config_self (server_t *self)
 {
     //  Get standard server configuration
     self->monitor = atoi (
-        fmq_config_resolve (self->config, "server/monitor", "1")) * 1000;
+        zconfig_resolve (self->config, "server/monitor", "1")) * 1000;
     self->heartbeat = atoi (
-        fmq_config_resolve (self->config, "server/heartbeat", "1")) * 1000;
+        zconfig_resolve (self->config, "server/heartbeat", "1")) * 1000;
     self->monitor_at = zclock_time () + self->monitor;
 }
 
@@ -438,7 +438,7 @@ server_new (zctx_t *ctx, void *pipe)
     self->pipe = pipe;
     self->router = zsocket_new (self->ctx, ZMQ_ROUTER);
     self->clients = zhash_new ();
-    self->config = fmq_config_new ("root", NULL);
+    self->config = zconfig_new ("root", NULL);
     server_config_self (self);
 .for class.self
 .   for construct
@@ -455,7 +455,7 @@ server_destroy (server_t **self_p)
     if (*self_p) {
         server_t *self = *self_p;
         zsocket_destroy (self->ctx, self->router);
-        fmq_config_destroy (&self->config);
+        zconfig_destroy (&self->config);
         zhash_destroy (&self->clients);
 .for class.self
 .   for destruct
@@ -475,21 +475,21 @@ static void
 server_apply_config (server_t *self)
 {
     //  Apply echo commands and class methods
-    fmq_config_t *section = fmq_config_child (self->config);
+    zconfig_t *section = zconfig_child (self->config);
     while (section) {
-        fmq_config_t *entry = fmq_config_child (section);
+        zconfig_t *entry = zconfig_child (section);
         while (entry) {
-            if (streq (fmq_config_name (entry), "echo"))
-                zclock_log (fmq_config_value (entry));
-            entry = fmq_config_next (entry);
+            if (streq (zconfig_name (entry), "echo"))
+                zclock_log (zconfig_value (entry));
+            entry = zconfig_next (entry);
         }
 .for class.method where count (argument) > 0
-        if (streq (fmq_config_name (section), "$(name:c)")) {
+        if (streq (zconfig_name (section), "$(name:c)")) {
 .   for argument
 .       if type = "string"
-            char *$(name) = fmq_config_resolve (section, "$(name)", "?");
+            char *$(name) = zconfig_resolve (section, "$(name)", "?");
 .       elsif type = "number"
-            long $(name) = atoi (fmq_config_resolve (section, "$(name)", ""));
+            long $(name) = atoi (zconfig_resolve (section, "$(name)", ""));
 .       endif
 .   endfor
             $(string.trim (method.?''):block                                    )
@@ -498,7 +498,7 @@ server_apply_config (server_t *self)
         else
 .   endif
 .endfor
-        section = fmq_config_next (section);
+        section = zconfig_next (section);
     }
     server_config_self (self);
 }
@@ -532,13 +532,13 @@ server_control_message (server_t *self)
 .endfor
     if (streq (method, "CONFIG")) {
         char *config_file = zmsg_popstr (msg);
-        fmq_config_destroy (&self->config);
-        self->config = fmq_config_load (config_file);
+        zconfig_destroy (&self->config);
+        self->config = zconfig_load (config_file);
         if (self->config)
             server_apply_config (self);
         else {
             printf ("E: cannot load config file '%s'\\n", config_file);
-            self->config = fmq_config_new ("root", NULL);
+            self->config = zconfig_new ("root", NULL);
         }
         free (config_file);
     }
@@ -546,7 +546,7 @@ server_control_message (server_t *self)
     if (streq (method, "SETOPTION")) {
         char *path = zmsg_popstr (msg);
         char *value = zmsg_popstr (msg);
-        fmq_config_path_set (self->config, path, value);
+        zconfig_path_set (self->config, path, value);
         server_config_self (self);
         free (path);
         free (value);

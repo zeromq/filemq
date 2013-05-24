@@ -7,7 +7,6 @@ include_HEADERS = \
     ../include/fmq.h \
     ../include/fmq_chunk.h \
     ../include/fmq_client.h \
-    ../include/fmq_config.h \
     ../include/fmq_dir.h \
     ../include/fmq_file.h \
     ../include/fmq_hash.h \
@@ -19,7 +18,6 @@ include_HEADERS = \
 libfmq_la_SOURCES = \
     fmq_chunk.c \
     fmq_client.c \
-    fmq_config.c \
     fmq_dir.c \
     fmq_file.c \
     fmq_hash.c \
