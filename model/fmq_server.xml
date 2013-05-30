@@ -154,12 +154,12 @@ if (client->patch == NULL) {
     return;
 }
 //  Get virtual filename from patch
-fmq_msg_filename_set (client->reply, fmq_patch_virtual (client->patch));
+fmq_msg_set_filename (client->reply, fmq_patch_virtual (client->patch));
 
 //  We can process a delete patch right away
 if (fmq_patch_op (client->patch) == patch_delete) {
-    fmq_msg_sequence_set (client->reply, client->sequence++);
-    fmq_msg_operation_set (client->reply, FMQ_MSG_FILE_DELETE);
+    fmq_msg_set_sequence (client->reply, client->sequence++);
+    fmq_msg_set_operation (client->reply, FMQ_MSG_FILE_DELETE);
     client->next_event = send_delete_event;
     
     //  No reliability in this version, assume patch delivered safely
@@ -185,10 +185,10 @@ if (fmq_patch_op (client->patch) == patch_create) {
 
     //  Check if we have the credit to send chunk
     if (fmq_chunk_size (chunk) <= client->credit) {
-        fmq_msg_sequence_set (client->reply, client->sequence++);
-        fmq_msg_operation_set (client->reply, FMQ_MSG_FILE_CREATE);
-        fmq_msg_offset_set (client->reply, client->offset);
-        fmq_msg_chunk_set (client->reply, zframe_new (
+        fmq_msg_set_sequence (client->reply, client->sequence++);
+        fmq_msg_set_operation (client->reply, FMQ_MSG_FILE_CREATE);
+        fmq_msg_set_offset (client->reply, client->offset);
+        fmq_msg_set_chunk (client->reply, zframe_new (
             fmq_chunk_data (chunk),
             fmq_chunk_size (chunk)));
         
@@ -227,7 +227,7 @@ zlist_append (self->mounts, mount);
 <method name = "set anonymous">
 <argument name = "enabled" type = "number" />
 //  Enable anonymous access without a config file
-zconfig_path_set (self->config, "security/anonymous", enabled? "1" :"0");
+zconfig_put (self->config, "security/anonymous", enabled? "1" :"0");
 </method>
 
 <include filename = "fmq_server_selftest.xml" />

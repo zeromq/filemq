@@ -3,7 +3,7 @@ fmq_client(3)
 
 NAME
 ----
-fmq_client - a FILEMQ client
+fmq_client - a filemq client
 
 SYNOPSIS
 --------
@@ -56,7 +56,7 @@ int
 DESCRIPTION
 -----------
 
-The fmq_client class implements a generic FILEMQ client.
+  the fmq_client class implements a generic filemq client.
 
 
 EXAMPLE
@@ -71,6 +71,7 @@ EXAMPLE
     fmq_client_connect (self, "tcp://localhost:6001");
     zclock_sleep (1000);                              
     fmq_client_destroy (&self);
+
 ----
 
 SEE ALSO
