@@ -348,7 +348,7 @@ client_new (zframe_t *address)
     self->hashkey = zframe_strhex (address);
     self->address = zframe_dup (address);
     self->reply = $(codec)_new (0);
-    $(codec)_address_set (self->reply, self->address);
+    $(codec)_set_address (self->reply, self->address);
 .for class.client
 .   for construct
     $(string.trim (construct.?''):block                                         )
@@ -546,7 +546,7 @@ server_control_message (server_t *self)
     if (streq (method, "SETOPTION")) {
         char *path = zmsg_popstr (msg);
         char *value = zmsg_popstr (msg);
-        zconfig_path_set (self->config, path, value);
+        zconfig_put (self->config, path, value);
         server_config_self (self);
         free (path);
         free (value);
@@ -566,14 +566,14 @@ server_control_message (server_t *self)
 .           if switches.animate ?= 1
                     zclock_log ("S:    + send $(MESSAGE:C)");
 .           endif
-                    $(codec)_id_set (client->reply, $(CODEC)_$(MESSAGE:C));
+                    $(codec)_set_id (client->reply, $(CODEC)_$(MESSAGE:C));
 .if switches.trace ?= 1
                     zclock_log ("Send message to client");
                     $(codec)_dump (client->reply);
 .endif
                     $(codec)_send (&client->reply, client->router);
                     client->reply = $(codec)_new (0);
-                    $(codec)_address_set (client->reply, client->address);
+                    $(codec)_set_address (client->reply, client->address);
 .       else
 .           if switches.animate ?= 1
                     zclock_log ("S:    + $(name)");

@@ -138,13 +138,13 @@ void
 zframe_t *
     $(class.name)_address ($(class.name)_t *self);
 void
-    $(class.name)_address_set ($(class.name)_t *self, zframe_t *address);
+    $(class.name)_set_address ($(class.name)_t *self, zframe_t *address);
 
 //  Get the $(class.name) id and printable command
 int
     $(class.name)_id ($(class.name)_t *self);
 void
-    $(class.name)_id_set ($(class.name)_t *self, int id);
+    $(class.name)_set_id ($(class.name)_t *self, int id);
 char *
     $(class.name)_command ($(class.name)_t *self);
 
@@ -154,28 +154,28 @@ char *
 $(ctype)
     $(class.name)_$(name) ($(class.name)_t *self);
 void
-    $(class.name)_$(name)_set ($(class.name)_t *self, $(ctype) $(name));
+    $(class.name)_set_$(name) ($(class.name)_t *self, $(ctype) $(name));
 .#
 .   elsif type = "octets"
 //  Get/set the $(name) field
 byte *
     $(class.name)_$(name) ($(class.name)_t *self);
 void
-    $(class.name)_$(name)_set ($(class.name)_t *self, byte *$(name));
+    $(class.name)_set_$(name) ($(class.name)_t *self, byte *$(name));
 .#
 .   elsif type = "string"
 //  Get/set the $(name) field
 char *
     $(class.name)_$(name) ($(class.name)_t *self);
 void
-    $(class.name)_$(name)_set ($(class.name)_t *self, char *format, ...);
+    $(class.name)_set_$(name) ($(class.name)_t *self, char *format, ...);
 .#
 .   elsif type = "strings"
 //  Get/set the $(name) field
 zlist_t *
     $(class.name)_$(name) ($(class.name)_t *self);
 void
-    $(class.name)_$(name)_set ($(class.name)_t *self, zlist_t *$(name));
+    $(class.name)_set_$(name) ($(class.name)_t *self, zlist_t *$(name));
 
 //  Iterate through the $(name) field, and append a $(name) value
 char *
@@ -192,7 +192,7 @@ size_t
 zhash_t *
     $(class.name)_$(name) ($(class.name)_t *self);
 void
-    $(class.name)_$(name)_set ($(class.name)_t *self, zhash_t *$(name));
+    $(class.name)_set_$(name) ($(class.name)_t *self, zhash_t *$(name));
     
 //  Get/set a value in the $(name) dictionary
 char *
@@ -209,7 +209,7 @@ size_t
 zframe_t *
     $(class.name)_$(name) ($(class.name)_t *self);
 void
-    $(class.name)_$(name)_set ($(class.name)_t *self, zframe_t *frame);
+    $(class.name)_set_$(name) ($(class.name)_t *self, zframe_t *frame);
 .#
 .   else
 .       echo "E: unknown type '$(type)' for field '$(name)'"
@@ -765,13 +765,13 @@ $(class.name)_send_$(name) (
     $(class.name)_t *self = $(class.name)_new ($(class.NAME)_$(NAME));
 .for field where !defined (value)
 .   if type = "number" | type = "octets" | type = "string"
-    $(class.name)_$(name)_set (self, $(name));
+    $(class.name)_set_$(name) (self, $(name));
 .   elsif type = "strings"
-    $(class.name)_$(name)_set (self, zlist_dup ($(name)));
+    $(class.name)_set_$(name) (self, zlist_dup ($(name)));
 .   elsif type = "dictionary"
-    $(class.name)_$(name)_set (self, zhash_dup ($(name)));
+    $(class.name)_set_$(name) (self, zhash_dup ($(name)));
 .   elsif type = "frame"
-    $(class.name)_$(name)_set (self, zframe_dup ($(name)));
+    $(class.name)_set_$(name) (self, zframe_dup ($(name)));
 .   endif
 .endfor
     return $(class.name)_send (&self, output);
@@ -916,7 +916,7 @@ $(class.name)_address ($(class.name)_t *self)
 }
 
 void
-$(class.name)_address_set ($(class.name)_t *self, zframe_t *address)
+$(class.name)_set_address ($(class.name)_t *self, zframe_t *address)
 {
     if (self->address)
         zframe_destroy (&self->address);
@@ -935,7 +935,7 @@ $(class.name)_id ($(class.name)_t *self)
 }
 
 void
-$(class.name)_id_set ($(class.name)_t *self, int id)
+$(class.name)_set_id ($(class.name)_t *self, int id)
 {
     self->id = id;
 }
@@ -970,7 +970,7 @@ $(class.name)_$(name) ($(class.name)_t *self)
 }
 
 void
-$(class.name)_$(name)_set ($(class.name)_t *self, $(ctype) $(name))
+$(class.name)_set_$(name) ($(class.name)_t *self, $(ctype) $(name))
 {
     assert (self);
     self->$(name) = $(name);
@@ -988,7 +988,7 @@ $(class.name)_$(name) ($(class.name)_t *self)
 }
 
 void
-$(class.name)_$(name)_set ($(class.name)_t *self, byte *$(name))
+$(class.name)_set_$(name) ($(class.name)_t *self, byte *$(name))
 {
     assert (self);
     memcpy (self->$(name), $(name), $(size));
@@ -1006,7 +1006,7 @@ $(class.name)_$(name) ($(class.name)_t *self)
 }
 
 void
-$(class.name)_$(name)_set ($(class.name)_t *self, char *format, ...)
+$(class.name)_set_$(name) ($(class.name)_t *self, char *format, ...)
 {
     //  Format into newly allocated string
     assert (self);
@@ -1034,7 +1034,7 @@ $(class.name)_$(name) ($(class.name)_t *self)
 //  then use zlist_dup() to pass a copy of $(name)
 
 void
-$(class.name)_$(name)_set ($(class.name)_t *self, zlist_t *$(name))
+$(class.name)_set_$(name) ($(class.name)_t *self, zlist_t *$(name))
 {
     assert (self);
     zlist_destroy (&self->$(name));
@@ -1106,7 +1106,7 @@ $(class.name)_$(name) ($(class.name)_t *self)
 //  then use zhash_dup() to pass a copy of $(name)
 
 void
-$(class.name)_$(name)_set ($(class.name)_t *self, zhash_t *$(name))
+$(class.name)_set_$(name) ($(class.name)_t *self, zhash_t *$(name))
 {
     assert (self);
     zhash_destroy (&self->$(name));
@@ -1183,7 +1183,7 @@ $(class.name)_$(name) ($(class.name)_t *self)
 
 //  Takes ownership of supplied frame
 void
-$(class.name)_$(name)_set ($(class.name)_t *self, zframe_t *frame)
+$(class.name)_set_$(name) ($(class.name)_t *self, zframe_t *frame)
 {
     assert (self);
     if (self->$(name))
@@ -1225,13 +1225,13 @@ $(class.name)_test (bool verbose)
     self = $(class.name)_new ($(CLASS.NAME)_$(MESSAGE.NAME));
 .   for field where !defined (value)
 .       if type = "number"
-    $(class.name)_$(name)_set (self, 123);
+    $(class.name)_set_$(name) (self, 123);
 .       elsif type = "octets"
     byte $(name)_data [$(CLASS.NAME)_$(FIELD.NAME)_SIZE];
     memset ($(name)_data, 123, $(CLASS.NAME)_$(FIELD.NAME)_SIZE);
-    $(class.name)_$(name)_set (self, $(name)_data);
+    $(class.name)_set_$(name) (self, $(name)_data);
 .       elsif type = "string"
-    $(class.name)_$(name)_set (self, "Life is short but Now lasts for ever");
+    $(class.name)_set_$(name) (self, "Life is short but Now lasts for ever");
 .       elsif type = "strings"
     $(class.name)_$(name)_append (self, "Name: %s", "Brutus");
     $(class.name)_$(name)_append (self, "Age: %d", 43);
@@ -1239,7 +1239,7 @@ $(class.name)_test (bool verbose)
     $(class.name)_$(name)_insert (self, "Name", "Brutus");
     $(class.name)_$(name)_insert (self, "Age", "%d", 43);
 .       elsif type = "frame"
-    $(class.name)_$(name)_set (self, zframe_new ("Captcha Diem", 12));
+    $(class.name)_set_$(name) (self, zframe_new ("Captcha Diem", 12));
 .       endif
 .   endfor
     $(class.name)_send (&self, output);

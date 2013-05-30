@@ -507,7 +507,7 @@ client_new (zframe_t *address)
     self->hashkey = zframe_strhex (address);
     self->address = zframe_dup (address);
     self->reply = fmq_msg_new (0);
-    fmq_msg_address_set (self->reply, self->address);
+    fmq_msg_set_address (self->reply, self->address);
     self->patches = zlist_new ();
     return self;
 }
@@ -649,8 +649,8 @@ server_apply_config (server_t *self)
         else
         if (streq (zconfig_name (section), "set_anonymous")) {
             long enabled = atoi (zconfig_resolve (section, "enabled", ""));
-            //  Enable anonymous access without a config file                        
-            zconfig_path_set (self->config, "security/anonymous", enabled? "1" :"0");
+            //  Enable anonymous access without a config file                   
+            zconfig_put (self->config, "security/anonymous", enabled? "1" :"0");
         }
         section = zconfig_next (section);
     }
@@ -683,8 +683,8 @@ server_control_message (server_t *self)
         char *enabled_string = zmsg_popstr (msg);
         long enabled = atoi (enabled_string);
         free (enabled_string);
-        //  Enable anonymous access without a config file                        
-        zconfig_path_set (self->config, "security/anonymous", enabled? "1" :"0");
+        //  Enable anonymous access without a config file                   
+        zconfig_put (self->config, "security/anonymous", enabled? "1" :"0");
     }
     else
     if (streq (method, "CONFIG")) {
@@ -703,7 +703,7 @@ server_control_message (server_t *self)
     if (streq (method, "SETOPTION")) {
         char *path = zmsg_popstr (msg);
         char *value = zmsg_popstr (msg);
-        zconfig_path_set (self->config, path, value);
+        zconfig_put (self->config, path, value);
         server_config_self (self);
         free (path);
         free (value);
@@ -822,12 +822,12 @@ get_next_patch_for_client (server_t *self, client_t *client)
         return;                                                                       
     }                                                                                 
     //  Get virtual filename from patch                                               
-    fmq_msg_filename_set (client->reply, fmq_patch_virtual (client->patch));          
+    fmq_msg_set_filename (client->reply, fmq_patch_virtual (client->patch));          
                                                                                       
     //  We can process a delete patch right away                                      
     if (fmq_patch_op (client->patch) == patch_delete) {                               
-        fmq_msg_sequence_set (client->reply, client->sequence++);                     
-        fmq_msg_operation_set (client->reply, FMQ_MSG_FILE_DELETE);                   
+        fmq_msg_set_sequence (client->reply, client->sequence++);                     
+        fmq_msg_set_operation (client->reply, FMQ_MSG_FILE_DELETE);                   
         client->next_event = send_delete_event;                                       
                                                                                       
         //  No reliability in this version, assume patch delivered safely             
@@ -853,10 +853,10 @@ get_next_patch_for_client (server_t *self, client_t *client)
                                                                                       
         //  Check if we have the credit to send chunk                                 
         if (fmq_chunk_size (chunk) <= client->credit) {                               
-            fmq_msg_sequence_set (client->reply, client->sequence++);                 
-            fmq_msg_operation_set (client->reply, FMQ_MSG_FILE_CREATE);               
-            fmq_msg_offset_set (client->reply, client->offset);                       
-            fmq_msg_chunk_set (client->reply, zframe_new (                            
+            fmq_msg_set_sequence (client->reply, client->sequence++);                 
+            fmq_msg_set_operation (client->reply, FMQ_MSG_FILE_CREATE);               
+            fmq_msg_set_offset (client->reply, client->offset);                       
+            fmq_msg_set_chunk (client->reply, zframe_new (                            
                 fmq_chunk_data (chunk),                                               
                 fmq_chunk_size (chunk)));                                             
                                                                                       
@@ -900,37 +900,37 @@ server_client_execute (server_t *self, client_t *client, int event)
                 }
                 else {
                     //  Process all other events
-                    fmq_msg_id_set (client->reply, FMQ_MSG_RTFM);
+                    fmq_msg_set_id (client->reply, FMQ_MSG_RTFM);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
-                    fmq_msg_address_set (client->reply, client->address);
+                    fmq_msg_set_address (client->reply, client->address);
                     terminate_the_client (self, client);
                 }
                 break;
 
             case checking_client_state:
                 if (client->event == friend_event) {
-                    fmq_msg_id_set (client->reply, FMQ_MSG_OHAI_OK);
+                    fmq_msg_set_id (client->reply, FMQ_MSG_OHAI_OK);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
-                    fmq_msg_address_set (client->reply, client->address);
+                    fmq_msg_set_address (client->reply, client->address);
                     client->state = ready_state;
                 }
                 else
                 if (client->event == foe_event) {
-                    fmq_msg_id_set (client->reply, FMQ_MSG_SRSLY);
+                    fmq_msg_set_id (client->reply, FMQ_MSG_SRSLY);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
-                    fmq_msg_address_set (client->reply, client->address);
+                    fmq_msg_set_address (client->reply, client->address);
                     terminate_the_client (self, client);
                 }
                 else
                 if (client->event == maybe_event) {
                     list_security_mechanisms (self, client);
-                    fmq_msg_id_set (client->reply, FMQ_MSG_ORLY);
+                    fmq_msg_set_id (client->reply, FMQ_MSG_ORLY);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
-                    fmq_msg_address_set (client->reply, client->address);
+                    fmq_msg_set_address (client->reply, client->address);
                     client->state = challenging_client_state;
                 }
                 else
@@ -947,10 +947,10 @@ server_client_execute (server_t *self, client_t *client, int event)
                 }
                 else {
                     //  Process all other events
-                    fmq_msg_id_set (client->reply, FMQ_MSG_RTFM);
+                    fmq_msg_set_id (client->reply, FMQ_MSG_RTFM);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
-                    fmq_msg_address_set (client->reply, client->address);
+                    fmq_msg_set_address (client->reply, client->address);
                     terminate_the_client (self, client);
                 }
                 break;
@@ -974,10 +974,10 @@ server_client_execute (server_t *self, client_t *client, int event)
                 }
                 else {
                     //  Process all other events
-                    fmq_msg_id_set (client->reply, FMQ_MSG_RTFM);
+                    fmq_msg_set_id (client->reply, FMQ_MSG_RTFM);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
-                    fmq_msg_address_set (client->reply, client->address);
+                    fmq_msg_set_address (client->reply, client->address);
                     terminate_the_client (self, client);
                 }
                 break;
@@ -985,10 +985,10 @@ server_client_execute (server_t *self, client_t *client, int event)
             case ready_state:
                 if (client->event == icanhaz_event) {
                     store_client_subscription (self, client);
-                    fmq_msg_id_set (client->reply, FMQ_MSG_ICANHAZ_OK);
+                    fmq_msg_set_id (client->reply, FMQ_MSG_ICANHAZ_OK);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
-                    fmq_msg_address_set (client->reply, client->address);
+                    fmq_msg_set_address (client->reply, client->address);
                 }
                 else
                 if (client->event == nom_event) {
@@ -998,10 +998,10 @@ server_client_execute (server_t *self, client_t *client, int event)
                 }
                 else
                 if (client->event == hugz_event) {
-                    fmq_msg_id_set (client->reply, FMQ_MSG_HUGZ_OK);
+                    fmq_msg_set_id (client->reply, FMQ_MSG_HUGZ_OK);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
-                    fmq_msg_address_set (client->reply, client->address);
+                    fmq_msg_set_address (client->reply, client->address);
                 }
                 else
                 if (client->event == kthxbai_event) {
@@ -1014,10 +1014,10 @@ server_client_execute (server_t *self, client_t *client, int event)
                 }
                 else
                 if (client->event == heartbeat_event) {
-                    fmq_msg_id_set (client->reply, FMQ_MSG_HUGZ);
+                    fmq_msg_set_id (client->reply, FMQ_MSG_HUGZ);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
-                    fmq_msg_address_set (client->reply, client->address);
+                    fmq_msg_set_address (client->reply, client->address);
                 }
                 else
                 if (client->event == expired_event) {
@@ -1030,28 +1030,28 @@ server_client_execute (server_t *self, client_t *client, int event)
                 }
                 else {
                     //  Process all other events
-                    fmq_msg_id_set (client->reply, FMQ_MSG_RTFM);
+                    fmq_msg_set_id (client->reply, FMQ_MSG_RTFM);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
-                    fmq_msg_address_set (client->reply, client->address);
+                    fmq_msg_set_address (client->reply, client->address);
                     terminate_the_client (self, client);
                 }
                 break;
 
             case dispatching_state:
                 if (client->event == send_chunk_event) {
-                    fmq_msg_id_set (client->reply, FMQ_MSG_CHEEZBURGER);
+                    fmq_msg_set_id (client->reply, FMQ_MSG_CHEEZBURGER);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
-                    fmq_msg_address_set (client->reply, client->address);
+                    fmq_msg_set_address (client->reply, client->address);
                     get_next_patch_for_client (self, client);
                 }
                 else
                 if (client->event == send_delete_event) {
-                    fmq_msg_id_set (client->reply, FMQ_MSG_CHEEZBURGER);
+                    fmq_msg_set_id (client->reply, FMQ_MSG_CHEEZBURGER);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
-                    fmq_msg_address_set (client->reply, client->address);
+                    fmq_msg_set_address (client->reply, client->address);
                     get_next_patch_for_client (self, client);
                 }
                 else
@@ -1080,10 +1080,10 @@ server_client_execute (server_t *self, client_t *client, int event)
                 }
                 else {
                     //  Process all other events
-                    fmq_msg_id_set (client->reply, FMQ_MSG_RTFM);
+                    fmq_msg_set_id (client->reply, FMQ_MSG_RTFM);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
-                    fmq_msg_address_set (client->reply, client->address);
+                    fmq_msg_set_address (client->reply, client->address);
                     terminate_the_client (self, client);
                 }
                 break;
@@ -1280,8 +1280,8 @@ fmq_server_test (bool verbose)
     fmq_msg_destroy (&reply);
 
     request = fmq_msg_new (FMQ_MSG_YARLY);
-    fmq_msg_mechanism_set (request, "PLAIN");                                
-    fmq_msg_response_set (request, fmq_sasl_plain_encode ("guest", "guest"));
+    fmq_msg_set_mechanism (request, "PLAIN");                                
+    fmq_msg_set_response (request, fmq_sasl_plain_encode ("guest", "guest"));
     fmq_msg_send (&request, dealer);
     reply = fmq_msg_recv (dealer);
     assert (reply);

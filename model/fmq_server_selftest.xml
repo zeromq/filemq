@@ -27,8 +27,8 @@ assert (port == 5670);
     </init>
     <step send = "OHAI" recv = "ORLY" />
     <step send = "YARLY" recv = "OHAI-OK">
-fmq_msg_mechanism_set (request, "PLAIN");
-fmq_msg_response_set (request, fmq_sasl_plain_encode ("guest", "guest"));
+fmq_msg_set_mechanism (request, "PLAIN");
+fmq_msg_set_response (request, fmq_sasl_plain_encode ("guest", "guest"));
     </step>
     <step send = "NOM" />
     <step send = "HUGZ" recv = "HUGZ-OK" />
