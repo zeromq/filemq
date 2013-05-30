@@ -1,5 +1,4 @@
-<class name = "fmq_msg" signature = "3" title = "work with FILEMQ messages"
-  short = "The fmq_msg class represents FILEMQ messages." >
+<class name = "fmq_msg" signature = "3" title = "work with FILEMQ messages">
 This is the FILEMQ protocol version 1.0
 <include filename = "license.xml" />
 

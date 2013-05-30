@@ -25,7 +25,7 @@
 
 /*
 @header
-    the fmq_msg class represents filemq messages.
+    fmq_msg - work with filemq messages
 @discuss
 @end
 */

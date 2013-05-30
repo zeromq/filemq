@@ -239,7 +239,7 @@ int
 
 /*
 @header
-    $(class.short)
+    $(class.name) - $(class.title)
 @discuss
 @end
 */
