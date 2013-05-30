@@ -3,7 +3,7 @@ fmq_server(3)
 
 NAME
 ----
-fmq_server - a FILEMQ server
+fmq_server - a filemq server
 
 SYNOPSIS
 --------
@@ -44,127 +44,13 @@ int
 DESCRIPTION
 -----------
 
-The fmq_server class implements a generic FILEMQ server.
+the fmq_server class implements a generic filemq server.
 
 
 EXAMPLE
 -------
 .From fmq_server_test method
 ----
-    zctx_t *ctx = zctx_new ();
-    
-    fmq_server_t *self;
-    void *dealer = zsocket_new (ctx, ZMQ_DEALER);
-    zsocket_set_rcvtimeo (dealer, 2000);
-    zsocket_connect (dealer, "tcp://localhost:5670");
-    
-    fmq_msg_t *request, *reply;
-    
-    //  Run selftest using '' configuration
-    self = fmq_server_new ();
-    assert (self);
-    int port = fmq_server_bind (self, "tcp://*:5670");
-    assert (port == 5670);                            
-    request = fmq_msg_new (FMQ_MSG_OHAI);
-    fmq_msg_send (&request, dealer);
-    reply = fmq_msg_recv (dealer);
-    assert (reply);
-    assert (fmq_msg_id (reply) == FMQ_MSG_SRSLY);
-    fmq_msg_destroy (&reply);
-
-    request = fmq_msg_new (FMQ_MSG_ICANHAZ);
-    fmq_msg_send (&request, dealer);
-    reply = fmq_msg_recv (dealer);
-    assert (reply);
-    assert (fmq_msg_id (reply) == FMQ_MSG_RTFM);
-    fmq_msg_destroy (&reply);
-
-    request = fmq_msg_new (FMQ_MSG_NOM);
-    fmq_msg_send (&request, dealer);
-    reply = fmq_msg_recv (dealer);
-    assert (reply);
-    assert (fmq_msg_id (reply) == FMQ_MSG_RTFM);
-    fmq_msg_destroy (&reply);
-
-    request = fmq_msg_new (FMQ_MSG_HUGZ);
-    fmq_msg_send (&request, dealer);
-    reply = fmq_msg_recv (dealer);
-    assert (reply);
-    assert (fmq_msg_id (reply) == FMQ_MSG_RTFM);
-    fmq_msg_destroy (&reply);
-
-    fmq_server_destroy (&self);
-    //  Run selftest using 'anonymous.cfg' configuration
-    self = fmq_server_new ();
-    assert (self);
-    fmq_server_configure (self, "anonymous.cfg");
-    port = fmq_server_bind (self, "tcp://*:5670");
-    assert (port == 5670);                        
-    request = fmq_msg_new (FMQ_MSG_OHAI);
-    fmq_msg_send (&request, dealer);
-    reply = fmq_msg_recv (dealer);
-    assert (reply);
-    assert (fmq_msg_id (reply) == FMQ_MSG_OHAI_OK);
-    fmq_msg_destroy (&reply);
-
-    request = fmq_msg_new (FMQ_MSG_NOM);
-    fmq_msg_send (&request, dealer);
-
-    request = fmq_msg_new (FMQ_MSG_HUGZ);
-    fmq_msg_send (&request, dealer);
-    reply = fmq_msg_recv (dealer);
-    assert (reply);
-    assert (fmq_msg_id (reply) == FMQ_MSG_HUGZ_OK);
-    fmq_msg_destroy (&reply);
-
-    request = fmq_msg_new (FMQ_MSG_YARLY);
-    fmq_msg_send (&request, dealer);
-    reply = fmq_msg_recv (dealer);
-    assert (reply);
-    assert (fmq_msg_id (reply) == FMQ_MSG_RTFM);
-    fmq_msg_destroy (&reply);
-
-    fmq_server_destroy (&self);
-    //  Run selftest using 'server_test.cfg' configuration
-    self = fmq_server_new ();
-    assert (self);
-    fmq_server_configure (self, "server_test.cfg");
-    port = fmq_server_bind (self, "tcp://*:5670");
-    assert (port == 5670);                        
-    request = fmq_msg_new (FMQ_MSG_OHAI);
-    fmq_msg_send (&request, dealer);
-    reply = fmq_msg_recv (dealer);
-    assert (reply);
-    assert (fmq_msg_id (reply) == FMQ_MSG_ORLY);
-    fmq_msg_destroy (&reply);
-
-    request = fmq_msg_new (FMQ_MSG_YARLY);
-    fmq_msg_mechanism_set (request, "PLAIN");                                
-    fmq_msg_response_set (request, fmq_sasl_plain_encode ("guest", "guest"));
-    fmq_msg_send (&request, dealer);
-    reply = fmq_msg_recv (dealer);
-    assert (reply);
-    assert (fmq_msg_id (reply) == FMQ_MSG_OHAI_OK);
-    fmq_msg_destroy (&reply);
-
-    request = fmq_msg_new (FMQ_MSG_NOM);
-    fmq_msg_send (&request, dealer);
-
-    request = fmq_msg_new (FMQ_MSG_HUGZ);
-    fmq_msg_send (&request, dealer);
-    reply = fmq_msg_recv (dealer);
-    assert (reply);
-    assert (fmq_msg_id (reply) == FMQ_MSG_HUGZ_OK);
-    fmq_msg_destroy (&reply);
-
-    reply = fmq_msg_recv (dealer);
-    assert (reply);
-    assert (fmq_msg_id (reply) == FMQ_MSG_HUGZ);
-    fmq_msg_destroy (&reply);
-
-    fmq_server_destroy (&self);
-
-    zctx_destroy (&ctx);
 ----
 
 SEE ALSO

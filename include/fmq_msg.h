@@ -186,13 +186,13 @@ void
 zframe_t *
     fmq_msg_address (fmq_msg_t *self);
 void
-    fmq_msg_address_set (fmq_msg_t *self, zframe_t *address);
+    fmq_msg_set_address (fmq_msg_t *self, zframe_t *address);
 
 //  Get the fmq_msg id and printable command
 int
     fmq_msg_id (fmq_msg_t *self);
 void
-    fmq_msg_id_set (fmq_msg_t *self, int id);
+    fmq_msg_set_id (fmq_msg_t *self, int id);
 char *
     fmq_msg_command (fmq_msg_t *self);
 
@@ -200,7 +200,7 @@ char *
 zlist_t *
     fmq_msg_mechanisms (fmq_msg_t *self);
 void
-    fmq_msg_mechanisms_set (fmq_msg_t *self, zlist_t *mechanisms);
+    fmq_msg_set_mechanisms (fmq_msg_t *self, zlist_t *mechanisms);
 
 //  Iterate through the mechanisms field, and append a mechanisms value
 char *
@@ -216,31 +216,31 @@ size_t
 zframe_t *
     fmq_msg_challenge (fmq_msg_t *self);
 void
-    fmq_msg_challenge_set (fmq_msg_t *self, zframe_t *frame);
+    fmq_msg_set_challenge (fmq_msg_t *self, zframe_t *frame);
 
 //  Get/set the mechanism field
 char *
     fmq_msg_mechanism (fmq_msg_t *self);
 void
-    fmq_msg_mechanism_set (fmq_msg_t *self, char *format, ...);
+    fmq_msg_set_mechanism (fmq_msg_t *self, char *format, ...);
 
 //  Get/set the response field
 zframe_t *
     fmq_msg_response (fmq_msg_t *self);
 void
-    fmq_msg_response_set (fmq_msg_t *self, zframe_t *frame);
+    fmq_msg_set_response (fmq_msg_t *self, zframe_t *frame);
 
 //  Get/set the path field
 char *
     fmq_msg_path (fmq_msg_t *self);
 void
-    fmq_msg_path_set (fmq_msg_t *self, char *format, ...);
+    fmq_msg_set_path (fmq_msg_t *self, char *format, ...);
 
 //  Get/set the options field
 zhash_t *
     fmq_msg_options (fmq_msg_t *self);
 void
-    fmq_msg_options_set (fmq_msg_t *self, zhash_t *options);
+    fmq_msg_set_options (fmq_msg_t *self, zhash_t *options);
     
 //  Get/set a value in the options dictionary
 char *
@@ -256,7 +256,7 @@ size_t
 zhash_t *
     fmq_msg_cache (fmq_msg_t *self);
 void
-    fmq_msg_cache_set (fmq_msg_t *self, zhash_t *cache);
+    fmq_msg_set_cache (fmq_msg_t *self, zhash_t *cache);
     
 //  Get/set a value in the cache dictionary
 char *
@@ -272,43 +272,43 @@ size_t
 uint64_t
     fmq_msg_credit (fmq_msg_t *self);
 void
-    fmq_msg_credit_set (fmq_msg_t *self, uint64_t credit);
+    fmq_msg_set_credit (fmq_msg_t *self, uint64_t credit);
 
 //  Get/set the sequence field
 uint64_t
     fmq_msg_sequence (fmq_msg_t *self);
 void
-    fmq_msg_sequence_set (fmq_msg_t *self, uint64_t sequence);
+    fmq_msg_set_sequence (fmq_msg_t *self, uint64_t sequence);
 
 //  Get/set the operation field
 byte
     fmq_msg_operation (fmq_msg_t *self);
 void
-    fmq_msg_operation_set (fmq_msg_t *self, byte operation);
+    fmq_msg_set_operation (fmq_msg_t *self, byte operation);
 
 //  Get/set the filename field
 char *
     fmq_msg_filename (fmq_msg_t *self);
 void
-    fmq_msg_filename_set (fmq_msg_t *self, char *format, ...);
+    fmq_msg_set_filename (fmq_msg_t *self, char *format, ...);
 
 //  Get/set the offset field
 uint64_t
     fmq_msg_offset (fmq_msg_t *self);
 void
-    fmq_msg_offset_set (fmq_msg_t *self, uint64_t offset);
+    fmq_msg_set_offset (fmq_msg_t *self, uint64_t offset);
 
 //  Get/set the eof field
 byte
     fmq_msg_eof (fmq_msg_t *self);
 void
-    fmq_msg_eof_set (fmq_msg_t *self, byte eof);
+    fmq_msg_set_eof (fmq_msg_t *self, byte eof);
 
 //  Get/set the headers field
 zhash_t *
     fmq_msg_headers (fmq_msg_t *self);
 void
-    fmq_msg_headers_set (fmq_msg_t *self, zhash_t *headers);
+    fmq_msg_set_headers (fmq_msg_t *self, zhash_t *headers);
     
 //  Get/set a value in the headers dictionary
 char *
@@ -324,13 +324,13 @@ size_t
 zframe_t *
     fmq_msg_chunk (fmq_msg_t *self);
 void
-    fmq_msg_chunk_set (fmq_msg_t *self, zframe_t *frame);
+    fmq_msg_set_chunk (fmq_msg_t *self, zframe_t *frame);
 
 //  Get/set the reason field
 char *
     fmq_msg_reason (fmq_msg_t *self);
 void
-    fmq_msg_reason_set (fmq_msg_t *self, char *format, ...);
+    fmq_msg_set_reason (fmq_msg_t *self, char *format, ...);
 
 //  Self test of this class
 int

@@ -415,13 +415,13 @@ client_apply_config (client_t *self)
         else
         if (streq (zconfig_name (section), "set_inbox")) {
             char *path = zconfig_resolve (section, "path", "?");
-            zconfig_path_set (self->config, "client/inbox", path);
+            zconfig_put (self->config, "client/inbox", path);
         }
         else
         if (streq (zconfig_name (section), "set_resync")) {
             long enabled = atoi (zconfig_resolve (section, "enabled", ""));
-            //  Request resynchronization from server                           
-            zconfig_path_set (self->config, "client/resync", enabled? "1" :"0");
+            //  Request resynchronization from server                      
+            zconfig_put (self->config, "client/resync", enabled? "1" :"0");
         }
         section = zconfig_next (section);
     }
@@ -457,7 +457,7 @@ client_control_message (client_t *self)
     else
     if (streq (method, "SET INBOX")) {
         char *path = zmsg_popstr (msg);
-        zconfig_path_set (self->config, "client/inbox", path);
+        zconfig_put (self->config, "client/inbox", path);
         free (path);
     }
     else
@@ -465,8 +465,8 @@ client_control_message (client_t *self)
         char *enabled_string = zmsg_popstr (msg);
         long enabled = atoi (enabled_string);
         free (enabled_string);
-        //  Request resynchronization from server                           
-        zconfig_path_set (self->config, "client/resync", enabled? "1" :"0");
+        //  Request resynchronization from server                      
+        zconfig_put (self->config, "client/resync", enabled? "1" :"0");
     }
     else
     if (streq (method, "CONFIG")) {
@@ -485,7 +485,7 @@ client_control_message (client_t *self)
     if (streq (method, "SETOPTION")) {
         char *path = zmsg_popstr (msg);
         char *value = zmsg_popstr (msg);
-        zconfig_path_set (self->config, path, value);
+        zconfig_put (self->config, path, value);
         client_config_self (self);
         free (path);
         free (value);
@@ -521,8 +521,8 @@ try_security_mechanism (client_t *self, server_t *server)
     char *login = zconfig_resolve (self->config, "security/plain/login", "guest"); 
     char *password = zconfig_resolve (self->config, "security/plain/password", "");
     zframe_t *frame = fmq_sasl_plain_encode (login, password);                     
-    fmq_msg_mechanism_set (server->request, "PLAIN");                              
-    fmq_msg_response_set  (server->request, frame);                                
+    fmq_msg_set_mechanism (server->request, "PLAIN");                              
+    fmq_msg_set_response  (server->request, frame);                                
 }
 
 static void
@@ -554,11 +554,11 @@ get_next_subscription (client_t *self, server_t *server)
 static void
 format_icanhaz_command (client_t *self, server_t *server)
 {
-    fmq_msg_path_set (server->request, self->sub->path);                   
+    fmq_msg_set_path (server->request, self->sub->path);                   
     //  If client app wants full resync, send cache to server              
     if (atoi (zconfig_resolve (self->config, "client/resync", "0")) == 1) {
         fmq_msg_options_insert (server->request, "RESYNC", "1");           
-        fmq_msg_cache_set (server->request, sub_cache (self->sub));        
+        fmq_msg_set_cache (server->request, sub_cache (self->sub));        
     }                                                                      
 }
 
@@ -572,7 +572,7 @@ refill_credit_as_needed (client_t *self, server_t *server)
         server->credit += CREDIT_SLICE;                      
     }                                                        
     if (credit_to_send) {                                    
-        fmq_msg_credit_set (server->request, credit_to_send);
+        fmq_msg_set_credit (server->request, credit_to_send);
         server->next_event = send_credit_event;              
     }                                                        
 }
@@ -650,7 +650,7 @@ client_server_execute (client_t *self, server_t *server, int event)
         switch (server->state) {
             case start_state:
                 if (server->event == initialize_event) {
-                    fmq_msg_id_set (server->request, FMQ_MSG_OHAI);
+                    fmq_msg_set_id (server->request, FMQ_MSG_OHAI);
                     fmq_msg_send (&server->request, server->dealer);
                     server->request = fmq_msg_new (0);
                     server->state = requesting_access_state;
@@ -675,7 +675,7 @@ client_server_execute (client_t *self, server_t *server, int event)
             case requesting_access_state:
                 if (server->event == orly_event) {
                     try_security_mechanism (self, server);
-                    fmq_msg_id_set (server->request, FMQ_MSG_YARLY);
+                    fmq_msg_set_id (server->request, FMQ_MSG_YARLY);
                     fmq_msg_send (&server->request, server->dealer);
                     server->request = fmq_msg_new (0);
                     server->state = requesting_access_state;
@@ -704,7 +704,7 @@ client_server_execute (client_t *self, server_t *server, int event)
             case subscribing_state:
                 if (server->event == ok_event) {
                     format_icanhaz_command (self, server);
-                    fmq_msg_id_set (server->request, FMQ_MSG_ICANHAZ);
+                    fmq_msg_set_id (server->request, FMQ_MSG_ICANHAZ);
                     fmq_msg_send (&server->request, server->dealer);
                     server->request = fmq_msg_new (0);
                     get_next_subscription (self, server);
@@ -739,13 +739,13 @@ client_server_execute (client_t *self, server_t *server, int event)
                 }
                 else
                 if (server->event == hugz_event) {
-                    fmq_msg_id_set (server->request, FMQ_MSG_HUGZ_OK);
+                    fmq_msg_set_id (server->request, FMQ_MSG_HUGZ_OK);
                     fmq_msg_send (&server->request, server->dealer);
                     server->request = fmq_msg_new (0);
                 }
                 else
                 if (server->event == send_credit_event) {
-                    fmq_msg_id_set (server->request, FMQ_MSG_NOM);
+                    fmq_msg_set_id (server->request, FMQ_MSG_NOM);
                     fmq_msg_send (&server->request, server->dealer);
                     server->request = fmq_msg_new (0);
                 }

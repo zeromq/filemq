@@ -25,7 +25,7 @@
 
 /*
 @header
-    the fmq_msg class represents filemq messages.
+    fmq_msg - work with filemq messages
 @discuss
 @end
 */
@@ -794,8 +794,8 @@ fmq_msg_send_orly (
     zframe_t *challenge)
 {
     fmq_msg_t *self = fmq_msg_new (FMQ_MSG_ORLY);
-    fmq_msg_mechanisms_set (self, zlist_dup (mechanisms));
-    fmq_msg_challenge_set (self, zframe_dup (challenge));
+    fmq_msg_set_mechanisms (self, zlist_dup (mechanisms));
+    fmq_msg_set_challenge (self, zframe_dup (challenge));
     return fmq_msg_send (&self, output);
 }
 
@@ -810,8 +810,8 @@ fmq_msg_send_yarly (
     zframe_t *response)
 {
     fmq_msg_t *self = fmq_msg_new (FMQ_MSG_YARLY);
-    fmq_msg_mechanism_set (self, mechanism);
-    fmq_msg_response_set (self, zframe_dup (response));
+    fmq_msg_set_mechanism (self, mechanism);
+    fmq_msg_set_response (self, zframe_dup (response));
     return fmq_msg_send (&self, output);
 }
 
@@ -839,9 +839,9 @@ fmq_msg_send_icanhaz (
     zhash_t *cache)
 {
     fmq_msg_t *self = fmq_msg_new (FMQ_MSG_ICANHAZ);
-    fmq_msg_path_set (self, path);
-    fmq_msg_options_set (self, zhash_dup (options));
-    fmq_msg_cache_set (self, zhash_dup (cache));
+    fmq_msg_set_path (self, path);
+    fmq_msg_set_options (self, zhash_dup (options));
+    fmq_msg_set_cache (self, zhash_dup (cache));
     return fmq_msg_send (&self, output);
 }
 
@@ -868,8 +868,8 @@ fmq_msg_send_nom (
     uint64_t sequence)
 {
     fmq_msg_t *self = fmq_msg_new (FMQ_MSG_NOM);
-    fmq_msg_credit_set (self, credit);
-    fmq_msg_sequence_set (self, sequence);
+    fmq_msg_set_credit (self, credit);
+    fmq_msg_set_sequence (self, sequence);
     return fmq_msg_send (&self, output);
 }
 
@@ -889,13 +889,13 @@ fmq_msg_send_cheezburger (
     zframe_t *chunk)
 {
     fmq_msg_t *self = fmq_msg_new (FMQ_MSG_CHEEZBURGER);
-    fmq_msg_sequence_set (self, sequence);
-    fmq_msg_operation_set (self, operation);
-    fmq_msg_filename_set (self, filename);
-    fmq_msg_offset_set (self, offset);
-    fmq_msg_eof_set (self, eof);
-    fmq_msg_headers_set (self, zhash_dup (headers));
-    fmq_msg_chunk_set (self, zframe_dup (chunk));
+    fmq_msg_set_sequence (self, sequence);
+    fmq_msg_set_operation (self, operation);
+    fmq_msg_set_filename (self, filename);
+    fmq_msg_set_offset (self, offset);
+    fmq_msg_set_eof (self, eof);
+    fmq_msg_set_headers (self, zhash_dup (headers));
+    fmq_msg_set_chunk (self, zframe_dup (chunk));
     return fmq_msg_send (&self, output);
 }
 
@@ -945,7 +945,7 @@ fmq_msg_send_srsly (
     char *reason)
 {
     fmq_msg_t *self = fmq_msg_new (FMQ_MSG_SRSLY);
-    fmq_msg_reason_set (self, reason);
+    fmq_msg_set_reason (self, reason);
     return fmq_msg_send (&self, output);
 }
 
@@ -959,7 +959,7 @@ fmq_msg_send_rtfm (
     char *reason)
 {
     fmq_msg_t *self = fmq_msg_new (FMQ_MSG_RTFM);
-    fmq_msg_reason_set (self, reason);
+    fmq_msg_set_reason (self, reason);
     return fmq_msg_send (&self, output);
 }
 
@@ -1238,7 +1238,7 @@ fmq_msg_address (fmq_msg_t *self)
 }
 
 void
-fmq_msg_address_set (fmq_msg_t *self, zframe_t *address)
+fmq_msg_set_address (fmq_msg_t *self, zframe_t *address)
 {
     if (self->address)
         zframe_destroy (&self->address);
@@ -1257,7 +1257,7 @@ fmq_msg_id (fmq_msg_t *self)
 }
 
 void
-fmq_msg_id_set (fmq_msg_t *self, int id)
+fmq_msg_set_id (fmq_msg_t *self, int id)
 {
     self->id = id;
 }
@@ -1327,7 +1327,7 @@ fmq_msg_mechanisms (fmq_msg_t *self)
 //  then use zlist_dup() to pass a copy of mechanisms
 
 void
-fmq_msg_mechanisms_set (fmq_msg_t *self, zlist_t *mechanisms)
+fmq_msg_set_mechanisms (fmq_msg_t *self, zlist_t *mechanisms)
 {
     assert (self);
     zlist_destroy (&self->mechanisms);
@@ -1397,7 +1397,7 @@ fmq_msg_challenge (fmq_msg_t *self)
 
 //  Takes ownership of supplied frame
 void
-fmq_msg_challenge_set (fmq_msg_t *self, zframe_t *frame)
+fmq_msg_set_challenge (fmq_msg_t *self, zframe_t *frame)
 {
     assert (self);
     if (self->challenge)
@@ -1416,7 +1416,7 @@ fmq_msg_mechanism (fmq_msg_t *self)
 }
 
 void
-fmq_msg_mechanism_set (fmq_msg_t *self, char *format, ...)
+fmq_msg_set_mechanism (fmq_msg_t *self, char *format, ...)
 {
     //  Format into newly allocated string
     assert (self);
@@ -1442,7 +1442,7 @@ fmq_msg_response (fmq_msg_t *self)
 
 //  Takes ownership of supplied frame
 void
-fmq_msg_response_set (fmq_msg_t *self, zframe_t *frame)
+fmq_msg_set_response (fmq_msg_t *self, zframe_t *frame)
 {
     assert (self);
     if (self->response)
@@ -1461,7 +1461,7 @@ fmq_msg_path (fmq_msg_t *self)
 }
 
 void
-fmq_msg_path_set (fmq_msg_t *self, char *format, ...)
+fmq_msg_set_path (fmq_msg_t *self, char *format, ...)
 {
     //  Format into newly allocated string
     assert (self);
@@ -1489,7 +1489,7 @@ fmq_msg_options (fmq_msg_t *self)
 //  then use zhash_dup() to pass a copy of options
 
 void
-fmq_msg_options_set (fmq_msg_t *self, zhash_t *options)
+fmq_msg_set_options (fmq_msg_t *self, zhash_t *options)
 {
     assert (self);
     zhash_destroy (&self->options);
@@ -1568,7 +1568,7 @@ fmq_msg_cache (fmq_msg_t *self)
 //  then use zhash_dup() to pass a copy of cache
 
 void
-fmq_msg_cache_set (fmq_msg_t *self, zhash_t *cache)
+fmq_msg_set_cache (fmq_msg_t *self, zhash_t *cache)
 {
     assert (self);
     zhash_destroy (&self->cache);
@@ -1644,7 +1644,7 @@ fmq_msg_credit (fmq_msg_t *self)
 }
 
 void
-fmq_msg_credit_set (fmq_msg_t *self, uint64_t credit)
+fmq_msg_set_credit (fmq_msg_t *self, uint64_t credit)
 {
     assert (self);
     self->credit = credit;
@@ -1662,7 +1662,7 @@ fmq_msg_sequence (fmq_msg_t *self)
 }
 
 void
-fmq_msg_sequence_set (fmq_msg_t *self, uint64_t sequence)
+fmq_msg_set_sequence (fmq_msg_t *self, uint64_t sequence)
 {
     assert (self);
     self->sequence = sequence;
@@ -1680,7 +1680,7 @@ fmq_msg_operation (fmq_msg_t *self)
 }
 
 void
-fmq_msg_operation_set (fmq_msg_t *self, byte operation)
+fmq_msg_set_operation (fmq_msg_t *self, byte operation)
 {
     assert (self);
     self->operation = operation;
@@ -1698,7 +1698,7 @@ fmq_msg_filename (fmq_msg_t *self)
 }
 
 void
-fmq_msg_filename_set (fmq_msg_t *self, char *format, ...)
+fmq_msg_set_filename (fmq_msg_t *self, char *format, ...)
 {
     //  Format into newly allocated string
     assert (self);
@@ -1723,7 +1723,7 @@ fmq_msg_offset (fmq_msg_t *self)
 }
 
 void
-fmq_msg_offset_set (fmq_msg_t *self, uint64_t offset)
+fmq_msg_set_offset (fmq_msg_t *self, uint64_t offset)
 {
     assert (self);
     self->offset = offset;
@@ -1741,7 +1741,7 @@ fmq_msg_eof (fmq_msg_t *self)
 }
 
 void
-fmq_msg_eof_set (fmq_msg_t *self, byte eof)
+fmq_msg_set_eof (fmq_msg_t *self, byte eof)
 {
     assert (self);
     self->eof = eof;
@@ -1762,7 +1762,7 @@ fmq_msg_headers (fmq_msg_t *self)
 //  then use zhash_dup() to pass a copy of headers
 
 void
-fmq_msg_headers_set (fmq_msg_t *self, zhash_t *headers)
+fmq_msg_set_headers (fmq_msg_t *self, zhash_t *headers)
 {
     assert (self);
     zhash_destroy (&self->headers);
@@ -1839,7 +1839,7 @@ fmq_msg_chunk (fmq_msg_t *self)
 
 //  Takes ownership of supplied frame
 void
-fmq_msg_chunk_set (fmq_msg_t *self, zframe_t *frame)
+fmq_msg_set_chunk (fmq_msg_t *self, zframe_t *frame)
 {
     assert (self);
     if (self->chunk)
@@ -1858,7 +1858,7 @@ fmq_msg_reason (fmq_msg_t *self)
 }
 
 void
-fmq_msg_reason_set (fmq_msg_t *self, char *format, ...)
+fmq_msg_set_reason (fmq_msg_t *self, char *format, ...)
 {
     //  Format into newly allocated string
     assert (self);
@@ -1910,7 +1910,7 @@ fmq_msg_test (bool verbose)
     self = fmq_msg_new (FMQ_MSG_ORLY);
     fmq_msg_mechanisms_append (self, "Name: %s", "Brutus");
     fmq_msg_mechanisms_append (self, "Age: %d", 43);
-    fmq_msg_challenge_set (self, zframe_new ("Captcha Diem", 12));
+    fmq_msg_set_challenge (self, zframe_new ("Captcha Diem", 12));
     fmq_msg_send (&self, output);
     
     self = fmq_msg_recv (input);
@@ -1922,8 +1922,8 @@ fmq_msg_test (bool verbose)
     fmq_msg_destroy (&self);
 
     self = fmq_msg_new (FMQ_MSG_YARLY);
-    fmq_msg_mechanism_set (self, "Life is short but Now lasts for ever");
-    fmq_msg_response_set (self, zframe_new ("Captcha Diem", 12));
+    fmq_msg_set_mechanism (self, "Life is short but Now lasts for ever");
+    fmq_msg_set_response (self, zframe_new ("Captcha Diem", 12));
     fmq_msg_send (&self, output);
     
     self = fmq_msg_recv (input);
@@ -1940,7 +1940,7 @@ fmq_msg_test (bool verbose)
     fmq_msg_destroy (&self);
 
     self = fmq_msg_new (FMQ_MSG_ICANHAZ);
-    fmq_msg_path_set (self, "Life is short but Now lasts for ever");
+    fmq_msg_set_path (self, "Life is short but Now lasts for ever");
     fmq_msg_options_insert (self, "Name", "Brutus");
     fmq_msg_options_insert (self, "Age", "%d", 43);
     fmq_msg_cache_insert (self, "Name", "Brutus");
@@ -1966,8 +1966,8 @@ fmq_msg_test (bool verbose)
     fmq_msg_destroy (&self);
 
     self = fmq_msg_new (FMQ_MSG_NOM);
-    fmq_msg_credit_set (self, 123);
-    fmq_msg_sequence_set (self, 123);
+    fmq_msg_set_credit (self, 123);
+    fmq_msg_set_sequence (self, 123);
     fmq_msg_send (&self, output);
     
     self = fmq_msg_recv (input);
@@ -1977,14 +1977,14 @@ fmq_msg_test (bool verbose)
     fmq_msg_destroy (&self);
 
     self = fmq_msg_new (FMQ_MSG_CHEEZBURGER);
-    fmq_msg_sequence_set (self, 123);
-    fmq_msg_operation_set (self, 123);
-    fmq_msg_filename_set (self, "Life is short but Now lasts for ever");
-    fmq_msg_offset_set (self, 123);
-    fmq_msg_eof_set (self, 123);
+    fmq_msg_set_sequence (self, 123);
+    fmq_msg_set_operation (self, 123);
+    fmq_msg_set_filename (self, "Life is short but Now lasts for ever");
+    fmq_msg_set_offset (self, 123);
+    fmq_msg_set_eof (self, 123);
     fmq_msg_headers_insert (self, "Name", "Brutus");
     fmq_msg_headers_insert (self, "Age", "%d", 43);
-    fmq_msg_chunk_set (self, zframe_new ("Captcha Diem", 12));
+    fmq_msg_set_chunk (self, zframe_new ("Captcha Diem", 12));
     fmq_msg_send (&self, output);
     
     self = fmq_msg_recv (input);
@@ -2022,7 +2022,7 @@ fmq_msg_test (bool verbose)
     fmq_msg_destroy (&self);
 
     self = fmq_msg_new (FMQ_MSG_SRSLY);
-    fmq_msg_reason_set (self, "Life is short but Now lasts for ever");
+    fmq_msg_set_reason (self, "Life is short but Now lasts for ever");
     fmq_msg_send (&self, output);
     
     self = fmq_msg_recv (input);
@@ -2031,7 +2031,7 @@ fmq_msg_test (bool verbose)
     fmq_msg_destroy (&self);
 
     self = fmq_msg_new (FMQ_MSG_RTFM);
-    fmq_msg_reason_set (self, "Life is short but Now lasts for ever");
+    fmq_msg_set_reason (self, "Life is short but Now lasts for ever");
     fmq_msg_send (&self, output);
     
     self = fmq_msg_recv (input);
