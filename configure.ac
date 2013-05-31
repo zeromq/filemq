@@ -5,8 +5,9 @@ AC_PREREQ(2.61)
 # Change the version number below after doing a public release.
 # The version in git should reflect the *next* version planned.
 # Version must be MAJOR.MINOR.PATCH otherwise things will break.
+# Make sure you also updated include/fmq.h to match.
 #
-AC_INIT([filemq],[1.1.0],[zeromq-dev@lists.zeromq.org])
+AC_INIT([filemq],[1.2.0],[zeromq-dev@lists.zeromq.org])
 
 AC_CONFIG_AUX_DIR(config)
 AC_CONFIG_MACRO_DIR(config)
