@@ -755,7 +755,7 @@ static void
 try_security_mechanism (server_t *self, client_t *client)
 {
     client->next_event = foe_event;                                                          
-    char *login, *password;                                                                  
+    char *login = NULL, *password = NULL;
     if (streq (fmq_msg_mechanism (client->request), "PLAIN")                                 
     &&  fmq_sasl_plain_decode (fmq_msg_response (client->request), &login, &password) == 0) {
         zconfig_t *account = zconfig_locate (self->config, "security/plain/account");        
