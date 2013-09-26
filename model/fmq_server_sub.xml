@@ -72,14 +72,14 @@ sub_patch_add (sub_t *self, fmq_patch_t *patch)
     //  Skip file creation if client already has identical file
     fmq_patch_digest_set (patch);
     if (fmq_patch_op (patch) == patch_create) {
-        char *digest = zhash_lookup (self->cache, fmq_patch_virtual (patch));
-        if (digest && strcasecmp (digest, fmq_patch_digest (patch)) == 0)
+        char *digest = (char *) zhash_lookup (self->cache, fmq_patch_vpath (patch));
+        if (digest && streq (digest, fmq_patch_digest (patch)))
             return;             //  Just skip patch for this client
     }
     //  Remove any previous patches for the same file
     fmq_patch_t *existing = (fmq_patch_t *) zlist_first (self->client->patches);
     while (existing) {
-        if (streq (fmq_patch_virtual (patch), fmq_patch_virtual (existing))) {
+        if (streq (fmq_patch_vpath (patch), fmq_patch_vpath (existing))) {
             zlist_remove (self->client->patches, existing);
             fmq_patch_destroy (&existing);
             break;
@@ -88,7 +88,7 @@ sub_patch_add (sub_t *self, fmq_patch_t *patch)
     }
     if (fmq_patch_op (patch) == patch_create)
         zhash_insert (self->cache,
-            fmq_patch_digest (patch), fmq_patch_virtual (patch));
+            fmq_patch_digest (patch), fmq_patch_vpath (patch));
     //  Track that we've queued patch for client, so we don't do it twice
     zlist_append (self->client->patches, fmq_patch_dup (patch));
 }

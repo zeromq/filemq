@@ -121,7 +121,7 @@ fmq_hash_test (bool verbose)
     printf (" * fmq_hash: ");
 
     //  @selftest
-    byte *buffer = (byte*)zmalloc (1024);
+    byte *buffer = (byte *) zmalloc (1024);
     memset (buffer, 0xAA, 1024);
     
     fmq_hash_t *hash = fmq_hash_new ();

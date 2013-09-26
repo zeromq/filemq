@@ -62,13 +62,13 @@ zfile_t *
 fmq_patch_op_t
     fmq_patch_op (fmq_patch_t *self);
     
-//  Return patch virtual file name
+//  Return patch virtual file path
 char *
-    fmq_patch_virtual (fmq_patch_t *self);
+    fmq_patch_vpath (fmq_patch_t *self);
 
-//  Set patch virtual file name
+//  Set patch virtual file path
 void
-    fmq_patch_virtual_set (fmq_patch_t *self, char *_virtual);
+    fmq_patch_vpath_set (fmq_patch_t *self, char *vpath);
 
 //  Calculate hash digest for file (create only)
 void
