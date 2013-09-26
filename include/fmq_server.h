@@ -22,6 +22,7 @@
     along with this program. If not, see http://www.gnu.org/licenses/.      
     =========================================================================
 */
+#define strcasecmp _stricmp
 
 #ifndef __FMQ_SERVER_H_INCLUDED__
 #define __FMQ_SERVER_H_INCLUDED__
