@@ -105,7 +105,7 @@ fmq_dir_new (const char *path, const char *parent)
 {
     fmq_dir_t *self = (fmq_dir_t *) zmalloc (sizeof (fmq_dir_t));
     if (parent) {
-        self->path = malloc (strlen (path) + strlen (parent) + 2);
+        self->path = (char*)malloc (strlen (path) + strlen (parent) + 2);
         sprintf (self->path, "%s/%s", parent, path);
     }
     else
@@ -126,7 +126,7 @@ fmq_dir_new (const char *path, const char *parent)
         self->path [strlen (self->path) - 1] = 0;
     
     //  Win32 wants a wildcard at the end of the path
-    char *wildcard = malloc (strlen (self->path) + 3);
+    char *wildcard = (char*)malloc (strlen (self->path) + 3);
     sprintf (wildcard, "%s/*", self->path);
     WIN32_FIND_DATA entry;
     HANDLE handle = FindFirstFile (wildcard, &entry);
@@ -487,7 +487,7 @@ s_file_hash (zfile_t *file)
 
     //  Convert to printable string
     char hex_char [] = "0123456789ABCDEF";
-    char *hashstr = zmalloc (fmq_hash_size (hash) * 2 + 1);
+    char *hashstr = (char*)zmalloc (fmq_hash_size (hash) * 2 + 1);
     int byte_nbr;
     for (byte_nbr = 0; byte_nbr < fmq_hash_size (hash); byte_nbr++) {
         hashstr [byte_nbr * 2 + 0] = hex_char [fmq_hash_data (hash) [byte_nbr] >> 4];
@@ -511,7 +511,7 @@ fmq_dir_cache (fmq_dir_t *self)
     //  Load any previous cache from disk
     zhash_t *cache = zhash_new ();
     zhash_autofree (cache);
-    char *cache_file = malloc (strlen (self->path) + strlen ("/.cache") + 1);
+    char *cache_file = (char*)malloc (strlen (self->path) + strlen ("/.cache") + 1);
     sprintf (cache_file, "%s/.cache", self->path);
     zhash_load (cache, cache_file);
 
