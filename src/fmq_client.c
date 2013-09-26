@@ -146,7 +146,7 @@ fmq_client_subscribe (fmq_client_t *self, const char *path)
     assert (self);
     assert (path);
     zstr_sendm (self->pipe, "SUBSCRIBE");
-    zstr_sendf (self->pipe, "%s", path);
+    zstr_send (self->pipe, "%s", path);
 }
 
 
@@ -158,7 +158,7 @@ fmq_client_set_inbox (fmq_client_t *self, const char *path)
     assert (self);
     assert (path);
     zstr_sendm (self->pipe, "SET INBOX");
-    zstr_sendf (self->pipe, "%s", path);
+    zstr_send (self->pipe, "%s", path);
 }
 
 
@@ -169,7 +169,7 @@ fmq_client_set_resync (fmq_client_t *self, long enabled)
 {
     assert (self);
     zstr_sendm (self->pipe, "SET RESYNC");
-    zstr_sendf (self->pipe, "%ld", enabled);
+    zstr_send (self->pipe, "%ld", enabled);
 }
 
 
@@ -237,7 +237,7 @@ struct _server_t {
     //  Properties accessible to server actions
     event_t next_event;         //  Next event
     size_t credit;              //  Current credit pending
-    fmq_file_t *file;           //  File we're writing to 
+    zfile_t *file;           //  File we're writing to    
     //  Properties you should NOT touch
     zctx_t *ctx;                //  Own CZMQ context
     uint index;                 //  Index into client->server_array
@@ -580,45 +580,45 @@ refill_credit_as_needed (client_t *self, server_t *server)
 static void
 process_the_patch (client_t *self, server_t *server)
 {
-    char *inbox = zconfig_resolve (self->config, "client/inbox", ".inbox");           
-    char *filename = fmq_msg_filename (server->reply);                                
-                                                                                      
-    //  Filenames from server must start with slash, which we skip                    
-    assert (*filename == '/');                                                        
-    filename++;                                                                       
-                                                                                      
-    if (fmq_msg_operation (server->reply) == FMQ_MSG_FILE_CREATE) {                   
-        if (server->file == NULL) {                                                   
-            server->file = fmq_file_new (inbox, filename);                            
-            if (fmq_file_output (server->file)) {                                     
-                //  File not writeable, skip patch                                    
-                fmq_file_destroy (&server->file);                                     
-                return;                                                               
-            }                                                                         
-        }                                                                             
-        //  Try to write, ignore errors in this version                               
-        zframe_t *frame = fmq_msg_chunk (server->reply);                              
-        fmq_chunk_t *chunk = fmq_chunk_new (zframe_data (frame), zframe_size (frame));
-        if (fmq_chunk_size (chunk) > 0) {                                             
-            fmq_file_write (server->file, chunk, fmq_msg_offset (server->reply));     
-            server->credit -= fmq_chunk_size (chunk);                                 
-        }                                                                             
-        else {                                                                        
-            //  Zero-sized chunk means end of file, so report back to caller          
-            zstr_sendm (self->pipe, "DELIVER");                                       
-            zstr_sendm (self->pipe, filename);                                        
-            zstr_sendf (self->pipe, "%s/%s", inbox, filename);                        
-            fmq_file_destroy (&server->file);                                         
-        }                                                                             
-        fmq_chunk_destroy (&chunk);                                                   
-    }                                                                                 
-    else                                                                              
-    if (fmq_msg_operation (server->reply) == FMQ_MSG_FILE_DELETE) {                   
-        zclock_log ("I: delete %s/%s", inbox, filename);                              
-        fmq_file_t *file = fmq_file_new (inbox, filename);                            
-        fmq_file_remove (file);                                                       
-        fmq_file_destroy (&file);                                                     
-    }                                                                                 
+    char *inbox = zconfig_resolve (self->config, "client/inbox", ".inbox");     
+    char *filename = fmq_msg_filename (server->reply);                          
+                                                                                
+    //  Filenames from server must start with slash, which we skip              
+    assert (*filename == '/');                                                  
+    filename++;                                                                 
+                                                                                
+    if (fmq_msg_operation (server->reply) == FMQ_MSG_FILE_CREATE) {             
+        if (server->file == NULL) {                                             
+            server->file = zfile_new (inbox, filename);                         
+            if (zfile_output (server->file)) {                                  
+                //  File not writeable, skip patch                              
+                zfile_destroy (&server->file);                                  
+                return;                                                         
+            }                                                                   
+        }                                                                       
+        //  Try to write, ignore errors in this version                         
+        zframe_t *frame = fmq_msg_chunk (server->reply);                        
+        zchunk_t *chunk = zchunk_new (zframe_data (frame), zframe_size (frame));
+        if (zchunk_size (chunk) > 0) {                                          
+            zfile_write (server->file, chunk, fmq_msg_offset (server->reply));  
+            server->credit -= zchunk_size (chunk);                              
+        }                                                                       
+        else {                                                                  
+            //  Zero-sized chunk means end of file, so report back to caller    
+            zstr_sendm (self->pipe, "DELIVER");                                 
+            zstr_sendm (self->pipe, filename);                                  
+            zstr_send  (self->pipe, "%s/%s", inbox, filename);                  
+            zfile_destroy (&server->file);                                      
+        }                                                                       
+        zchunk_destroy (&chunk);                                                
+    }                                                                           
+    else                                                                        
+    if (fmq_msg_operation (server->reply) == FMQ_MSG_FILE_DELETE) {             
+        zclock_log ("I: delete %s/%s", inbox, filename);                        
+        zfile_t *file = zfile_new (inbox, filename);                            
+        zfile_remove (file);                                                    
+        zfile_destroy (&file);                                                  
+    }                                                                           
 }
 
 static void

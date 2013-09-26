@@ -59,7 +59,7 @@ s_win32_populate_entry (fmq_dir_t *self, WIN32_FIND_DATA *entry)
     }
     else {
         //  Add file entry to directory list
-        fmq_file_t *file = fmq_file_new (self->path, entry->cFileName);
+        zfile_t *file = zfile_new (self->path, entry->cFileName);
         zlist_append (self->files, file);
     }
 }
@@ -89,7 +89,7 @@ s_posix_populate_entry (fmq_dir_t *self, struct dirent *entry)
     }
     else {
         //  Add file entry to directory list
-        fmq_file_t *file = fmq_file_new (self->path, entry->d_name);
+        zfile_t *file = zfile_new (self->path, entry->d_name);
         zlist_append (self->files, file);
     }
 }
@@ -174,13 +174,13 @@ fmq_dir_new (const char *path, const char *parent)
         self->count += subdir->count;
         subdir = (fmq_dir_t *) zlist_next (self->subdirs);
     }
-    fmq_file_t *file = (fmq_file_t *) zlist_first (self->files);
+    zfile_t *file = (zfile_t *) zlist_first (self->files);
     while (file) {
-        if (self->time < fmq_file_time (file))
-            self->time = fmq_file_time (file);
-        self->size += fmq_file_size (file);
+        if (self->time < zfile_modified (file))
+            self->time = zfile_modified (file);
+        self->size += zfile_cursize (file);
         self->count += 1;
-        file = (fmq_file_t *) zlist_next (self->files);
+        file = (zfile_t *) zlist_next (self->files);
     }
     return self;
 }
@@ -200,8 +200,8 @@ fmq_dir_destroy (fmq_dir_t **self_p)
             fmq_dir_destroy (&subdir);
         }
         while (zlist_size (self->files)) {
-            fmq_file_t *file = (fmq_file_t *) zlist_pop (self->files);
-            fmq_file_destroy (&file);
+            zfile_t *file = (zfile_t *) zlist_pop (self->files);
+            zfile_destroy (&file);
         }
         zlist_destroy (&self->subdirs);
         zlist_destroy (&self->files);
@@ -265,8 +265,8 @@ zlist_t *
 fmq_dir_diff (fmq_dir_t *older, fmq_dir_t *newer, char *alias)
 {
     zlist_t *patches = zlist_new ();
-    fmq_file_t **old_files = fmq_dir_flatten (older);
-    fmq_file_t **new_files = fmq_dir_flatten (newer);
+    zfile_t **old_files = fmq_dir_flatten (older);
+    zfile_t **new_files = fmq_dir_flatten (newer);
 
     int old_index = 0;
     int new_index = 0;
@@ -274,8 +274,8 @@ fmq_dir_diff (fmq_dir_t *older, fmq_dir_t *newer, char *alias)
     //  Note that both lists are sorted, so detecting differences
     //  is rather trivial
     while (old_files [old_index] || new_files [new_index]) {
-        fmq_file_t *old = old_files [old_index];
-        fmq_file_t *new = new_files [new_index];
+        zfile_t *old = old_files [old_index];
+        zfile_t *new = new_files [new_index];
 
         int cmp;
         if (!old)
@@ -284,29 +284,29 @@ fmq_dir_diff (fmq_dir_t *older, fmq_dir_t *newer, char *alias)
         if (!new)
             cmp = -1;       //  New file was added at end of list
         else
-            cmp = strcmp (fmq_file_name (old, NULL), fmq_file_name (new, NULL));
+            cmp = strcmp (zfile_filename (old, NULL), zfile_filename (new, NULL));
 
         if (cmp > 0) {
             //  New file was created
-            if (fmq_file_stable (new))
+            if (zfile_is_stable (new))
                 zlist_append (patches, fmq_patch_new (newer->path, new, patch_create, alias));
             old_index--;
         }
         else
         if (cmp < 0) {
             //  Old file was deleted
-            if (fmq_file_stable (old))
+            if (zfile_is_stable (old))
                 zlist_append (patches, fmq_patch_new (older->path, old, patch_delete, alias));
             new_index--;
         }
         else
-        if (cmp == 0 && fmq_file_stable (new)) {
-            if (fmq_file_stable (old)) {
+        if (cmp == 0 && zfile_is_stable (new)) {
+            if (zfile_is_stable (old)) {
                 //  Old file was modified or replaced
                 //  Since we don't check file contents, treat as created
                 //  Could better do SHA check on file here
-                if (fmq_file_time (new) != fmq_file_time (old)
-                ||  fmq_file_size (new) != fmq_file_size (old))
+                if (zfile_modified (new) != zfile_modified (old)
+                ||  zfile_cursize (new) != zfile_cursize (old))
                     zlist_append (patches, fmq_patch_new (newer->path, new, patch_create, alias));
             }
             else
@@ -331,10 +331,10 @@ zlist_t *
 fmq_dir_resync (fmq_dir_t *self, char *alias)
 {
     zlist_t *patches = zlist_new ();
-    fmq_file_t **files = fmq_dir_flatten (self);
+    zfile_t **files = fmq_dir_flatten (self);
     uint index;
     for (index = 0;; index++) {
-        fmq_file_t *file = files [index];
+        zfile_t *file = files [index];
         if (!file)
             break;
         zlist_append (patches, fmq_patch_new (self->path, file, patch_create, alias));
@@ -364,22 +364,22 @@ s_dir_compare (void *item1, void *item2)
 static bool
 s_file_compare (void *item1, void *item2)
 {
-    if (strcmp (fmq_file_name ((fmq_file_t *) item1, NULL),
-                fmq_file_name ((fmq_file_t *) item2, NULL)) > 0)
+    if (strcmp (zfile_filename ((zfile_t *) item1, NULL),
+                zfile_filename ((zfile_t *) item2, NULL)) > 0)
         return true;
     else
         return false;
 }
 
 static int
-s_dir_flatten (fmq_dir_t *self, fmq_file_t **files, int index)
+s_dir_flatten (fmq_dir_t *self, zfile_t **files, int index)
 {
     //  First flatten the normal files
     zlist_sort (self->files, s_file_compare);
-    fmq_file_t *file = (fmq_file_t *) zlist_first (self->files);
+    zfile_t *file = (zfile_t *) zlist_first (self->files);
     while (file) {
         files [index++] = file;
-        file = (fmq_file_t *) zlist_next (self->files);
+        file = (zfile_t *) zlist_next (self->files);
     }
     //  Now flatten subdirectories, recursively
     zlist_sort (self->subdirs, s_dir_compare);
@@ -395,7 +395,7 @@ s_dir_flatten (fmq_dir_t *self, fmq_file_t **files, int index)
 //  --------------------------------------------------------------------------
 //  Return sorted array of file references
 
-fmq_file_t **
+zfile_t **
 fmq_dir_flatten (fmq_dir_t *self)
 {
     int flat_size;
@@ -404,7 +404,7 @@ fmq_dir_flatten (fmq_dir_t *self)
     else
         flat_size = 1;      //  Just null terminator
 
-    fmq_file_t **files = (fmq_file_t **) zmalloc (sizeof (fmq_file_t *) * flat_size);
+    zfile_t **files = (zfile_t **) zmalloc (sizeof (zfile_t *) * flat_size);
     uint index = 0;
     if (self)
         index = s_dir_flatten (self, files, index);
@@ -420,11 +420,11 @@ fmq_dir_remove (fmq_dir_t *self, bool force)
 {
     //  If forced, remove all subdirectories and files
     if (force) {
-        fmq_file_t *file = (fmq_file_t *) zlist_pop (self->files);
+        zfile_t *file = (zfile_t *) zlist_pop (self->files);
         while (file) {
-            fmq_file_remove (file);
-            fmq_file_destroy (&file);
-            file = (fmq_file_t *) zlist_pop (self->files);
+            zfile_remove (file);
+            zfile_destroy (&file);
+            file = (zfile_t *) zlist_pop (self->files);
         }
         fmq_dir_t *subdir = (fmq_dir_t *) zlist_pop (self->subdirs);
         while (subdir) {
@@ -450,15 +450,51 @@ fmq_dir_dump (fmq_dir_t *self, int indent)
 {
     assert (self);
     
-    fmq_file_t **files = fmq_dir_flatten (self);
+    zfile_t **files = fmq_dir_flatten (self);
     uint index;
     for (index = 0;; index++) {
-        fmq_file_t *file = files [index];
+        zfile_t *file = files [index];
         if (!file)
             break;
-        puts (fmq_file_name (file, NULL));
+        puts (zfile_filename (file, NULL));
     }
     free (files);
+}
+
+
+//  Return file SHA-1 hash as string; caller has to free it
+//  TODO: this has to be moved into CZMQ along with SHA1 and hash class
+
+static char *
+s_file_hash (zfile_t *file)
+{
+    if (zfile_input (file) == -1)
+        return NULL;            //  Problem reading directory
+
+    //  Now calculate hash for file data, chunk by chunk
+    size_t blocksz = 65535;
+    off_t offset = 0;
+    fmq_hash_t *hash = fmq_hash_new ();
+    zchunk_t *chunk = zfile_read (file, blocksz, offset);
+    while (zchunk_size (chunk)) {
+        fmq_hash_update (hash, zchunk_data (chunk), zchunk_size (chunk));
+        zchunk_destroy (&chunk);
+        offset += blocksz;
+        chunk = zfile_read (file, blocksz, offset);
+    }
+    zchunk_destroy (&chunk);
+    zfile_close (file);
+
+    //  Convert to printable string
+    char hex_char [] = "0123456789ABCDEF";
+    char *hashstr = zmalloc (fmq_hash_size (hash) * 2 + 1);
+    int byte_nbr;
+    for (byte_nbr = 0; byte_nbr < fmq_hash_size (hash); byte_nbr++) {
+        hashstr [byte_nbr * 2 + 0] = hex_char [fmq_hash_data (hash) [byte_nbr] >> 4];
+        hashstr [byte_nbr * 2 + 1] = hex_char [fmq_hash_data (hash) [byte_nbr] & 15];
+    }
+    fmq_hash_destroy (&hash);
+    return hashstr;
 }
 
 
@@ -480,15 +516,15 @@ fmq_dir_cache (fmq_dir_t *self)
     zhash_load (cache, cache_file);
 
     //  Recalculate digest for any new files
-    fmq_file_t **files = fmq_dir_flatten (self);
+    zfile_t **files = fmq_dir_flatten (self);
     uint index;
     for (index = 0;; index++) {
-        fmq_file_t *file = files [index];
+        zfile_t *file = files [index];
         if (!file)
             break;
-        char *filename = fmq_file_name (file, self->path);
-        if (zhash_lookup (cache, fmq_file_name (file, self->path)) == NULL)
-            zhash_insert (cache, filename, fmq_file_hash (file));
+        char *filename = zfile_filename (file, self->path);
+        if (zhash_lookup (cache, zfile_filename (file, self->path)) == NULL)
+            zhash_insert (cache, filename, s_file_hash (file));
     }
     free (files);
 

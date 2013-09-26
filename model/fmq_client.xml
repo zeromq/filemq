@@ -33,7 +33,7 @@ zlist_destroy (&self->subs);
 <server>
 <context>
 size_t credit;              //  Current credit pending
-fmq_file_t *file;           //  File we're writing to
+zfile_t *file;           //  File we're writing to
 </context>
 <construct>
 </construct>
@@ -103,35 +103,35 @@ filename++;
 
 if (fmq_msg_operation (server->reply) == FMQ_MSG_FILE_CREATE) {
     if (server->file == NULL) {
-        server->file = fmq_file_new (inbox, filename);
-        if (fmq_file_output (server->file)) {
+        server->file = zfile_new (inbox, filename);
+        if (zfile_output (server->file)) {
             //  File not writeable, skip patch
-            fmq_file_destroy (&server->file);
+            zfile_destroy (&server->file);
             return;
         }
     }
     //  Try to write, ignore errors in this version
     zframe_t *frame = fmq_msg_chunk (server->reply);
-    fmq_chunk_t *chunk = fmq_chunk_new (zframe_data (frame), zframe_size (frame));
-    if (fmq_chunk_size (chunk) > 0) {
-        fmq_file_write (server->file, chunk, fmq_msg_offset (server->reply));
-        server->credit -= fmq_chunk_size (chunk);
+    zchunk_t *chunk = zchunk_new (zframe_data (frame), zframe_size (frame));
+    if (zchunk_size (chunk) > 0) {
+        zfile_write (server->file, chunk, fmq_msg_offset (server->reply));
+        server->credit -= zchunk_size (chunk);
     }
     else {
         //  Zero-sized chunk means end of file, so report back to caller
         zstr_sendm (self->pipe, "DELIVER");
         zstr_sendm (self->pipe, filename);
-        zstr_sendf (self->pipe, "%s/%s", inbox, filename);
-        fmq_file_destroy (&server->file);
+        zstr_send  (self->pipe, "%s/%s", inbox, filename);
+        zfile_destroy (&server->file);
     }
-    fmq_chunk_destroy (&chunk);
+    zchunk_destroy (&chunk);
 }
 else
 if (fmq_msg_operation (server->reply) == FMQ_MSG_FILE_DELETE) {
     zclock_log ("I: delete %s/%s", inbox, filename);
-    fmq_file_t *file = fmq_file_new (inbox, filename);
-    fmq_file_remove (file);
-    fmq_file_destroy (&file);
+    zfile_t *file = zfile_new (inbox, filename);
+    zfile_remove (file);
+    zfile_destroy (&file);
 }
 </action>
 
