@@ -39,7 +39,7 @@
 
 struct _fmq_patch_t {
     char *path;                 //  Directory path
-    char *virtual;              //  Virtual file name
+    char *virtualf;              //  Virtual file name
     zfile_t *file;           //  File we refer to
     fmq_patch_op_t op;          //  Operation
     char *digest;               //  File SHA-1 digest
@@ -61,11 +61,11 @@ fmq_patch_new (char *path, zfile_t *file, fmq_patch_op_t op, char *alias)
     //  Calculate virtual filename for patch (remove path, prefix alias)
     char *filename = zfile_filename (file, path);
     assert (*filename != '/');
-    self->virtual = malloc (strlen (alias) + strlen (filename) + 2);
+    self->virtualf = (char*)malloc (strlen (alias) + strlen (filename) + 2);
     if (alias [strlen (alias) - 1] == '/')
-        sprintf (self->virtual, "%s%s", alias, filename);
+        sprintf (self->virtualf, "%s%s", alias, filename);
     else
-        sprintf (self->virtual, "%s/%s", alias, filename);
+        sprintf (self->virtualf, "%s/%s", alias, filename);
     
     return self;
 }
@@ -81,7 +81,7 @@ fmq_patch_destroy (fmq_patch_t **self_p)
     if (*self_p) {
         fmq_patch_t *self = *self_p;
         free (self->path);
-        free (self->virtual);
+        free (self->virtualf);
         free (self->digest);
         zfile_destroy (&self->file);
         free (self);
@@ -100,7 +100,7 @@ fmq_patch_dup (fmq_patch_t *self)
     copy->path = strdup (self->path);
     copy->file = zfile_dup (self->file);
     copy->op = self->op;
-    copy->virtual = strdup (self->virtual);
+    copy->virtualf = strdup (self->virtualf);
     //  Don't recalculate hash when we duplicate patch
     copy->digest = self->digest? strdup (self->digest): NULL;
     return copy;
@@ -147,7 +147,7 @@ char *
 fmq_patch_virtual (fmq_patch_t *self)
 {
     assert (self);
-    return self->virtual;
+    return self->virtualf;
 }
 
 
@@ -176,7 +176,7 @@ s_file_hash (zfile_t *file)
 
     //  Convert to printable string
     char hex_char [] = "0123456789ABCDEF";
-    char *hashstr = zmalloc (fmq_hash_size (hash) * 2 + 1);
+    char *hashstr = (char*)zmalloc (fmq_hash_size (hash) * 2 + 1);
     int byte_nbr;
     for (byte_nbr = 0; byte_nbr < fmq_hash_size (hash); byte_nbr++) {
         hashstr [byte_nbr * 2 + 0] = hex_char [fmq_hash_data (hash) [byte_nbr] >> 4];

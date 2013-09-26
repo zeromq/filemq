@@ -283,7 +283,7 @@ s_resolve_cache_path (const char *key, void *item, void *argument)
 {
     sub_t *self = (sub_t *) argument;
     if (*key != '/') {
-        char *new_key = malloc (strlen (self->path) + strlen (key) + 2);
+        char *new_key = (char*)malloc (strlen (self->path) + strlen (key) + 2);
         sprintf (new_key, "%s/%s", self->path, key);
         zhash_rename (self->cache, key, new_key);
         free (new_key);
@@ -318,7 +318,7 @@ sub_patch_add (sub_t *self, fmq_patch_t *patch)
     //  Skip file creation if client already has identical file
     fmq_patch_digest_set (patch);
     if (fmq_patch_op (patch) == patch_create) {
-        char *digest = zhash_lookup (self->cache, fmq_patch_virtual (patch));
+        char *digest = (char*)zhash_lookup (self->cache, fmq_patch_virtual (patch));
         if (digest && strcasecmp (digest, fmq_patch_digest (patch)) == 0)
             return;             //  Just skip patch for this client
     }
@@ -881,10 +881,10 @@ get_next_patch_for_client (server_t *self, client_t *client)
 static void
 server_client_execute (server_t *self, client_t *client, int event)
 {
-    client->next_event = event;
+    client->next_event = (event_t)event;
     while (client->next_event) {
         client->event = client->next_event;
-        client->next_event = 0;
+        client->next_event = (event_t)0;
         switch (client->state) {
             case start_state:
                 if (client->event == ohai_event) {
@@ -1105,7 +1105,7 @@ server_client_message (server_t *self)
         return;         //  Interrupted; do nothing
 
     char *hashkey = zframe_strhex (fmq_msg_address (request));
-    client_t *client = zhash_lookup (self->clients, hashkey);
+    client_t *client = (client_t*)zhash_lookup (self->clients, hashkey);
     if (client == NULL) {
         client = client_new (fmq_msg_address (request));
         client->heartbeat = self->heartbeat;
