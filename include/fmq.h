@@ -28,7 +28,7 @@
 //  FMQ version macros for compile-time API detection
 
 #define FMQ_VERSION_MAJOR 1
-#define FMQ_VERSION_MINOR 2
+#define FMQ_VERSION_MINOR 3
 #define FMQ_VERSION_PATCH 0
 
 #define FMQ_MAKE_VERSION(major, minor, patch) \
