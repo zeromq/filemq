@@ -22,7 +22,9 @@
     along with this program. If not, see http://www.gnu.org/licenses/.      
     =========================================================================
 */
+#ifdef WIN32
 #define strcasecmp _stricmp
+#endif
 
 #ifndef __FMQ_SERVER_H_INCLUDED__
 #define __FMQ_SERVER_H_INCLUDED__
