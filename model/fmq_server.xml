@@ -34,7 +34,7 @@ zlist_destroy (&self->mounts);
 size_t credit;              //  Credit remaining
 zlist_t *patches;           //  Patches to send
 fmq_patch_t *patch;         //  Current patch
-fmq_file_t *file;           //  Current file we're sending
+zfile_t *file;           //  Current file we're sending
 off_t offset;               //  Offset of next read in file
 int64_t sequence;           //  Sequence number for chunk
 </context>
@@ -169,43 +169,43 @@ else
 if (fmq_patch_op (client->patch) == patch_create) {
     //  Create patch refers to file, open that for input if needed
     if (client->file == NULL) {
-        client->file = fmq_file_dup (fmq_patch_file (client->patch));
-        if (fmq_file_input (client->file)) {
+        client->file = zfile_dup (fmq_patch_file (client->patch));
+        if (zfile_input (client->file)) {
             //  File no longer available, skip it
             fmq_patch_destroy (&client->patch);
-            fmq_file_destroy (&client->file);
+            zfile_destroy (&client->file);
             client->next_event = next_patch_event;
             return;
         }
         client->offset = 0;
     }
     //  Get next chunk for file
-    fmq_chunk_t *chunk = fmq_file_read (client->file, CHUNK_SIZE, client->offset);
+    zchunk_t *chunk = zfile_read (client->file, CHUNK_SIZE, client->offset);
     assert (chunk);
 
     //  Check if we have the credit to send chunk
-    if (fmq_chunk_size (chunk) <= client->credit) {
+    if (zchunk_size (chunk) <= client->credit) {
         fmq_msg_set_sequence (client->reply, client->sequence++);
         fmq_msg_set_operation (client->reply, FMQ_MSG_FILE_CREATE);
         fmq_msg_set_offset (client->reply, client->offset);
         fmq_msg_set_chunk (client->reply, zframe_new (
-            fmq_chunk_data (chunk),
-            fmq_chunk_size (chunk)));
+            zchunk_data (chunk),
+            zchunk_size (chunk)));
         
-        client->offset += fmq_chunk_size (chunk);
-        client->credit -= fmq_chunk_size (chunk);
+        client->offset += zchunk_size (chunk);
+        client->credit -= zchunk_size (chunk);
         client->next_event = send_chunk_event;
         
         //  Zero-sized chunk means end of file
-        if (fmq_chunk_size (chunk) == 0) {
-            fmq_file_destroy (&client->file);
+        if (zchunk_size (chunk) == 0) {
+            zfile_destroy (&client->file);
             fmq_patch_destroy (&client->patch);
         }
     }
     else
         client->next_event = no_credit_event;
         
-    fmq_chunk_destroy (&chunk);
+    zchunk_destroy (&chunk);
 }
 </action>
 
@@ -214,7 +214,7 @@ if (fmq_patch_op (client->patch) == patch_create) {
 <method name = "bind" return = "number">
 <argument name = "endpoint" type = "string" />
 self->port = zsocket_bind (self->router, endpoint);
-<return>zstr_sendf (self->pipe, "%d", self->port);</return>
+<return>zstr_send (self->pipe, "%d", self->port);</return>
 </method>
 
 <method name = "publish">

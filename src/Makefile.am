@@ -5,10 +5,8 @@ pkgconfig_DATA = libfmq.pc
 
 include_HEADERS = \
     ../include/fmq.h \
-    ../include/fmq_chunk.h \
     ../include/fmq_client.h \
     ../include/fmq_dir.h \
-    ../include/fmq_file.h \
     ../include/fmq_hash.h \
     ../include/fmq_msg.h \
     ../include/fmq_patch.h \
@@ -16,10 +14,8 @@ include_HEADERS = \
     ../include/fmq_server.h
 
 libfmq_la_SOURCES = \
-    fmq_chunk.c \
     fmq_client.c \
     fmq_dir.c \
-    fmq_file.c \
     fmq_hash.c \
     fmq_msg.c \
     fmq_patch.c \

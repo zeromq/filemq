@@ -26,7 +26,7 @@
 /*
 @header
     The fmq_patch class works with one patch, which really just says "create
-    this file" or "delete this file" (referring to a fmq_file item each time).
+    this file" or "delete this file" (referring to a zfile item each time).
 @discuss
 @end
 */
@@ -40,7 +40,7 @@
 struct _fmq_patch_t {
     char *path;                 //  Directory path
     char *virtual;              //  Virtual file name
-    fmq_file_t *file;           //  File we refer to
+    zfile_t *file;           //  File we refer to
     fmq_patch_op_t op;          //  Operation
     char *digest;               //  File SHA-1 digest
 };
@@ -51,15 +51,15 @@ struct _fmq_patch_t {
 //  Create new patch, create virtual path from alias
 
 fmq_patch_t *
-fmq_patch_new (char *path, fmq_file_t *file, fmq_patch_op_t op, char *alias)
+fmq_patch_new (char *path, zfile_t *file, fmq_patch_op_t op, char *alias)
 {
     fmq_patch_t *self = (fmq_patch_t *) zmalloc (sizeof (fmq_patch_t));
     self->path = strdup (path);
-    self->file = fmq_file_dup (file);
+    self->file = zfile_dup (file);
     self->op = op;
     
     //  Calculate virtual filename for patch (remove path, prefix alias)
-    char *filename = fmq_file_name (file, path);
+    char *filename = zfile_filename (file, path);
     assert (*filename != '/');
     self->virtual = malloc (strlen (alias) + strlen (filename) + 2);
     if (alias [strlen (alias) - 1] == '/')
@@ -83,7 +83,7 @@ fmq_patch_destroy (fmq_patch_t **self_p)
         free (self->path);
         free (self->virtual);
         free (self->digest);
-        fmq_file_destroy (&self->file);
+        zfile_destroy (&self->file);
         free (self);
         *self_p = NULL;
     }
@@ -98,7 +98,7 @@ fmq_patch_dup (fmq_patch_t *self)
 {
     fmq_patch_t *copy = (fmq_patch_t *) zmalloc (sizeof (fmq_patch_t));
     copy->path = strdup (self->path);
-    copy->file = fmq_file_dup (self->file);
+    copy->file = zfile_dup (self->file);
     copy->op = self->op;
     copy->virtual = strdup (self->virtual);
     //  Don't recalculate hash when we duplicate patch
@@ -121,7 +121,7 @@ fmq_patch_path (fmq_patch_t *self)
 //  --------------------------------------------------------------------------
 //  Return patch file item
 
-fmq_file_t *
+zfile_t *
 fmq_patch_file (fmq_patch_t *self)
 {
     assert (self);
@@ -151,6 +151,42 @@ fmq_patch_virtual (fmq_patch_t *self)
 }
 
 
+//  Return file SHA-1 hash as string; caller has to free it
+//  TODO: this has to be moved into CZMQ along with SHA1 and hash class
+
+static char *
+s_file_hash (zfile_t *file)
+{
+    if (zfile_input (file) == -1)
+        return NULL;            //  Problem reading directory
+
+    //  Now calculate hash for file data, chunk by chunk
+    size_t blocksz = 65535;
+    off_t offset = 0;
+    fmq_hash_t *hash = fmq_hash_new ();
+    zchunk_t *chunk = zfile_read (file, blocksz, offset);
+    while (zchunk_size (chunk)) {
+        fmq_hash_update (hash, zchunk_data (chunk), zchunk_size (chunk));
+        zchunk_destroy (&chunk);
+        offset += blocksz;
+        chunk = zfile_read (file, blocksz, offset);
+    }
+    zchunk_destroy (&chunk);
+    zfile_close (file);
+
+    //  Convert to printable string
+    char hex_char [] = "0123456789ABCDEF";
+    char *hashstr = zmalloc (fmq_hash_size (hash) * 2 + 1);
+    int byte_nbr;
+    for (byte_nbr = 0; byte_nbr < fmq_hash_size (hash); byte_nbr++) {
+        hashstr [byte_nbr * 2 + 0] = hex_char [fmq_hash_data (hash) [byte_nbr] >> 4];
+        hashstr [byte_nbr * 2 + 1] = hex_char [fmq_hash_data (hash) [byte_nbr] & 15];
+    }
+    fmq_hash_destroy (&hash);
+    return hashstr;
+}
+
+
 //  --------------------------------------------------------------------------
 //  Calculate hash digest for file (create only)
 
@@ -159,7 +195,7 @@ fmq_patch_digest_set (fmq_patch_t *self)
 {
     if (self->op == patch_create
     &&  self->digest == NULL)
-        self->digest = fmq_file_hash (self->file);
+        self->digest = s_file_hash (self->file);
 }
 
 
@@ -182,12 +218,12 @@ fmq_patch_test (bool verbose)
     printf (" * fmq_patch: ");
 
     //  @selftest
-    fmq_file_t *file = fmq_file_new (".", "bilbo");
+    zfile_t *file = zfile_new (".", "bilbo");
     fmq_patch_t *patch = fmq_patch_new (".", file, patch_create, "/");
-    fmq_file_destroy (&file);
+    zfile_destroy (&file);
     
     file = fmq_patch_file (patch);
-    assert (streq (fmq_file_name (file, "."), "bilbo"));
+    assert (streq (zfile_filename (file, "."), "bilbo"));
     assert (streq (fmq_patch_virtual (patch), "/bilbo"));
     fmq_patch_destroy (&patch);
     //  @end
