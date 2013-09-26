@@ -68,7 +68,7 @@ char *
 
 //  Set patch virtual file name
 void
-    fmq_patch_virtual_set (fmq_patch_t *self, char *virtual);
+    fmq_patch_virtual_set (fmq_patch_t *self, char *_virtual);
 
 //  Calculate hash digest for file (create only)
 void
