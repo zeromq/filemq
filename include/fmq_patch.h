@@ -40,7 +40,7 @@ typedef struct _fmq_patch_t fmq_patch_t;
 //  @interface
 //  Create new patch
 fmq_patch_t *
-    fmq_patch_new (char *path, fmq_file_t *file, fmq_patch_op_t op, char *alias);
+    fmq_patch_new (char *path, zfile_t *file, fmq_patch_op_t op, char *alias);
 
 //  Destroy a patch
 void
@@ -55,7 +55,7 @@ char *
     fmq_patch_path (fmq_patch_t *self);
 
 //  Return patch file item
-fmq_file_t *
+zfile_t *
     fmq_patch_file (fmq_patch_t *self);
 
 //  Return operation
