@@ -608,7 +608,7 @@ server_client_execute (server_t *self, client_t *client, int event)
     client->next_event = event;
     while (client->next_event) {
         client->event = client->next_event;
-        client->next_event = 0;
+        client->next_event = (event_t) 0;
 .if switches.animate ?= 1
         zclock_log ("S: %s:", s_state_name [client->state]);
         zclock_log ("S: (%s)", s_event_name [client->event]);
@@ -657,7 +657,7 @@ server_client_message (server_t *self)
     $(codec)_dump (request);
 .endif
     char *hashkey = zframe_strhex ($(codec)_address (request));
-    client_t *client = zhash_lookup (self->clients, hashkey);
+    client_t *client = (client_t *) zhash_lookup (self->clients, hashkey);
     if (client == NULL) {
         client = client_new ($(codec)_address (request));
         client->heartbeat = self->heartbeat;

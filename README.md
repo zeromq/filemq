@@ -12,27 +12,38 @@ What problems does FileMQ solve? Well, two main things. First, it creates a stup
 
 ## How to build and use
 
-This code needs the freshest possible libzmq and CZMQ. To build:
+This code needs the freshest possible libsodium, libzmq, and CZMQ. To build:
+
+    git clone git://github.com/jedisct1/libsodium.git
+    cd libsodium
+    ./autogen.sh
+    ./configure && make check
+    sudo make install
+    sudo ldconfig
+    cd ..
 
     git clone git://github.com/zeromq/libzmq.git
     cd libzmq
     ./autogen.sh
-    ./configure
-    make check install
+    ./configure && make check
+    sudo make install
+    sudo ldconfig
     cd ..
 
     git clone git://github.com/zeromq/czmq.git
     cd czmq
     ./autogen.sh
-    ./configure
-    make check install
+    ./configure && make check
+    sudo make install
+    sudo ldconfig
     cd ..
 
     git clone git://github.com/hintjens/filemq.git
     cd filemq
     ./autogen.sh
-    ./configure
-    make check
+    ./configure && make check
+    sudo make install
+    sudo ldconfig
     cd ..
 
 Contribution process:

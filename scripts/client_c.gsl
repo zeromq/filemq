@@ -626,7 +626,7 @@ client_server_execute (client_t *self, server_t *server, int event)
     server->next_event = event;
     while (server->next_event) {
         server->event = server->next_event;
-        server->next_event = 0;
+        server->next_event = (event_t) 0;
 .if switches.animate ?= 1
         zclock_log ("C: %s:", s_state_name [server->state]);
         zclock_log ("C: (%s)", s_event_name [server->event]);
