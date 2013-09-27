@@ -283,7 +283,7 @@ s_resolve_cache_path (const char *key, void *item, void *argument)
 {
     sub_t *self = (sub_t *) argument;
     if (*key != '/') {
-        char *new_key = (char*)malloc (strlen (self->path) + strlen (key) + 2);
+        char *new_key = malloc (strlen (self->path) + strlen (key) + 2);
         sprintf (new_key, "%s/%s", self->path, key);
         zhash_rename (self->cache, key, new_key);
         free (new_key);
@@ -318,14 +318,14 @@ sub_patch_add (sub_t *self, fmq_patch_t *patch)
     //  Skip file creation if client already has identical file
     fmq_patch_digest_set (patch);
     if (fmq_patch_op (patch) == patch_create) {
-        char *digest = (char*)zhash_lookup (self->cache, fmq_patch_virtual (patch));
-        if (digest && strcasecmp (digest, fmq_patch_digest (patch)) == 0)
+        char *digest = (char *) zhash_lookup (self->cache, fmq_patch_vpath (patch));
+        if (digest && streq (digest, fmq_patch_digest (patch)))
             return;             //  Just skip patch for this client
     }
     //  Remove any previous patches for the same file
     fmq_patch_t *existing = (fmq_patch_t *) zlist_first (self->client->patches);
     while (existing) {
-        if (streq (fmq_patch_virtual (patch), fmq_patch_virtual (existing))) {
+        if (streq (fmq_patch_vpath (patch), fmq_patch_vpath (existing))) {
             zlist_remove (self->client->patches, existing);
             fmq_patch_destroy (&existing);
             break;
@@ -334,7 +334,7 @@ sub_patch_add (sub_t *self, fmq_patch_t *patch)
     }
     if (fmq_patch_op (patch) == patch_create)
         zhash_insert (self->cache,
-            fmq_patch_digest (patch), fmq_patch_virtual (patch));
+            fmq_patch_digest (patch), fmq_patch_vpath (patch));
     //  Track that we've queued patch for client, so we don't do it twice
     zlist_append (self->client->patches, fmq_patch_dup (patch));
 }
@@ -755,7 +755,7 @@ static void
 try_security_mechanism (server_t *self, client_t *client)
 {
     client->next_event = foe_event;                                                          
-    char *login = NULL, *password = NULL;
+    char *login, *password;                                                                  
     if (streq (fmq_msg_mechanism (client->request), "PLAIN")                                 
     &&  fmq_sasl_plain_decode (fmq_msg_response (client->request), &login, &password) == 0) {
         zconfig_t *account = zconfig_locate (self->config, "security/plain/account");        
@@ -821,8 +821,8 @@ get_next_patch_for_client (server_t *self, client_t *client)
         client->next_event = finished_event;                                    
         return;                                                                 
     }                                                                           
-    //  Get virtual filename from patch                                         
-    fmq_msg_set_filename (client->reply, fmq_patch_virtual (client->patch));    
+    //  Get virtual path from patch                                             
+    fmq_msg_set_filename (client->reply, fmq_patch_vpath (client->patch));      
                                                                                 
     //  We can process a delete patch right away                                
     if (fmq_patch_op (client->patch) == patch_delete) {                         
@@ -881,10 +881,10 @@ get_next_patch_for_client (server_t *self, client_t *client)
 static void
 server_client_execute (server_t *self, client_t *client, int event)
 {
-    client->next_event = (event_t)event;
+    client->next_event = event;
     while (client->next_event) {
         client->event = client->next_event;
-        client->next_event = (event_t)0;
+        client->next_event = (event_t) 0;
         switch (client->state) {
             case start_state:
                 if (client->event == ohai_event) {
@@ -1105,7 +1105,7 @@ server_client_message (server_t *self)
         return;         //  Interrupted; do nothing
 
     char *hashkey = zframe_strhex (fmq_msg_address (request));
-    client_t *client = (client_t*)zhash_lookup (self->clients, hashkey);
+    client_t *client = (client_t *) zhash_lookup (self->clients, hashkey);
     if (client == NULL) {
         client = client_new (fmq_msg_address (request));
         client->heartbeat = self->heartbeat;

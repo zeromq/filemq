@@ -643,10 +643,10 @@ log_protocol_error (client_t *self, server_t *server)
 static void
 client_server_execute (client_t *self, server_t *server, int event)
 {
-    server->next_event = (event_t)event;
+    server->next_event = event;
     while (server->next_event) {
         server->event = server->next_event;
-        server->next_event = (event_t)0;
+        server->next_event = (event_t) 0;
         switch (server->state) {
             case start_state:
                 if (server->event == initialize_event) {

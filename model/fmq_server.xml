@@ -153,8 +153,8 @@ if (client->patch == NULL) {
     client->next_event = finished_event;
     return;
 }
-//  Get virtual filename from patch
-fmq_msg_set_filename (client->reply, fmq_patch_virtual (client->patch));
+//  Get virtual path from patch
+fmq_msg_set_filename (client->reply, fmq_patch_vpath (client->patch));
 
 //  We can process a delete patch right away
 if (fmq_patch_op (client->patch) == patch_delete) {

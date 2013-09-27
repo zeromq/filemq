@@ -71,13 +71,13 @@ fmq_sasl_plain_decode (zframe_t *frame, char **login, char **password)
     
     data++;
     remains--;
-    byte *zero = (byte*)memchr (data, 0, remains);
+    byte *zero = (byte *) memchr (data, 0, remains);
     if (zero) {
-        *login = (char*)malloc (zero - data + 1);
+        *login = (char *) zmalloc (zero - data + 1);
         strcpy (*login, (char *) data);
-        data += (strlen (*login) + 1);
-        remains -= (strlen (*login) + 1);
-        *password = (char*)malloc (remains + 1);
+        data += strlen (*login) + 1;
+        remains -= strlen (*login) + 1;
+        *password = (char *) zmalloc (remains + 1);
         memcpy (*password, data, remains);
         (*password) [remains] = 0;
         return 0;
