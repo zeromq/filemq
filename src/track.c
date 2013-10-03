@@ -1,11 +1,12 @@
 /*  =========================================================================
-    track - track one directory with another
+    track - synchronize a slave directory with a master directory
     
-    Uses FILEMQ API to track one directory (e.g. MP3 player mount) with
-    another (e.g. ~/Music). As you add and remove files in the main directory
-    these are automatically created and removed in the tracked directory.
+    Uses FILEMQ API to synchronize a slave directory (e.g. MP3 player mount) 
+    with a master directory (e.g. ~/Music). As you add and remove files in 
+    the master directory, these are automatically created and removed in the 
+    slave directory.
     
-    Syntax: filemq original-directory tracking-directory
+    Syntax: filemq master-directory slave-directory
 
     -------------------------------------------------------------------------
     Copyright (c) 1991-2012 iMatix Corporation <www.imatix.com>
@@ -42,7 +43,7 @@
 int main (int argc, char *argv [])
 {
     if (argc < 3) {
-        puts ("usage: track original-directory tracking-directory");
+        puts ("usage: track master-directory slave-directory");
         return 0;
     }
     fmq_server_t *server = fmq_server_new ();
