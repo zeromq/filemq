@@ -38,7 +38,7 @@
 
 #include <czmq.h>
 #if CZMQ_VERSION < 20000
-#   error "FileMQ needs CZMQ/2.0.0 or later"
+#   error "FileMQ needs CZMQ/2.0.3 or later"
 #endif
 
 //  Maximum length of a path + filename
@@ -50,10 +50,7 @@
 //  TODO: the generators and required classes should not be part of FMQ
 //  as such, but a separate project so they can be reused more widely.
 //  PH 2013-05-22: I'm slowly moving some of these into CZMQ.
-#include "fmq_dir.h"
-#include "fmq_patch.h"
 #include "fmq_sasl.h"
-#include "fmq_hash.h"
 
 //  These are specific to the FileMQ implementation
 #include "fmq_msg.h"

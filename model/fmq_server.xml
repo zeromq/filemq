@@ -33,7 +33,7 @@ zlist_destroy (&self->mounts);
 <context>
 size_t credit;              //  Credit remaining
 zlist_t *patches;           //  Patches to send
-fmq_patch_t *patch;         //  Current patch
+zdir_patch_t *patch;         //  Current patch
 zfile_t *file;           //  Current file we're sending
 off_t offset;               //  Offset of next read in file
 int64_t sequence;           //  Sequence number for chunk
@@ -43,8 +43,8 @@ self->patches = zlist_new ();
 </construct>
 <destruct>
 while (zlist_size (self->patches)) {
-    fmq_patch_t *patch = (fmq_patch_t *) zlist_pop (self->patches);
-    fmq_patch_destroy (&patch);
+    zdir_patch_t *patch = (zdir_patch_t *) zlist_pop (self->patches);
+    zdir_patch_destroy (&patch);
 }
 zlist_destroy (&self->patches);
 </destruct>
@@ -148,31 +148,31 @@ if (activity)
 <action name = "get next patch for client">
 //  Get next patch for client if we're not doing one already
 if (client->patch == NULL)
-    client->patch = (fmq_patch_t *) zlist_pop (client->patches);
+    client->patch = (zdir_patch_t *) zlist_pop (client->patches);
 if (client->patch == NULL) {
     client->next_event = finished_event;
     return;
 }
 //  Get virtual path from patch
-fmq_msg_set_filename (client->reply, fmq_patch_vpath (client->patch));
+fmq_msg_set_filename (client->reply, zdir_patch_vpath (client->patch));
 
 //  We can process a delete patch right away
-if (fmq_patch_op (client->patch) == patch_delete) {
+if (zdir_patch_op (client->patch) == patch_delete) {
     fmq_msg_set_sequence (client->reply, client->sequence++);
     fmq_msg_set_operation (client->reply, FMQ_MSG_FILE_DELETE);
     client->next_event = send_delete_event;
     
     //  No reliability in this version, assume patch delivered safely
-    fmq_patch_destroy (&client->patch);
+    zdir_patch_destroy (&client->patch);
 }
 else
-if (fmq_patch_op (client->patch) == patch_create) {
+if (zdir_patch_op (client->patch) == patch_create) {
     //  Create patch refers to file, open that for input if needed
     if (client->file == NULL) {
-        client->file = zfile_dup (fmq_patch_file (client->patch));
+        client->file = zfile_dup (zdir_patch_file (client->patch));
         if (zfile_input (client->file)) {
             //  File no longer available, skip it
-            fmq_patch_destroy (&client->patch);
+            zdir_patch_destroy (&client->patch);
             zfile_destroy (&client->file);
             client->next_event = next_patch_event;
             return;
@@ -199,7 +199,7 @@ if (fmq_patch_op (client->patch) == patch_create) {
         //  Zero-sized chunk means end of file
         if (zchunk_size (chunk) == 0) {
             zfile_destroy (&client->file);
-            fmq_patch_destroy (&client->patch);
+            zdir_patch_destroy (&client->patch);
         }
     }
     else

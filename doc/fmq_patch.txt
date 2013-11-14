@@ -10,7 +10,7 @@ SYNOPSIS
 ----
 //  Create new patch
 fmq_patch_t *
-    fmq_patch_new (char *path, fmq_file_t *file, fmq_patch_op_t op, char *alias);
+    fmq_patch_new (char *path, zfile_t *file, fmq_patch_op_t op, char *alias);
 
 //  Destroy a patch
 void
@@ -25,20 +25,20 @@ char *
     fmq_patch_path (fmq_patch_t *self);
 
 //  Return patch file item
-fmq_file_t *
+zfile_t *
     fmq_patch_file (fmq_patch_t *self);
 
 //  Return operation
 fmq_patch_op_t
     fmq_patch_op (fmq_patch_t *self);
     
-//  Return patch virtual file name
+//  Return patch virtual file path
 char *
-    fmq_patch_virtual (fmq_patch_t *self);
+    fmq_patch_vpath (fmq_patch_t *self);
 
-//  Set patch virtual file name
+//  Set patch virtual file path
 void
-    fmq_patch_virtual_set (fmq_patch_t *self, char *virtual);
+    fmq_patch_vpath_set (fmq_patch_t *self, char *vpath);
 
 //  Calculate hash digest for file (create only)
 void
@@ -57,20 +57,20 @@ DESCRIPTION
 -----------
 
 The fmq_patch class works with one patch, which really just says "create
-this file" or "delete this file" (referring to a fmq_file item each time).
+this file" or "delete this file" (referring to a zfile item each time).
 
 
 EXAMPLE
 -------
 .From fmq_patch_test method
 ----
-    fmq_file_t *file = fmq_file_new (".", "bilbo");
+    zfile_t *file = zfile_new (".", "bilbo");
     fmq_patch_t *patch = fmq_patch_new (".", file, patch_create, "/");
-    fmq_file_destroy (&file);
+    zfile_destroy (&file);
     
     file = fmq_patch_file (patch);
-    assert (streq (fmq_file_name (file, "."), "bilbo"));
-    assert (streq (fmq_patch_virtual (patch), "/bilbo"));
+    assert (streq (zfile_filename (file, "."), "bilbo"));
+    assert (streq (fmq_patch_vpath (patch), "/bilbo"));
     fmq_patch_destroy (&patch);
 ----
 

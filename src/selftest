@@ -10,14 +10,9 @@ cd ../src
 VG="valgrind --tool=memcheck --leak-check=full --show-reachable=yes --suppressions=valgrind.supp"
 
 gcc -g -o fmq_selftest fmq_selftest.c  \
-    fmq_chunk.c \
     fmq_client.c \
-    fmq_dir.c \
-    fmq_file.c \
     fmq_msg.c \
-    fmq_patch.c \
     fmq_sasl.c \
-    fmq_hash.c \
     fmq_server.c \
     ${CFLAGS} ${LDFLAGS} -DHAVE_CONFIG_H -lczmq -lzmq -lcrypto
 

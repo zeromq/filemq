@@ -41,7 +41,7 @@ size_t
     fmq_dir_count (fmq_dir_t *self);
 
 //  Return sorted array of file references
-fmq_file_t **
+zfile_t **
     fmq_dir_flatten (fmq_dir_t *self);
 
 //  Remove directory, optionally including all files
