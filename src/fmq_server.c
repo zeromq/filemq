@@ -151,10 +151,8 @@ fmq_server_set_anonymous (fmq_server_t *self, long enabled)
 
 typedef enum {
     start_state = 1,
-    checking_client_state = 2,
-    challenging_client_state = 3,
-    ready_state = 4,
-    dispatching_state = 5
+    ready_state = 2,
+    dispatching_state = 3
 } state_t;
 
 typedef enum {
@@ -163,20 +161,16 @@ typedef enum {
     heartbeat_event = 2,
     expired_event = 3,
     _other_event = 4,
-    friend_event = 5,
-    foe_event = 6,
-    maybe_event = 7,
-    yarly_event = 8,
-    icanhaz_event = 9,
-    nom_event = 10,
-    hugz_event = 11,
-    kthxbai_event = 12,
-    dispatch_event = 13,
-    send_chunk_event = 14,
-    send_delete_event = 15,
-    next_patch_event = 16,
-    no_credit_event = 17,
-    finished_event = 18
+    icanhaz_event = 5,
+    nom_event = 6,
+    hugz_event = 7,
+    kthxbai_event = 8,
+    dispatch_event = 9,
+    send_chunk_event = 10,
+    send_delete_event = 11,
+    next_patch_event = 12,
+    no_credit_event = 13,
+    finished_event = 14
 } event_t;
 
 
@@ -345,7 +339,7 @@ sub_patch_add (sub_t *self, zdir_patch_t *patch)
 struct _mount_t {
     char *location;         //  Physical location
     char *alias;            //  Alias into our tree
-    zdir_t *dir;         //  Directory snapshot
+    zdir_t *dir;            //  Directory snapshot
     zlist_t *subs;          //  Client subscriptions
 };
 
@@ -438,6 +432,9 @@ mount_refresh (mount_t *self, server_t *server)
 static void
 mount_sub_store (mount_t *self, client_t *client, fmq_msg_t *request)
 {
+    assert (self);
+    assert (self->subs);
+    
     //  Store subscription along with any previous ones
     //  Coalesce subscriptions that are on same path
     char *path = fmq_msg_path (request);
@@ -731,48 +728,6 @@ terminate_the_client (server_t *self, client_t *client)
 }
 
 static void
-try_anonymous_access (server_t *self, client_t *client)
-{
-    if (atoi (zconfig_resolve (self->config, "security/anonymous", "0")) == 1)
-        client->next_event = friend_event;                                    
-    else                                                                      
-    if (atoi (zconfig_resolve (self->config, "security/plain", "0")) == 1)    
-        client->next_event = maybe_event;                                     
-    else                                                                      
-        client->next_event = foe_event;                                       
-}
-
-static void
-list_security_mechanisms (server_t *self, client_t *client)
-{
-    if (atoi (zconfig_resolve (self->config, "security/anonymous", "0")) == 1)
-        fmq_msg_mechanisms_append (client->reply, "ANONYMOUS");               
-    if (atoi (zconfig_resolve (self->config, "security/plain", "0")) == 1)    
-        fmq_msg_mechanisms_append (client->reply, "PLAIN");                   
-}
-
-static void
-try_security_mechanism (server_t *self, client_t *client)
-{
-    client->next_event = foe_event;                                                          
-    char *login, *password;                                                                  
-    if (streq (fmq_msg_mechanism (client->request), "PLAIN")                                 
-    &&  fmq_sasl_plain_decode (fmq_msg_response (client->request), &login, &password) == 0) {
-        zconfig_t *account = zconfig_locate (self->config, "security/plain/account");        
-        while (account) {                                                                    
-            if (streq (zconfig_resolve (account, "login", ""), login)                        
-            &&  streq (zconfig_resolve (account, "password", ""), password)) {               
-                client->next_event = friend_event;                                           
-                break;                                                                       
-            }                                                                                
-            account = zconfig_next (account);                                                
-        }                                                                                    
-    }                                                                                        
-    free (login);                                                                            
-    free (password);                                                                         
-}
-
-static void
 store_client_subscription (server_t *self, client_t *client)
 {
     //  Find mount point with longest match to subscription         
@@ -788,7 +743,9 @@ store_client_subscription (server_t *self, client_t *client)
             mount = check;                                          
         check = (mount_t *) zlist_next (self->mounts);              
     }                                                               
-    mount_sub_store (mount, client, client->request);               
+    //  If subscription matches nothing, discard it                 
+    if (mount)                                                      
+        mount_sub_store (mount, client, client->request);           
 }
 
 static void
@@ -888,28 +845,6 @@ server_client_execute (server_t *self, client_t *client, int event)
         switch (client->state) {
             case start_state:
                 if (client->event == ohai_event) {
-                    try_anonymous_access (self, client);
-                    client->state = checking_client_state;
-                }
-                else
-                if (client->event == heartbeat_event) {
-                }
-                else
-                if (client->event == expired_event) {
-                    terminate_the_client (self, client);
-                }
-                else {
-                    //  Process all other events
-                    fmq_msg_set_id (client->reply, FMQ_MSG_RTFM);
-                    fmq_msg_send (&client->reply, client->router);
-                    client->reply = fmq_msg_new (0);
-                    fmq_msg_set_address (client->reply, client->address);
-                    terminate_the_client (self, client);
-                }
-                break;
-
-            case checking_client_state:
-                if (client->event == friend_event) {
                     fmq_msg_set_id (client->reply, FMQ_MSG_OHAI_OK);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
@@ -917,60 +852,11 @@ server_client_execute (server_t *self, client_t *client, int event)
                     client->state = ready_state;
                 }
                 else
-                if (client->event == foe_event) {
-                    fmq_msg_set_id (client->reply, FMQ_MSG_SRSLY);
-                    fmq_msg_send (&client->reply, client->router);
-                    client->reply = fmq_msg_new (0);
-                    fmq_msg_set_address (client->reply, client->address);
-                    terminate_the_client (self, client);
-                }
-                else
-                if (client->event == maybe_event) {
-                    list_security_mechanisms (self, client);
-                    fmq_msg_set_id (client->reply, FMQ_MSG_ORLY);
-                    fmq_msg_send (&client->reply, client->router);
-                    client->reply = fmq_msg_new (0);
-                    fmq_msg_set_address (client->reply, client->address);
-                    client->state = challenging_client_state;
-                }
-                else
                 if (client->event == heartbeat_event) {
                 }
                 else
                 if (client->event == expired_event) {
                     terminate_the_client (self, client);
-                }
-                else
-                if (client->event == ohai_event) {
-                    try_anonymous_access (self, client);
-                    client->state = checking_client_state;
-                }
-                else {
-                    //  Process all other events
-                    fmq_msg_set_id (client->reply, FMQ_MSG_RTFM);
-                    fmq_msg_send (&client->reply, client->router);
-                    client->reply = fmq_msg_new (0);
-                    fmq_msg_set_address (client->reply, client->address);
-                    terminate_the_client (self, client);
-                }
-                break;
-
-            case challenging_client_state:
-                if (client->event == yarly_event) {
-                    try_security_mechanism (self, client);
-                    client->state = checking_client_state;
-                }
-                else
-                if (client->event == heartbeat_event) {
-                }
-                else
-                if (client->event == expired_event) {
-                    terminate_the_client (self, client);
-                }
-                else
-                if (client->event == ohai_event) {
-                    try_anonymous_access (self, client);
-                    client->state = checking_client_state;
                 }
                 else {
                     //  Process all other events
@@ -1025,8 +911,11 @@ server_client_execute (server_t *self, client_t *client, int event)
                 }
                 else
                 if (client->event == ohai_event) {
-                    try_anonymous_access (self, client);
-                    client->state = checking_client_state;
+                    fmq_msg_set_id (client->reply, FMQ_MSG_OHAI_OK);
+                    fmq_msg_send (&client->reply, client->router);
+                    client->reply = fmq_msg_new (0);
+                    fmq_msg_set_address (client->reply, client->address);
+                    client->state = ready_state;
                 }
                 else {
                     //  Process all other events
@@ -1075,8 +964,11 @@ server_client_execute (server_t *self, client_t *client, int event)
                 }
                 else
                 if (client->event == ohai_event) {
-                    try_anonymous_access (self, client);
-                    client->state = checking_client_state;
+                    fmq_msg_set_id (client->reply, FMQ_MSG_OHAI_OK);
+                    fmq_msg_send (&client->reply, client->router);
+                    client->reply = fmq_msg_new (0);
+                    fmq_msg_set_address (client->reply, client->address);
+                    client->state = ready_state;
                 }
                 else {
                     //  Process all other events
@@ -1125,9 +1017,6 @@ server_client_message (server_t *self)
     
     if (fmq_msg_id (request) == FMQ_MSG_OHAI)
         server_client_execute (self, client, ohai_event);
-    else
-    if (fmq_msg_id (request) == FMQ_MSG_YARLY)
-        server_client_execute (self, client, yarly_event);
     else
     if (fmq_msg_id (request) == FMQ_MSG_ICANHAZ)
         server_client_execute (self, client, icanhaz_event);
@@ -1210,28 +1099,24 @@ fmq_server_test (bool verbose)
     fmq_msg_send (&request, dealer);
     reply = fmq_msg_recv (dealer);
     assert (reply);
-    assert (fmq_msg_id (reply) == FMQ_MSG_SRSLY);
+    assert (fmq_msg_id (reply) == FMQ_MSG_OHAI_OK);
     fmq_msg_destroy (&reply);
 
     request = fmq_msg_new (FMQ_MSG_ICANHAZ);
     fmq_msg_send (&request, dealer);
     reply = fmq_msg_recv (dealer);
     assert (reply);
-    assert (fmq_msg_id (reply) == FMQ_MSG_RTFM);
+    assert (fmq_msg_id (reply) == FMQ_MSG_ICANHAZ_OK);
     fmq_msg_destroy (&reply);
 
     request = fmq_msg_new (FMQ_MSG_NOM);
     fmq_msg_send (&request, dealer);
-    reply = fmq_msg_recv (dealer);
-    assert (reply);
-    assert (fmq_msg_id (reply) == FMQ_MSG_RTFM);
-    fmq_msg_destroy (&reply);
 
     request = fmq_msg_new (FMQ_MSG_HUGZ);
     fmq_msg_send (&request, dealer);
     reply = fmq_msg_recv (dealer);
     assert (reply);
-    assert (fmq_msg_id (reply) == FMQ_MSG_RTFM);
+    assert (fmq_msg_id (reply) == FMQ_MSG_HUGZ_OK);
     fmq_msg_destroy (&reply);
 
     fmq_server_destroy (&self);
@@ -1258,13 +1143,6 @@ fmq_server_test (bool verbose)
     assert (fmq_msg_id (reply) == FMQ_MSG_HUGZ_OK);
     fmq_msg_destroy (&reply);
 
-    request = fmq_msg_new (FMQ_MSG_YARLY);
-    fmq_msg_send (&request, dealer);
-    reply = fmq_msg_recv (dealer);
-    assert (reply);
-    assert (fmq_msg_id (reply) == FMQ_MSG_RTFM);
-    fmq_msg_destroy (&reply);
-
     fmq_server_destroy (&self);
     //  Run selftest using 'server_test.cfg' configuration
     self = fmq_server_new ();
@@ -1273,15 +1151,6 @@ fmq_server_test (bool verbose)
     port = fmq_server_bind (self, "tcp://*:5670");
     assert (port == 5670);                        
     request = fmq_msg_new (FMQ_MSG_OHAI);
-    fmq_msg_send (&request, dealer);
-    reply = fmq_msg_recv (dealer);
-    assert (reply);
-    assert (fmq_msg_id (reply) == FMQ_MSG_ORLY);
-    fmq_msg_destroy (&reply);
-
-    request = fmq_msg_new (FMQ_MSG_YARLY);
-    fmq_msg_set_mechanism (request, "PLAIN");                                
-    fmq_msg_set_response (request, fmq_sasl_plain_encode ("guest", "guest"));
     fmq_msg_send (&request, dealer);
     reply = fmq_msg_recv (dealer);
     assert (reply);

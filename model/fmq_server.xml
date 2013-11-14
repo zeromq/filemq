@@ -65,24 +65,7 @@ while (mount) {
 client->next_event = terminate_event;
 </action>
 
-<action name = "try anonymous access">
-if (atoi (zconfig_resolve (self->config, "security/anonymous", "0")) == 1)
-    client->next_event = friend_event;
-else
-if (atoi (zconfig_resolve (self->config, "security/plain", "0")) == 1)
-    client->next_event = maybe_event;
-else
-    client->next_event = foe_event;
-</action>
-    
-<action name = "list security mechanisms">
-if (atoi (zconfig_resolve (self->config, "security/anonymous", "0")) == 1)
-    fmq_msg_mechanisms_append (client->reply, "ANONYMOUS");
-if (atoi (zconfig_resolve (self->config, "security/plain", "0")) == 1)
-    fmq_msg_mechanisms_append (client->reply, "PLAIN");
-</action>
-
-<action name = "try security mechanism">
+<!--<action name = "try security mechanism">
 client->next_event = foe_event;
 char *login, *password;
 if (streq (fmq_msg_mechanism (client->request), "PLAIN")
@@ -99,7 +82,7 @@ if (streq (fmq_msg_mechanism (client->request), "PLAIN")
 }
 free (login);
 free (password);
-</action>
+</action>-->
 
 <action name = "store client subscription">
 //  Find mount point with longest match to subscription
@@ -115,7 +98,9 @@ while (check) {
         mount = check;
     check = (mount_t *) zlist_next (self->mounts);
 }
-mount_sub_store (mount, client, client->request);
+//  If subscription matches nothing, discard it
+if (mount)
+    mount_sub_store (mount, client, client->request);
 </action>
 
 <action name = "store client credit">

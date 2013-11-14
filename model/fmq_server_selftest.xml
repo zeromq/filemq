@@ -3,10 +3,10 @@
 int port = fmq_server_bind (self, "tcp://*:5670");
 assert (port == 5670);
     </init>
-    <step send = "OHAI" recv = "SRSLY" />
-    <step send = "ICANHAZ" recv = "RTFM" />
-    <step send = "NOM" recv = "RTFM" />
-    <step send = "HUGZ" recv = "RTFM" />
+    <step send = "OHAI" recv = "OHAI-OK" />
+    <step send = "ICANHAZ" recv = "ICANHAZ-OK" />
+    <step send = "NOM" />
+    <step send = "HUGZ" recv = "HUGZ-OK" />
 </selftest>
 
 <selftest config = "anonymous.cfg" language = "C">
@@ -17,7 +17,6 @@ assert (port == 5670);
     <step send = "OHAI" recv = "OHAI-OK" />
     <step send = "NOM" />
     <step send = "HUGZ" recv = "HUGZ-OK" />
-    <step send = "YARLY" recv = "RTFM" />
 </selftest>
 
 <selftest config = "server_test.cfg" language = "C">
@@ -25,11 +24,7 @@ assert (port == 5670);
 port = fmq_server_bind (self, "tcp://*:5670");
 assert (port == 5670);
     </init>
-    <step send = "OHAI" recv = "ORLY" />
-    <step send = "YARLY" recv = "OHAI-OK">
-fmq_msg_set_mechanism (request, "PLAIN");
-fmq_msg_set_response (request, fmq_sasl_plain_encode ("guest", "guest"));
-    </step>
+    <step send = "OHAI" recv = "OHAI-OK" />
     <step send = "NOM" />
     <step send = "HUGZ" recv = "HUGZ-OK" />
     <step recv = "HUGZ" />

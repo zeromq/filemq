@@ -12,19 +12,7 @@ This is the FILEMQ protocol version 1.0
 <message name = "OHAI" id = "1">
 Client opens peering
     <field name = "protocol" type = "string" value = "FILEMQ" />
-    <field name = "version" type = "number" size = "1" value = "FMQ_MSG_VERSION" />
-</message>
-
-<message name = "ORLY" id = "2">
-Server challenges the client to authenticate itself
-    <field name = "mechanisms" type = "strings" />
-    <field name = "challenge" type = "frame" />
-</message>
-
-<message name = "YARLY" id = "3">
-Client responds with authentication information
-    <field name = "mechanism" type = "string" />
-    <field name = "response" type = "frame" />
+    <field name = "version" type = "number" size = "2" value = "FMQ_MSG_VERSION" />
 </message>
 
 <message name = "OHAI-OK" id = "4">

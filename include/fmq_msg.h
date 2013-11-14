@@ -29,13 +29,7 @@
 /*  These are the fmq_msg messages
     OHAI - Client opens peering
         protocol      string
-        version       number 1
-    ORLY - Server challenges the client to authenticate itself
-        mechanisms    strings
-        challenge     frame
-    YARLY - Client responds with authentication information
-        mechanism     string
-        response      frame
+        version       number 2
     OHAI_OK - Server grants the client access
     ICANHAZ - Client subscribes to a path
         path          string
@@ -67,8 +61,6 @@
 #define FMQ_MSG_FILE_DELETE                 2
 
 #define FMQ_MSG_OHAI                        1
-#define FMQ_MSG_ORLY                        2
-#define FMQ_MSG_YARLY                       3
 #define FMQ_MSG_OHAI_OK                     4
 #define FMQ_MSG_ICANHAZ                     5
 #define FMQ_MSG_ICANHAZ_OK                  6
@@ -107,18 +99,6 @@ int
 //  Send the OHAI to the output in one step
 int
     fmq_msg_send_ohai (void *output);
-    
-//  Send the ORLY to the output in one step
-int
-    fmq_msg_send_orly (void *output,
-        zlist_t *mechanisms,
-        zframe_t *challenge);
-    
-//  Send the YARLY to the output in one step
-int
-    fmq_msg_send_yarly (void *output,
-        char *mechanism,
-        zframe_t *response);
     
 //  Send the OHAI_OK to the output in one step
 int
@@ -195,40 +175,6 @@ void
     fmq_msg_set_id (fmq_msg_t *self, int id);
 char *
     fmq_msg_command (fmq_msg_t *self);
-
-//  Get/set the mechanisms field
-zlist_t *
-    fmq_msg_mechanisms (fmq_msg_t *self);
-void
-    fmq_msg_set_mechanisms (fmq_msg_t *self, zlist_t *mechanisms);
-
-//  Iterate through the mechanisms field, and append a mechanisms value
-char *
-    fmq_msg_mechanisms_first (fmq_msg_t *self);
-char *
-    fmq_msg_mechanisms_next (fmq_msg_t *self);
-void
-    fmq_msg_mechanisms_append (fmq_msg_t *self, char *format, ...);
-size_t
-    fmq_msg_mechanisms_size (fmq_msg_t *self);
-
-//  Get/set the challenge field
-zframe_t *
-    fmq_msg_challenge (fmq_msg_t *self);
-void
-    fmq_msg_set_challenge (fmq_msg_t *self, zframe_t *frame);
-
-//  Get/set the mechanism field
-char *
-    fmq_msg_mechanism (fmq_msg_t *self);
-void
-    fmq_msg_set_mechanism (fmq_msg_t *self, char *format, ...);
-
-//  Get/set the response field
-zframe_t *
-    fmq_msg_response (fmq_msg_t *self);
-void
-    fmq_msg_set_response (fmq_msg_t *self, zframe_t *frame);
 
 //  Get/set the path field
 char *
