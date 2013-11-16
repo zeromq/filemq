@@ -28,18 +28,6 @@ int
 int
     fmq_msg_send_ohai (void *output);
     
-//  Send the ORLY to the output in one step
-int
-    fmq_msg_send_orly (void *output,
-        zlist_t *mechanisms,
-        zframe_t *challenge);
-    
-//  Send the YARLY to the output in one step
-int
-    fmq_msg_send_yarly (void *output,
-        char *mechanism,
-        zframe_t *response);
-    
 //  Send the OHAI_OK to the output in one step
 int
     fmq_msg_send_ohai_ok (void *output);
@@ -115,40 +103,6 @@ void
     fmq_msg_set_id (fmq_msg_t *self, int id);
 char *
     fmq_msg_command (fmq_msg_t *self);
-
-//  Get/set the mechanisms field
-zlist_t *
-    fmq_msg_mechanisms (fmq_msg_t *self);
-void
-    fmq_msg_set_mechanisms (fmq_msg_t *self, zlist_t *mechanisms);
-
-//  Iterate through the mechanisms field, and append a mechanisms value
-char *
-    fmq_msg_mechanisms_first (fmq_msg_t *self);
-char *
-    fmq_msg_mechanisms_next (fmq_msg_t *self);
-void
-    fmq_msg_mechanisms_append (fmq_msg_t *self, char *format, ...);
-size_t
-    fmq_msg_mechanisms_size (fmq_msg_t *self);
-
-//  Get/set the challenge field
-zframe_t *
-    fmq_msg_challenge (fmq_msg_t *self);
-void
-    fmq_msg_set_challenge (fmq_msg_t *self, zframe_t *frame);
-
-//  Get/set the mechanism field
-char *
-    fmq_msg_mechanism (fmq_msg_t *self);
-void
-    fmq_msg_set_mechanism (fmq_msg_t *self, char *format, ...);
-
-//  Get/set the response field
-zframe_t *
-    fmq_msg_response (fmq_msg_t *self);
-void
-    fmq_msg_set_response (fmq_msg_t *self, zframe_t *frame);
 
 //  Get/set the path field
 char *
@@ -290,31 +244,6 @@ EXAMPLE
     
     self = fmq_msg_recv (input);
     assert (self);
-    fmq_msg_destroy (&self);
-
-    self = fmq_msg_new (FMQ_MSG_ORLY);
-    fmq_msg_mechanisms_append (self, "Name: %s", "Brutus");
-    fmq_msg_mechanisms_append (self, "Age: %d", 43);
-    fmq_msg_set_challenge (self, zframe_new ("Captcha Diem", 12));
-    fmq_msg_send (&self, output);
-    
-    self = fmq_msg_recv (input);
-    assert (self);
-    assert (fmq_msg_mechanisms_size (self) == 2);
-    assert (streq (fmq_msg_mechanisms_first (self), "Name: Brutus"));
-    assert (streq (fmq_msg_mechanisms_next (self), "Age: 43"));
-    assert (zframe_streq (fmq_msg_challenge (self), "Captcha Diem"));
-    fmq_msg_destroy (&self);
-
-    self = fmq_msg_new (FMQ_MSG_YARLY);
-    fmq_msg_set_mechanism (self, "Life is short but Now lasts for ever");
-    fmq_msg_set_response (self, zframe_new ("Captcha Diem", 12));
-    fmq_msg_send (&self, output);
-    
-    self = fmq_msg_recv (input);
-    assert (self);
-    assert (streq (fmq_msg_mechanism (self), "Life is short but Now lasts for ever"));
-    assert (zframe_streq (fmq_msg_response (self), "Captcha Diem"));
     fmq_msg_destroy (&self);
 
     self = fmq_msg_new (FMQ_MSG_OHAI_OK);

@@ -39,7 +39,6 @@ int main (int argc, char *argv [])
     if (argc < 2) {
         printf ("Running self tests...\n");
         fmq_msg_test (verbose);
-        fmq_sasl_test (verbose);
         fmq_server_test (verbose);
         fmq_client_test (verbose);
         printf ("Tests passed OK\n");

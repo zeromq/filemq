@@ -7,13 +7,11 @@ include_HEADERS = \
     ../include/fmq.h \
     ../include/fmq_client.h \
     ../include/fmq_msg.h \
-    ../include/fmq_sasl.h \
     ../include/fmq_server.h
 
 libfmq_la_SOURCES = \
     fmq_client.c \
     fmq_msg.c \
-    fmq_sasl.c \
     fmq_server.c 
 
 INCLUDES = -I$(top_srcdir)/include
