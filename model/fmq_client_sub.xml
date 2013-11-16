@@ -39,9 +39,9 @@ static zhash_t *
 sub_cache (sub_t *self)
 {
     //  Get directory cache for this path
-    fmq_dir_t *dir = fmq_dir_new (self->path + 1, self->inbox);
-    zhash_t *cache = dir? fmq_dir_cache (dir): NULL;
-    fmq_dir_destroy (&dir);
+    zdir_t *dir = zdir_new (self->path + 1, self->inbox);
+    zhash_t *cache = dir? zdir_cache (dir): NULL;
+    zdir_destroy (&dir);
     return cache;
 }
 </declare>

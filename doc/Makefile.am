@@ -1,14 +1,5 @@
 MAN1 = filemq.1
-MAN3 = fmq_chunk.3 \
-    fmq_client.3 \
-    fmq_config.3 \
-    fmq_dir.3 \
-    fmq_file.3 \
-    fmq_hash.3 \
-    fmq_msg.3 \
-    fmq_patch.3 \
-    fmq_sasl.3 \
-    fmq_server.3
+MAN3 = fmq_client.3 fmq_msg.3 fmq_server.3
 MAN7 = 
 MAN_DOC = $(MAN1) $(MAN3) $(MAN7)
 

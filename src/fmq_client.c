@@ -189,14 +189,13 @@ typedef enum {
     srsly_event = 2,
     rtfm_event = 3,
     _other_event = 4,
-    orly_event = 5,
-    ohai_ok_event = 6,
-    ok_event = 7,
-    finished_event = 8,
-    cheezburger_event = 9,
-    hugz_event = 10,
-    send_credit_event = 11,
-    icanhaz_ok_event = 12
+    ohai_ok_event = 5,
+    ok_event = 6,
+    finished_event = 7,
+    cheezburger_event = 8,
+    hugz_event = 9,
+    send_credit_event = 10,
+    icanhaz_ok_event = 11
 } event_t;
 
 
@@ -293,9 +292,9 @@ static zhash_t *
 sub_cache (sub_t *self)
 {
     //  Get directory cache for this path
-    fmq_dir_t *dir = fmq_dir_new (self->path + 1, self->inbox);
-    zhash_t *cache = dir? fmq_dir_cache (dir): NULL;
-    fmq_dir_destroy (&dir);
+    zdir_t *dir = zdir_new (self->path + 1, self->inbox);
+    zhash_t *cache = dir? zdir_cache (dir): NULL;
+    zdir_destroy (&dir);
     return cache;
 }
 
@@ -516,16 +515,6 @@ client_control_message (client_t *self)
 //  Custom actions for state machine
 
 static void
-try_security_mechanism (client_t *self, server_t *server)
-{
-    char *login = zconfig_resolve (self->config, "security/plain/login", "guest"); 
-    char *password = zconfig_resolve (self->config, "security/plain/password", "");
-    zframe_t *frame = fmq_sasl_plain_encode (login, password);                     
-    fmq_msg_set_mechanism (server->request, "PLAIN");                              
-    fmq_msg_set_response  (server->request, frame);                                
-}
-
-static void
 connected_to_server (client_t *self, server_t *server)
 {
     
@@ -673,14 +662,6 @@ client_server_execute (client_t *self, server_t *server, int event)
                 break;
 
             case requesting_access_state:
-                if (server->event == orly_event) {
-                    try_security_mechanism (self, server);
-                    fmq_msg_set_id (server->request, FMQ_MSG_YARLY);
-                    fmq_msg_send (&server->request, server->dealer);
-                    server->request = fmq_msg_new (0);
-                    server->state = requesting_access_state;
-                }
-                else
                 if (server->event == ohai_ok_event) {
                     connected_to_server (self, server);
                     get_first_subscription (self, server);
@@ -805,9 +786,6 @@ client_server_message (client_t *self, server_t *server)
     else
     if (fmq_msg_id (server->reply) == FMQ_MSG_RTFM)
         client_server_execute (self, server, rtfm_event);
-    else
-    if (fmq_msg_id (server->reply) == FMQ_MSG_ORLY)
-        client_server_execute (self, server, orly_event);
     else
     if (fmq_msg_id (server->reply) == FMQ_MSG_OHAI_OK)
         client_server_execute (self, server, ohai_ok_event);

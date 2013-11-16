@@ -34,4 +34,7 @@ src/fmqroot/logs/*
 .cache
 mymusic
 testit
+src/fmq_selftest.log
+src/fmq_selftest.trs
+src/test-suite.log
 

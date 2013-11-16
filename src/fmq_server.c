@@ -151,10 +151,8 @@ fmq_server_set_anonymous (fmq_server_t *self, long enabled)
 
 typedef enum {
     start_state = 1,
-    checking_client_state = 2,
-    challenging_client_state = 3,
-    ready_state = 4,
-    dispatching_state = 5
+    ready_state = 2,
+    dispatching_state = 3
 } state_t;
 
 typedef enum {
@@ -163,20 +161,16 @@ typedef enum {
     heartbeat_event = 2,
     expired_event = 3,
     _other_event = 4,
-    friend_event = 5,
-    foe_event = 6,
-    maybe_event = 7,
-    yarly_event = 8,
-    icanhaz_event = 9,
-    nom_event = 10,
-    hugz_event = 11,
-    kthxbai_event = 12,
-    dispatch_event = 13,
-    send_chunk_event = 14,
-    send_delete_event = 15,
-    next_patch_event = 16,
-    no_credit_event = 17,
-    finished_event = 18
+    icanhaz_event = 5,
+    nom_event = 6,
+    hugz_event = 7,
+    kthxbai_event = 8,
+    dispatch_event = 9,
+    send_chunk_event = 10,
+    send_delete_event = 11,
+    next_patch_event = 12,
+    no_credit_event = 13,
+    finished_event = 14
 } event_t;
 
 
@@ -222,7 +216,7 @@ struct _client_t {
     event_t next_event;         //  Next event
     size_t credit;              //  Credit remaining           
     zlist_t *patches;           //  Patches to send            
-    fmq_patch_t *patch;         //  Current patch              
+    zdir_patch_t *patch;         //  Current patch             
     zfile_t *file;           //  Current file we're sending    
     off_t offset;               //  Offset of next read in file
     int64_t sequence;           //  Sequence number for chunk  
@@ -313,30 +307,30 @@ sub_destroy (sub_t **self_p)
 //  Add patch to sub client patches list
 
 static void
-sub_patch_add (sub_t *self, fmq_patch_t *patch)
+sub_patch_add (sub_t *self, zdir_patch_t *patch)
 {
     //  Skip file creation if client already has identical file
-    fmq_patch_digest_set (patch);
-    if (fmq_patch_op (patch) == patch_create) {
-        char *digest = (char *) zhash_lookup (self->cache, fmq_patch_vpath (patch));
-        if (digest && streq (digest, fmq_patch_digest (patch)))
+    zdir_patch_digest_set (patch);
+    if (zdir_patch_op (patch) == patch_create) {
+        char *digest = (char *) zhash_lookup (self->cache, zdir_patch_vpath (patch));
+        if (digest && streq (digest, zdir_patch_digest (patch)))
             return;             //  Just skip patch for this client
     }
     //  Remove any previous patches for the same file
-    fmq_patch_t *existing = (fmq_patch_t *) zlist_first (self->client->patches);
+    zdir_patch_t *existing = (zdir_patch_t *) zlist_first (self->client->patches);
     while (existing) {
-        if (streq (fmq_patch_vpath (patch), fmq_patch_vpath (existing))) {
+        if (streq (zdir_patch_vpath (patch), zdir_patch_vpath (existing))) {
             zlist_remove (self->client->patches, existing);
-            fmq_patch_destroy (&existing);
+            zdir_patch_destroy (&existing);
             break;
         }
-        existing = (fmq_patch_t *) zlist_next (self->client->patches);
+        existing = (zdir_patch_t *) zlist_next (self->client->patches);
     }
-    if (fmq_patch_op (patch) == patch_create)
+    if (zdir_patch_op (patch) == patch_create)
         zhash_insert (self->cache,
-            fmq_patch_digest (patch), fmq_patch_vpath (patch));
+            zdir_patch_digest (patch), zdir_patch_vpath (patch));
     //  Track that we've queued patch for client, so we don't do it twice
-    zlist_append (self->client->patches, fmq_patch_dup (patch));
+    zlist_append (self->client->patches, zdir_patch_dup (patch));
 }
 
 //  --------------------------------------------------------------------------
@@ -345,7 +339,7 @@ sub_patch_add (sub_t *self, fmq_patch_t *patch)
 struct _mount_t {
     char *location;         //  Physical location
     char *alias;            //  Alias into our tree
-    fmq_dir_t *dir;         //  Directory snapshot
+    zdir_t *dir;            //  Directory snapshot
     zlist_t *subs;          //  Client subscriptions
 };
 
@@ -364,7 +358,7 @@ mount_new (char *location, char *alias)
     mount_t *self = (mount_t *) zmalloc (sizeof (mount_t));
     self->location = strdup (location);
     self->alias = strdup (alias);
-    self->dir = fmq_dir_new (self->location, NULL);
+    self->dir = zdir_new (self->location, NULL);
     self->subs = zlist_new ();
     return self;
 }
@@ -387,7 +381,7 @@ mount_destroy (mount_t **self_p)
             sub_destroy (&sub);
         }
         zlist_destroy (&self->subs);
-        fmq_dir_destroy (&self->dir);
+        zdir_destroy (&self->dir);
         free (self);
         *self_p = NULL;
     }
@@ -403,20 +397,20 @@ mount_refresh (mount_t *self, server_t *server)
     bool activity = false;
 
     //  Get latest snapshot and build a patches list for any changes
-    fmq_dir_t *latest = fmq_dir_new (self->location, NULL);
-    zlist_t *patches = fmq_dir_diff (self->dir, latest, self->alias);
+    zdir_t *latest = zdir_new (self->location, NULL);
+    zlist_t *patches = zdir_diff (self->dir, latest, self->alias);
 
     //  Drop old directory and replace with latest version
-    fmq_dir_destroy (&self->dir);
+    zdir_destroy (&self->dir);
     self->dir = latest;
 
     //  Copy new patches to clients' patches list
     sub_t *sub = (sub_t *) zlist_first (self->subs);
     while (sub) {
-        fmq_patch_t *patch = (fmq_patch_t *) zlist_first (patches);
+        zdir_patch_t *patch = (zdir_patch_t *) zlist_first (patches);
         while (patch) {
             sub_patch_add (sub, patch);
-            patch = (fmq_patch_t *) zlist_next (patches);
+            patch = (zdir_patch_t *) zlist_next (patches);
             activity = true;
         }
         sub = (sub_t *) zlist_next (self->subs);
@@ -424,8 +418,8 @@ mount_refresh (mount_t *self, server_t *server)
     
     //  Destroy patches, they've all been copied
     while (zlist_size (patches)) {
-        fmq_patch_t *patch = (fmq_patch_t *) zlist_pop (patches);
-        fmq_patch_destroy (&patch);
+        zdir_patch_t *patch = (zdir_patch_t *) zlist_pop (patches);
+        zdir_patch_destroy (&patch);
     }
     zlist_destroy (&patches);
     return activity;
@@ -438,6 +432,9 @@ mount_refresh (mount_t *self, server_t *server)
 static void
 mount_sub_store (mount_t *self, client_t *client, fmq_msg_t *request)
 {
+    assert (self);
+    assert (self->subs);
+    
     //  Store subscription along with any previous ones
     //  Coalesce subscriptions that are on same path
     char *path = fmq_msg_path (request);
@@ -466,11 +463,11 @@ mount_sub_store (mount_t *self, client_t *client, fmq_msg_t *request)
 
     //  If client requested resync, send full mount contents now
     if (fmq_msg_options_number (client->request, "RESYNC", 0) == 1) {
-        zlist_t *patches = fmq_dir_resync (self->dir, self->alias);
+        zlist_t *patches = zdir_resync (self->dir, self->alias);
         while (zlist_size (patches)) {
-            fmq_patch_t *patch = (fmq_patch_t *) zlist_pop (patches);
+            zdir_patch_t *patch = (zdir_patch_t *) zlist_pop (patches);
             sub_patch_add (sub, patch);
-            fmq_patch_destroy (&patch);
+            zdir_patch_destroy (&patch);
         }
         zlist_destroy (&patches);
     }
@@ -522,11 +519,11 @@ client_destroy (client_t **self_p)
         fmq_msg_destroy (&self->request);
         fmq_msg_destroy (&self->reply);
         free (self->hashkey);
-        while (zlist_size (self->patches)) {                               
-            fmq_patch_t *patch = (fmq_patch_t *) zlist_pop (self->patches);
-            fmq_patch_destroy (&patch);                                    
-        }                                                                  
-        zlist_destroy (&self->patches);                                    
+        while (zlist_size (self->patches)) {                                 
+            zdir_patch_t *patch = (zdir_patch_t *) zlist_pop (self->patches);
+            zdir_patch_destroy (&patch);                                     
+        }                                                                    
+        zlist_destroy (&self->patches);                                      
         free (self);
         *self_p = NULL;
     }
@@ -731,48 +728,6 @@ terminate_the_client (server_t *self, client_t *client)
 }
 
 static void
-try_anonymous_access (server_t *self, client_t *client)
-{
-    if (atoi (zconfig_resolve (self->config, "security/anonymous", "0")) == 1)
-        client->next_event = friend_event;                                    
-    else                                                                      
-    if (atoi (zconfig_resolve (self->config, "security/plain", "0")) == 1)    
-        client->next_event = maybe_event;                                     
-    else                                                                      
-        client->next_event = foe_event;                                       
-}
-
-static void
-list_security_mechanisms (server_t *self, client_t *client)
-{
-    if (atoi (zconfig_resolve (self->config, "security/anonymous", "0")) == 1)
-        fmq_msg_mechanisms_append (client->reply, "ANONYMOUS");               
-    if (atoi (zconfig_resolve (self->config, "security/plain", "0")) == 1)    
-        fmq_msg_mechanisms_append (client->reply, "PLAIN");                   
-}
-
-static void
-try_security_mechanism (server_t *self, client_t *client)
-{
-    client->next_event = foe_event;                                                          
-    char *login, *password;                                                                  
-    if (streq (fmq_msg_mechanism (client->request), "PLAIN")                                 
-    &&  fmq_sasl_plain_decode (fmq_msg_response (client->request), &login, &password) == 0) {
-        zconfig_t *account = zconfig_locate (self->config, "security/plain/account");        
-        while (account) {                                                                    
-            if (streq (zconfig_resolve (account, "login", ""), login)                        
-            &&  streq (zconfig_resolve (account, "password", ""), password)) {               
-                client->next_event = friend_event;                                           
-                break;                                                                       
-            }                                                                                
-            account = zconfig_next (account);                                                
-        }                                                                                    
-    }                                                                                        
-    free (login);                                                                            
-    free (password);                                                                         
-}
-
-static void
 store_client_subscription (server_t *self, client_t *client)
 {
     //  Find mount point with longest match to subscription         
@@ -788,7 +743,9 @@ store_client_subscription (server_t *self, client_t *client)
             mount = check;                                          
         check = (mount_t *) zlist_next (self->mounts);              
     }                                                               
-    mount_sub_store (mount, client, client->request);               
+    //  If subscription matches nothing, discard it                 
+    if (mount)                                                      
+        mount_sub_store (mount, client, client->request);           
 }
 
 static void
@@ -816,31 +773,31 @@ get_next_patch_for_client (server_t *self, client_t *client)
 {
     //  Get next patch for client if we're not doing one already                
     if (client->patch == NULL)                                                  
-        client->patch = (fmq_patch_t *) zlist_pop (client->patches);            
+        client->patch = (zdir_patch_t *) zlist_pop (client->patches);           
     if (client->patch == NULL) {                                                
         client->next_event = finished_event;                                    
         return;                                                                 
     }                                                                           
     //  Get virtual path from patch                                             
-    fmq_msg_set_filename (client->reply, fmq_patch_vpath (client->patch));      
+    fmq_msg_set_filename (client->reply, zdir_patch_vpath (client->patch));     
                                                                                 
     //  We can process a delete patch right away                                
-    if (fmq_patch_op (client->patch) == patch_delete) {                         
+    if (zdir_patch_op (client->patch) == patch_delete) {                        
         fmq_msg_set_sequence (client->reply, client->sequence++);               
         fmq_msg_set_operation (client->reply, FMQ_MSG_FILE_DELETE);             
         client->next_event = send_delete_event;                                 
                                                                                 
         //  No reliability in this version, assume patch delivered safely       
-        fmq_patch_destroy (&client->patch);                                     
+        zdir_patch_destroy (&client->patch);                                    
     }                                                                           
     else                                                                        
-    if (fmq_patch_op (client->patch) == patch_create) {                         
+    if (zdir_patch_op (client->patch) == patch_create) {                        
         //  Create patch refers to file, open that for input if needed          
         if (client->file == NULL) {                                             
-            client->file = zfile_dup (fmq_patch_file (client->patch));          
+            client->file = zfile_dup (zdir_patch_file (client->patch));         
             if (zfile_input (client->file)) {                                   
                 //  File no longer available, skip it                           
-                fmq_patch_destroy (&client->patch);                             
+                zdir_patch_destroy (&client->patch);                            
                 zfile_destroy (&client->file);                                  
                 client->next_event = next_patch_event;                          
                 return;                                                         
@@ -867,7 +824,7 @@ get_next_patch_for_client (server_t *self, client_t *client)
             //  Zero-sized chunk means end of file                              
             if (zchunk_size (chunk) == 0) {                                     
                 zfile_destroy (&client->file);                                  
-                fmq_patch_destroy (&client->patch);                             
+                zdir_patch_destroy (&client->patch);                            
             }                                                                   
         }                                                                       
         else                                                                    
@@ -888,28 +845,6 @@ server_client_execute (server_t *self, client_t *client, int event)
         switch (client->state) {
             case start_state:
                 if (client->event == ohai_event) {
-                    try_anonymous_access (self, client);
-                    client->state = checking_client_state;
-                }
-                else
-                if (client->event == heartbeat_event) {
-                }
-                else
-                if (client->event == expired_event) {
-                    terminate_the_client (self, client);
-                }
-                else {
-                    //  Process all other events
-                    fmq_msg_set_id (client->reply, FMQ_MSG_RTFM);
-                    fmq_msg_send (&client->reply, client->router);
-                    client->reply = fmq_msg_new (0);
-                    fmq_msg_set_address (client->reply, client->address);
-                    terminate_the_client (self, client);
-                }
-                break;
-
-            case checking_client_state:
-                if (client->event == friend_event) {
                     fmq_msg_set_id (client->reply, FMQ_MSG_OHAI_OK);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
@@ -917,60 +852,11 @@ server_client_execute (server_t *self, client_t *client, int event)
                     client->state = ready_state;
                 }
                 else
-                if (client->event == foe_event) {
-                    fmq_msg_set_id (client->reply, FMQ_MSG_SRSLY);
-                    fmq_msg_send (&client->reply, client->router);
-                    client->reply = fmq_msg_new (0);
-                    fmq_msg_set_address (client->reply, client->address);
-                    terminate_the_client (self, client);
-                }
-                else
-                if (client->event == maybe_event) {
-                    list_security_mechanisms (self, client);
-                    fmq_msg_set_id (client->reply, FMQ_MSG_ORLY);
-                    fmq_msg_send (&client->reply, client->router);
-                    client->reply = fmq_msg_new (0);
-                    fmq_msg_set_address (client->reply, client->address);
-                    client->state = challenging_client_state;
-                }
-                else
                 if (client->event == heartbeat_event) {
                 }
                 else
                 if (client->event == expired_event) {
                     terminate_the_client (self, client);
-                }
-                else
-                if (client->event == ohai_event) {
-                    try_anonymous_access (self, client);
-                    client->state = checking_client_state;
-                }
-                else {
-                    //  Process all other events
-                    fmq_msg_set_id (client->reply, FMQ_MSG_RTFM);
-                    fmq_msg_send (&client->reply, client->router);
-                    client->reply = fmq_msg_new (0);
-                    fmq_msg_set_address (client->reply, client->address);
-                    terminate_the_client (self, client);
-                }
-                break;
-
-            case challenging_client_state:
-                if (client->event == yarly_event) {
-                    try_security_mechanism (self, client);
-                    client->state = checking_client_state;
-                }
-                else
-                if (client->event == heartbeat_event) {
-                }
-                else
-                if (client->event == expired_event) {
-                    terminate_the_client (self, client);
-                }
-                else
-                if (client->event == ohai_event) {
-                    try_anonymous_access (self, client);
-                    client->state = checking_client_state;
                 }
                 else {
                     //  Process all other events
@@ -1025,8 +911,11 @@ server_client_execute (server_t *self, client_t *client, int event)
                 }
                 else
                 if (client->event == ohai_event) {
-                    try_anonymous_access (self, client);
-                    client->state = checking_client_state;
+                    fmq_msg_set_id (client->reply, FMQ_MSG_OHAI_OK);
+                    fmq_msg_send (&client->reply, client->router);
+                    client->reply = fmq_msg_new (0);
+                    fmq_msg_set_address (client->reply, client->address);
+                    client->state = ready_state;
                 }
                 else {
                     //  Process all other events
@@ -1075,8 +964,11 @@ server_client_execute (server_t *self, client_t *client, int event)
                 }
                 else
                 if (client->event == ohai_event) {
-                    try_anonymous_access (self, client);
-                    client->state = checking_client_state;
+                    fmq_msg_set_id (client->reply, FMQ_MSG_OHAI_OK);
+                    fmq_msg_send (&client->reply, client->router);
+                    client->reply = fmq_msg_new (0);
+                    fmq_msg_set_address (client->reply, client->address);
+                    client->state = ready_state;
                 }
                 else {
                     //  Process all other events
@@ -1125,9 +1017,6 @@ server_client_message (server_t *self)
     
     if (fmq_msg_id (request) == FMQ_MSG_OHAI)
         server_client_execute (self, client, ohai_event);
-    else
-    if (fmq_msg_id (request) == FMQ_MSG_YARLY)
-        server_client_execute (self, client, yarly_event);
     else
     if (fmq_msg_id (request) == FMQ_MSG_ICANHAZ)
         server_client_execute (self, client, icanhaz_event);
@@ -1210,28 +1099,24 @@ fmq_server_test (bool verbose)
     fmq_msg_send (&request, dealer);
     reply = fmq_msg_recv (dealer);
     assert (reply);
-    assert (fmq_msg_id (reply) == FMQ_MSG_SRSLY);
+    assert (fmq_msg_id (reply) == FMQ_MSG_OHAI_OK);
     fmq_msg_destroy (&reply);
 
     request = fmq_msg_new (FMQ_MSG_ICANHAZ);
     fmq_msg_send (&request, dealer);
     reply = fmq_msg_recv (dealer);
     assert (reply);
-    assert (fmq_msg_id (reply) == FMQ_MSG_RTFM);
+    assert (fmq_msg_id (reply) == FMQ_MSG_ICANHAZ_OK);
     fmq_msg_destroy (&reply);
 
     request = fmq_msg_new (FMQ_MSG_NOM);
     fmq_msg_send (&request, dealer);
-    reply = fmq_msg_recv (dealer);
-    assert (reply);
-    assert (fmq_msg_id (reply) == FMQ_MSG_RTFM);
-    fmq_msg_destroy (&reply);
 
     request = fmq_msg_new (FMQ_MSG_HUGZ);
     fmq_msg_send (&request, dealer);
     reply = fmq_msg_recv (dealer);
     assert (reply);
-    assert (fmq_msg_id (reply) == FMQ_MSG_RTFM);
+    assert (fmq_msg_id (reply) == FMQ_MSG_HUGZ_OK);
     fmq_msg_destroy (&reply);
 
     fmq_server_destroy (&self);
@@ -1258,13 +1143,6 @@ fmq_server_test (bool verbose)
     assert (fmq_msg_id (reply) == FMQ_MSG_HUGZ_OK);
     fmq_msg_destroy (&reply);
 
-    request = fmq_msg_new (FMQ_MSG_YARLY);
-    fmq_msg_send (&request, dealer);
-    reply = fmq_msg_recv (dealer);
-    assert (reply);
-    assert (fmq_msg_id (reply) == FMQ_MSG_RTFM);
-    fmq_msg_destroy (&reply);
-
     fmq_server_destroy (&self);
     //  Run selftest using 'server_test.cfg' configuration
     self = fmq_server_new ();
@@ -1273,15 +1151,6 @@ fmq_server_test (bool verbose)
     port = fmq_server_bind (self, "tcp://*:5670");
     assert (port == 5670);                        
     request = fmq_msg_new (FMQ_MSG_OHAI);
-    fmq_msg_send (&request, dealer);
-    reply = fmq_msg_recv (dealer);
-    assert (reply);
-    assert (fmq_msg_id (reply) == FMQ_MSG_ORLY);
-    fmq_msg_destroy (&reply);
-
-    request = fmq_msg_new (FMQ_MSG_YARLY);
-    fmq_msg_set_mechanism (request, "PLAIN");                                
-    fmq_msg_set_response (request, fmq_sasl_plain_encode ("guest", "guest"));
     fmq_msg_send (&request, dealer);
     reply = fmq_msg_recv (dealer);
     assert (reply);

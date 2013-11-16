@@ -9,7 +9,7 @@ typedef struct _mount_t mount_t;
 struct _mount_t {
     char *location;         //  Physical location
     char *alias;            //  Alias into our tree
-    fmq_dir_t *dir;         //  Directory snapshot
+    zdir_t *dir;            //  Directory snapshot
     zlist_t *subs;          //  Client subscriptions
 };
 
@@ -28,7 +28,7 @@ mount_new (char *location, char *alias)
     mount_t *self = (mount_t *) zmalloc (sizeof (mount_t));
     self->location = strdup (location);
     self->alias = strdup (alias);
-    self->dir = fmq_dir_new (self->location, NULL);
+    self->dir = zdir_new (self->location, NULL);
     self->subs = zlist_new ();
     return self;
 }
@@ -51,7 +51,7 @@ mount_destroy (mount_t **self_p)
             sub_destroy (&sub);
         }
         zlist_destroy (&self->subs);
-        fmq_dir_destroy (&self->dir);
+        zdir_destroy (&self->dir);
         free (self);
         *self_p = NULL;
     }
@@ -67,20 +67,20 @@ mount_refresh (mount_t *self, server_t *server)
     bool activity = false;
 
     //  Get latest snapshot and build a patches list for any changes
-    fmq_dir_t *latest = fmq_dir_new (self->location, NULL);
-    zlist_t *patches = fmq_dir_diff (self->dir, latest, self->alias);
+    zdir_t *latest = zdir_new (self->location, NULL);
+    zlist_t *patches = zdir_diff (self->dir, latest, self->alias);
 
     //  Drop old directory and replace with latest version
-    fmq_dir_destroy (&self->dir);
+    zdir_destroy (&self->dir);
     self->dir = latest;
 
     //  Copy new patches to clients' patches list
     sub_t *sub = (sub_t *) zlist_first (self->subs);
     while (sub) {
-        fmq_patch_t *patch = (fmq_patch_t *) zlist_first (patches);
+        zdir_patch_t *patch = (zdir_patch_t *) zlist_first (patches);
         while (patch) {
             sub_patch_add (sub, patch);
-            patch = (fmq_patch_t *) zlist_next (patches);
+            patch = (zdir_patch_t *) zlist_next (patches);
             activity = true;
         }
         sub = (sub_t *) zlist_next (self->subs);
@@ -88,8 +88,8 @@ mount_refresh (mount_t *self, server_t *server)
     
     //  Destroy patches, they've all been copied
     while (zlist_size (patches)) {
-        fmq_patch_t *patch = (fmq_patch_t *) zlist_pop (patches);
-        fmq_patch_destroy (&patch);
+        zdir_patch_t *patch = (zdir_patch_t *) zlist_pop (patches);
+        zdir_patch_destroy (&patch);
     }
     zlist_destroy (&patches);
     return activity;
@@ -102,6 +102,9 @@ mount_refresh (mount_t *self, server_t *server)
 static void
 mount_sub_store (mount_t *self, client_t *client, fmq_msg_t *request)
 {
+    assert (self);
+    assert (self->subs);
+    
     //  Store subscription along with any previous ones
     //  Coalesce subscriptions that are on same path
     char *path = fmq_msg_path (request);
@@ -130,11 +133,11 @@ mount_sub_store (mount_t *self, client_t *client, fmq_msg_t *request)
 
     //  If client requested resync, send full mount contents now
     if (fmq_msg_options_number (client->request, "RESYNC", 0) == 1) {
-        zlist_t *patches = fmq_dir_resync (self->dir, self->alias);
+        zlist_t *patches = zdir_resync (self->dir, self->alias);
         while (zlist_size (patches)) {
-            fmq_patch_t *patch = (fmq_patch_t *) zlist_pop (patches);
+            zdir_patch_t *patch = (zdir_patch_t *) zlist_pop (patches);
             sub_patch_add (sub, patch);
-            fmq_patch_destroy (&patch);
+            zdir_patch_destroy (&patch);
         }
         zlist_destroy (&patches);
     }

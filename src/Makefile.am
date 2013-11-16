@@ -6,20 +6,12 @@ pkgconfig_DATA = libfmq.pc
 include_HEADERS = \
     ../include/fmq.h \
     ../include/fmq_client.h \
-    ../include/fmq_dir.h \
-    ../include/fmq_hash.h \
     ../include/fmq_msg.h \
-    ../include/fmq_patch.h \
-    ../include/fmq_sasl.h \
     ../include/fmq_server.h
 
 libfmq_la_SOURCES = \
     fmq_client.c \
-    fmq_dir.c \
-    fmq_hash.c \
     fmq_msg.c \
-    fmq_patch.c \
-    fmq_sasl.c \
     fmq_server.c 
 
 INCLUDES = -I$(top_srcdir)/include

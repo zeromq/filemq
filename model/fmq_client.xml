@@ -44,13 +44,13 @@ zfile_t *file;           //  File we're writing to
 <!-- Embedded class for subscriptions -->
 <include filename = "fmq_client_sub.xml" />
 
-<action name = "try security mechanism">
+<!--<action name = "try security mechanism">
 char *login = zconfig_resolve (self->config, "security/plain/login", "guest");
 char *password = zconfig_resolve (self->config, "security/plain/password", "");
 zframe_t *frame = fmq_sasl_plain_encode (login, password);
 fmq_msg_set_mechanism (server->request, "PLAIN");
 fmq_msg_set_response  (server->request, frame);
-</action>
+</action>-->
 
 <action name = "connected to server">
 </action>

@@ -41,11 +41,7 @@ struct _fmq_msg_t {
     byte *needle;               //  Read/write pointer for serialization
     byte *ceiling;              //  Valid upper limit for read pointer
     char *protocol;
-    byte version;
-    zlist_t *mechanisms;
-    zframe_t *challenge;
-    char *mechanism;
-    zframe_t *response;
+    uint16_t version;
     char *path;
     zhash_t *options;
     size_t options_bytes;       //  Size of dictionary content
@@ -206,11 +202,6 @@ fmq_msg_destroy (fmq_msg_t **self_p)
         //  Free class properties
         zframe_destroy (&self->address);
         free (self->protocol);
-        if (self->mechanisms)
-            zlist_destroy (&self->mechanisms);
-        zframe_destroy (&self->challenge);
-        free (self->mechanism);
-        zframe_destroy (&self->response);
         free (self->path);
         zhash_destroy (&self->options);
         zhash_destroy (&self->cache);
@@ -281,34 +272,9 @@ fmq_msg_recv (void *input)
             GET_STRING (self->protocol);
             if (strneq (self->protocol, "FILEMQ"))
                 goto malformed;
-            GET_NUMBER1 (self->version);
+            GET_NUMBER2 (self->version);
             if (self->version != FMQ_MSG_VERSION)
                 goto malformed;
-            break;
-
-        case FMQ_MSG_ORLY:
-            GET_NUMBER1 (list_size);
-            self->mechanisms = zlist_new ();
-            zlist_autofree (self->mechanisms);
-            while (list_size--) {
-                char *string;
-                GET_STRING (string);
-                zlist_append (self->mechanisms, string);
-                free (string);
-            }
-            //  Get next frame, leave current untouched
-            if (!zsocket_rcvmore (input))
-                goto malformed;
-            self->challenge = zframe_recv (input);
-            break;
-
-        case FMQ_MSG_YARLY:
-            free (self->mechanism);
-            GET_STRING (self->mechanism);
-            //  Get next frame, leave current untouched
-            if (!zsocket_rcvmore (input))
-                goto malformed;
-            self->response = zframe_recv (input);
             break;
 
         case FMQ_MSG_OHAI_OK:
@@ -493,28 +459,8 @@ fmq_msg_send (fmq_msg_t **self_p, void *output)
         case FMQ_MSG_OHAI:
             //  protocol is a string with 1-byte length
             frame_size += 1 + strlen ("FILEMQ");
-            //  version is a 1-byte integer
-            frame_size += 1;
-            break;
-            
-        case FMQ_MSG_ORLY:
-            //  mechanisms is an array of strings
-            frame_size++;       //  Size is one octet
-            if (self->mechanisms) {
-                //  Add up size of list contents
-                char *mechanisms = (char *) zlist_first (self->mechanisms);
-                while (mechanisms) {
-                    frame_size += 1 + strlen (mechanisms);
-                    mechanisms = (char *) zlist_next (self->mechanisms);
-                }
-            }
-            break;
-            
-        case FMQ_MSG_YARLY:
-            //  mechanism is a string with 1-byte length
-            frame_size++;       //  Size is one octet
-            if (self->mechanism)
-                frame_size += strlen (self->mechanism);
+            //  version is a 2-byte integer
+            frame_size += 2;
             break;
             
         case FMQ_MSG_OHAI_OK:
@@ -615,30 +561,7 @@ fmq_msg_send (fmq_msg_t **self_p, void *output)
     switch (self->id) {
         case FMQ_MSG_OHAI:
             PUT_STRING ("FILEMQ");
-            PUT_NUMBER1 (FMQ_MSG_VERSION);
-            break;
-            
-        case FMQ_MSG_ORLY:
-            if (self->mechanisms != NULL) {
-                PUT_NUMBER1 (zlist_size (self->mechanisms));
-                char *mechanisms = (char *) zlist_first (self->mechanisms);
-                while (mechanisms) {
-                    PUT_STRING (mechanisms);
-                    mechanisms = (char *) zlist_next (self->mechanisms);
-                }
-            }
-            else
-                PUT_NUMBER1 (0);    //  Empty string array
-            frame_flags = ZFRAME_MORE;
-            break;
-            
-        case FMQ_MSG_YARLY:
-            if (self->mechanism) {
-                PUT_STRING (self->mechanism);
-            }
-            else
-                PUT_NUMBER1 (0);    //  Empty string
-            frame_flags = ZFRAME_MORE;
+            PUT_NUMBER2 (FMQ_MSG_VERSION);
             break;
             
         case FMQ_MSG_OHAI_OK:
@@ -735,26 +658,6 @@ fmq_msg_send (fmq_msg_t **self_p, void *output)
     
     //  Now send any frame fields, in order
     switch (self->id) {
-        case FMQ_MSG_ORLY:
-            //  If challenge isn't set, send an empty frame
-            if (!self->challenge)
-                self->challenge = zframe_new (NULL, 0);
-            if (zframe_send (&self->challenge, output, 0)) {
-                zframe_destroy (&frame);
-                fmq_msg_destroy (self_p);
-                return -1;
-            }
-            break;
-        case FMQ_MSG_YARLY:
-            //  If response isn't set, send an empty frame
-            if (!self->response)
-                self->response = zframe_new (NULL, 0);
-            if (zframe_send (&self->response, output, 0)) {
-                zframe_destroy (&frame);
-                fmq_msg_destroy (self_p);
-                return -1;
-            }
-            break;
         case FMQ_MSG_CHEEZBURGER:
             //  If chunk isn't set, send an empty frame
             if (!self->chunk)
@@ -780,38 +683,6 @@ fmq_msg_send_ohai (
     void *output)
 {
     fmq_msg_t *self = fmq_msg_new (FMQ_MSG_OHAI);
-    return fmq_msg_send (&self, output);
-}
-
-
-//  --------------------------------------------------------------------------
-//  Send the ORLY to the socket in one step
-
-int
-fmq_msg_send_orly (
-    void *output,
-    zlist_t *mechanisms,
-    zframe_t *challenge)
-{
-    fmq_msg_t *self = fmq_msg_new (FMQ_MSG_ORLY);
-    fmq_msg_set_mechanisms (self, zlist_dup (mechanisms));
-    fmq_msg_set_challenge (self, zframe_dup (challenge));
-    return fmq_msg_send (&self, output);
-}
-
-
-//  --------------------------------------------------------------------------
-//  Send the YARLY to the socket in one step
-
-int
-fmq_msg_send_yarly (
-    void *output,
-    char *mechanism,
-    zframe_t *response)
-{
-    fmq_msg_t *self = fmq_msg_new (FMQ_MSG_YARLY);
-    fmq_msg_set_mechanism (self, mechanism);
-    fmq_msg_set_response (self, zframe_dup (response));
     return fmq_msg_send (&self, output);
 }
 
@@ -982,16 +853,6 @@ fmq_msg_dup (fmq_msg_t *self)
             copy->version = self->version;
             break;
 
-        case FMQ_MSG_ORLY:
-            copy->mechanisms = zlist_dup (self->mechanisms);
-            copy->challenge = zframe_dup (self->challenge);
-            break;
-
-        case FMQ_MSG_YARLY:
-            copy->mechanism = strdup (self->mechanism);
-            copy->response = zframe_dup (self->response);
-            break;
-
         case FMQ_MSG_OHAI_OK:
             break;
 
@@ -1081,57 +942,6 @@ fmq_msg_dump (fmq_msg_t *self)
             puts ("OHAI:");
             printf ("    protocol=filemq\n");
             printf ("    version=fmq_msg_version\n");
-            break;
-            
-        case FMQ_MSG_ORLY:
-            puts ("ORLY:");
-            printf ("    mechanisms={");
-            if (self->mechanisms) {
-                char *mechanisms = (char *) zlist_first (self->mechanisms);
-                while (mechanisms) {
-                    printf (" '%s'", mechanisms);
-                    mechanisms = (char *) zlist_next (self->mechanisms);
-                }
-            }
-            printf (" }\n");
-            printf ("    challenge={\n");
-            if (self->challenge) {
-                size_t size = zframe_size (self->challenge);
-                byte *data = zframe_data (self->challenge);
-                printf ("        size=%td\n", zframe_size (self->challenge));
-                if (size > 32)
-                    size = 32;
-                int challenge_index;
-                for (challenge_index = 0; challenge_index < size; challenge_index++) {
-                    if (challenge_index && (challenge_index % 4 == 0))
-                        printf ("-");
-                    printf ("%02X", data [challenge_index]);
-                }
-            }
-            printf ("    }\n");
-            break;
-            
-        case FMQ_MSG_YARLY:
-            puts ("YARLY:");
-            if (self->mechanism)
-                printf ("    mechanism='%s'\n", self->mechanism);
-            else
-                printf ("    mechanism=\n");
-            printf ("    response={\n");
-            if (self->response) {
-                size_t size = zframe_size (self->response);
-                byte *data = zframe_data (self->response);
-                printf ("        size=%td\n", zframe_size (self->response));
-                if (size > 32)
-                    size = 32;
-                int response_index;
-                for (response_index = 0; response_index < size; response_index++) {
-                    if (response_index && (response_index % 4 == 0))
-                        printf ("-");
-                    printf ("%02X", data [response_index]);
-                }
-            }
-            printf ("    }\n");
             break;
             
         case FMQ_MSG_OHAI_OK:
@@ -1273,12 +1083,6 @@ fmq_msg_command (fmq_msg_t *self)
         case FMQ_MSG_OHAI:
             return ("OHAI");
             break;
-        case FMQ_MSG_ORLY:
-            return ("ORLY");
-            break;
-        case FMQ_MSG_YARLY:
-            return ("YARLY");
-            break;
         case FMQ_MSG_OHAI_OK:
             return ("OHAI_OK");
             break;
@@ -1311,143 +1115,6 @@ fmq_msg_command (fmq_msg_t *self)
             break;
     }
     return "?";
-}
-
-//  --------------------------------------------------------------------------
-//  Get/set the mechanisms field
-
-zlist_t *
-fmq_msg_mechanisms (fmq_msg_t *self)
-{
-    assert (self);
-    return self->mechanisms;
-}
-
-//  Greedy function, takes ownership of mechanisms; if you don't want that
-//  then use zlist_dup() to pass a copy of mechanisms
-
-void
-fmq_msg_set_mechanisms (fmq_msg_t *self, zlist_t *mechanisms)
-{
-    assert (self);
-    zlist_destroy (&self->mechanisms);
-    self->mechanisms = mechanisms;
-}
-
-//  --------------------------------------------------------------------------
-//  Iterate through the mechanisms field, and append a mechanisms value
-
-char *
-fmq_msg_mechanisms_first (fmq_msg_t *self)
-{
-    assert (self);
-    if (self->mechanisms)
-        return (char *) (zlist_first (self->mechanisms));
-    else
-        return NULL;
-}
-
-char *
-fmq_msg_mechanisms_next (fmq_msg_t *self)
-{
-    assert (self);
-    if (self->mechanisms)
-        return (char *) (zlist_next (self->mechanisms));
-    else
-        return NULL;
-}
-
-void
-fmq_msg_mechanisms_append (fmq_msg_t *self, char *format, ...)
-{
-    //  Format into newly allocated string
-    assert (self);
-    va_list argptr;
-    va_start (argptr, format);
-    char *string = (char *) malloc (STRING_MAX + 1);
-    assert (string);
-    vsnprintf (string, STRING_MAX, format, argptr);
-    va_end (argptr);
-    
-    //  Attach string to list
-    if (!self->mechanisms) {
-        self->mechanisms = zlist_new ();
-        zlist_autofree (self->mechanisms);
-    }
-    zlist_append (self->mechanisms, string);
-    free (string);
-}
-
-size_t
-fmq_msg_mechanisms_size (fmq_msg_t *self)
-{
-    return zlist_size (self->mechanisms);
-}
-
-
-//  --------------------------------------------------------------------------
-//  Get/set the challenge field
-
-zframe_t *
-fmq_msg_challenge (fmq_msg_t *self)
-{
-    assert (self);
-    return self->challenge;
-}
-
-//  Takes ownership of supplied frame
-void
-fmq_msg_set_challenge (fmq_msg_t *self, zframe_t *frame)
-{
-    assert (self);
-    if (self->challenge)
-        zframe_destroy (&self->challenge);
-    self->challenge = frame;
-}
-
-//  --------------------------------------------------------------------------
-//  Get/set the mechanism field
-
-char *
-fmq_msg_mechanism (fmq_msg_t *self)
-{
-    assert (self);
-    return self->mechanism;
-}
-
-void
-fmq_msg_set_mechanism (fmq_msg_t *self, char *format, ...)
-{
-    //  Format into newly allocated string
-    assert (self);
-    va_list argptr;
-    va_start (argptr, format);
-    free (self->mechanism);
-    self->mechanism = (char *) malloc (STRING_MAX + 1);
-    assert (self->mechanism);
-    vsnprintf (self->mechanism, STRING_MAX, format, argptr);
-    va_end (argptr);
-}
-
-
-//  --------------------------------------------------------------------------
-//  Get/set the response field
-
-zframe_t *
-fmq_msg_response (fmq_msg_t *self)
-{
-    assert (self);
-    return self->response;
-}
-
-//  Takes ownership of supplied frame
-void
-fmq_msg_set_response (fmq_msg_t *self, zframe_t *frame)
-{
-    assert (self);
-    if (self->response)
-        zframe_destroy (&self->response);
-    self->response = frame;
 }
 
 //  --------------------------------------------------------------------------
@@ -1905,31 +1572,6 @@ fmq_msg_test (bool verbose)
     
     self = fmq_msg_recv (input);
     assert (self);
-    fmq_msg_destroy (&self);
-
-    self = fmq_msg_new (FMQ_MSG_ORLY);
-    fmq_msg_mechanisms_append (self, "Name: %s", "Brutus");
-    fmq_msg_mechanisms_append (self, "Age: %d", 43);
-    fmq_msg_set_challenge (self, zframe_new ("Captcha Diem", 12));
-    fmq_msg_send (&self, output);
-    
-    self = fmq_msg_recv (input);
-    assert (self);
-    assert (fmq_msg_mechanisms_size (self) == 2);
-    assert (streq (fmq_msg_mechanisms_first (self), "Name: Brutus"));
-    assert (streq (fmq_msg_mechanisms_next (self), "Age: 43"));
-    assert (zframe_streq (fmq_msg_challenge (self), "Captcha Diem"));
-    fmq_msg_destroy (&self);
-
-    self = fmq_msg_new (FMQ_MSG_YARLY);
-    fmq_msg_set_mechanism (self, "Life is short but Now lasts for ever");
-    fmq_msg_set_response (self, zframe_new ("Captcha Diem", 12));
-    fmq_msg_send (&self, output);
-    
-    self = fmq_msg_recv (input);
-    assert (self);
-    assert (streq (fmq_msg_mechanism (self), "Life is short but Now lasts for ever"));
-    assert (zframe_streq (fmq_msg_response (self), "Captcha Diem"));
     fmq_msg_destroy (&self);
 
     self = fmq_msg_new (FMQ_MSG_OHAI_OK);

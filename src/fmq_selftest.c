@@ -38,11 +38,7 @@ int main (int argc, char *argv [])
     //  Do normal checks if run without arguments
     if (argc < 2) {
         printf ("Running self tests...\n");
-        fmq_patch_test (verbose);
-        fmq_dir_test (verbose);
         fmq_msg_test (verbose);
-        fmq_sasl_test (verbose);
-        fmq_hash_test (verbose);
         fmq_server_test (verbose);
         fmq_client_test (verbose);
         printf ("Tests passed OK\n");
