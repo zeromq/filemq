@@ -199,7 +199,7 @@ if (zdir_patch_op (client->patch) == patch_create) {
 <method name = "bind" return = "number">
 <argument name = "endpoint" type = "string" />
 self->port = zsocket_bind (self->router, endpoint);
-<return>zstr_send (self->pipe, "%d", self->port);</return>
+<return>zstr_sendf (self->pipe, "%d", self->port);</return>
 </method>
 
 <method name = "publish">
