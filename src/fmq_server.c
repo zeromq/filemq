@@ -113,7 +113,7 @@ fmq_server_bind (fmq_server_t *self, const char *endpoint)
     assert (self);
     assert (endpoint);
     zstr_sendm (self->pipe, "BIND");
-    zstr_send (self->pipe, "%s", endpoint);
+    zstr_sendf (self->pipe, "%s", endpoint);
     char *reply = zstr_recv (self->pipe);
     int rc = atoi (reply);
     free (reply);
@@ -130,8 +130,8 @@ fmq_server_publish (fmq_server_t *self, const char *location, const char *alias)
     assert (location);
     assert (alias);
     zstr_sendm (self->pipe, "PUBLISH");
-    zstr_sendm (self->pipe, "%s", location);
-    zstr_send (self->pipe, "%s", alias);
+    zstr_sendfm (self->pipe, "%s", location);
+    zstr_sendf (self->pipe, "%s", alias);
 }
 
 
@@ -142,7 +142,7 @@ fmq_server_set_anonymous (fmq_server_t *self, long enabled)
 {
     assert (self);
     zstr_sendm (self->pipe, "SET ANONYMOUS");
-    zstr_send (self->pipe, "%ld", enabled);
+    zstr_sendf (self->pipe, "%ld", enabled);
 }
 
 
@@ -663,7 +663,7 @@ server_control_message (server_t *self)
     if (streq (method, "BIND")) {
         char *endpoint = zmsg_popstr (msg);
         self->port = zsocket_bind (self->router, endpoint);
-        zstr_send (self->pipe, "%d", self->port);
+        zstr_sendf (self->pipe, "%d", self->port);
         free (endpoint);
     }
     else

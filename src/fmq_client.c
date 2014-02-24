@@ -146,7 +146,7 @@ fmq_client_subscribe (fmq_client_t *self, const char *path)
     assert (self);
     assert (path);
     zstr_sendm (self->pipe, "SUBSCRIBE");
-    zstr_send (self->pipe, "%s", path);
+    zstr_sendf (self->pipe, "%s", path);
 }
 
 
@@ -158,7 +158,7 @@ fmq_client_set_inbox (fmq_client_t *self, const char *path)
     assert (self);
     assert (path);
     zstr_sendm (self->pipe, "SET INBOX");
-    zstr_send (self->pipe, "%s", path);
+    zstr_sendf (self->pipe, "%s", path);
 }
 
 
@@ -169,7 +169,7 @@ fmq_client_set_resync (fmq_client_t *self, long enabled)
 {
     assert (self);
     zstr_sendm (self->pipe, "SET RESYNC");
-    zstr_send (self->pipe, "%ld", enabled);
+    zstr_sendf (self->pipe, "%ld", enabled);
 }
 
 
@@ -596,7 +596,7 @@ process_the_patch (client_t *self, server_t *server)
             //  Zero-sized chunk means end of file, so report back to caller    
             zstr_sendm (self->pipe, "DELIVER");                                 
             zstr_sendm (self->pipe, filename);                                  
-            zstr_send  (self->pipe, "%s/%s", inbox, filename);                  
+            zstr_sendf (self->pipe, "%s/%s", inbox, filename);                  
             zfile_destroy (&server->file);                                      
         }                                                                       
         zchunk_destroy (&chunk);                                                
@@ -607,6 +607,11 @@ process_the_patch (client_t *self, server_t *server)
         zfile_t *file = zfile_new (inbox, filename);                            
         zfile_remove (file);                                                    
         zfile_destroy (&file);                                                  
+                                                                                
+        //  Report file deletion back to caller                                 
+        zstr_sendm (self->pipe, "DELETED");                                     
+        zstr_sendm (self->pipe, filename);                                      
+        zstr_sendf (self->pipe, "%s/%s", inbox, filename);                      
     }                                                                           
 }
 
