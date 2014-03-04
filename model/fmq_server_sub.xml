@@ -38,7 +38,7 @@ s_resolve_cache_path (const char *key, void *item, void *argument)
     sub_t *self = (sub_t *) argument;
     if (*key != '/') {
         char *new_key = malloc (strlen (self->path) + strlen (key) + 2);
-        sprintf (new_key, "%s/%s", self->path, key);
+        sprintf (new_key, "%s", key);
         zhash_rename (self->cache, key, new_key);
         free (new_key);
     }
