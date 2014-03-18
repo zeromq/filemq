@@ -703,8 +703,25 @@ client_thread (void *args, zctx_t *ctx, void *pipe)
             }
             pollset_size = 1 + self->nbr_servers;
         }
-        if (zmq_poll (pollset, pollset_size, self->heartbeat * ZMQ_POLL_MSEC) == -1)
+        int retval = zmq_poll (pollset, pollset_size, self->heartbeat * ZMQ_POLL_MSEC);
+        if (retval == -1)
             break;              //  Context has been shut down
+        if (retval == 0)
+        {
+            for (server_nbr = 0; server_nbr < self->nbr_servers; server_nbr++) {
+                server_t *server = self->servers [server_nbr];
+                if((server->expires_at > 0) && (zclock_time() >= server->expires_at))
+                {
+                    // Reconnect the server
+                    char *sav_endpoint = strdup(server->endpoint);
+                    server_destroy(&self->servers[server_nbr]);
+                    self->servers[server_nbr] = server_new(self->ctx, sav_endpoint);
+                    self->dirty = true;
+                    client_server_execute(self, self->servers[server_nbr], initialize_event);
+                    free(sav_endpoint);
+                }
+            }
+        }
 
         //  Process incoming messages; either of these can
         //  throw events into the state machine
