@@ -278,7 +278,7 @@ s_resolve_cache_path (const char *key, void *item, void *argument)
     sub_t *self = (sub_t *) argument;
     if (*key != '/') {
         char *new_key = malloc (strlen (self->path) + strlen (key) + 2);
-        sprintf (new_key, "%s/%s", self->path, key);
+        sprintf (new_key, "%s", key);
         zhash_rename (self->cache, key, new_key);
         free (new_key);
     }
@@ -312,7 +312,8 @@ sub_patch_add (sub_t *self, zdir_patch_t *patch)
     //  Skip file creation if client already has identical file
     zdir_patch_digest_set (patch);
     if (zdir_patch_op (patch) == patch_create) {
-        char *digest = (char *) zhash_lookup (self->cache, zdir_patch_vpath (patch));
+        char *digest = (char *) zhash_lookup (self->cache,
+                                    zdir_patch_vpath (patch) + strlen(self->path) + 1);
         if (digest && streq (digest, zdir_patch_digest (patch)))
             return;             //  Just skip patch for this client
     }

@@ -292,7 +292,7 @@ static zhash_t *
 sub_cache (sub_t *self)
 {
     //  Get directory cache for this path
-    zdir_t *dir = zdir_new (self->path + 1, self->inbox);
+    zdir_t *dir = zdir_new ("", self->inbox);
     zhash_t *cache = dir? zdir_cache (dir): NULL;
     zdir_destroy (&dir);
     return cache;
@@ -571,10 +571,21 @@ process_the_patch (client_t *self, server_t *server)
 {
     char *inbox = zconfig_resolve (self->config, "client/inbox", ".inbox");     
     char *filename = fmq_msg_filename (server->reply);                          
+    char *filename_orig = filename;                                             
                                                                                 
-    //  Filenames from server must start with slash, which we skip              
+    //  Filenames from server must start with slash                             
     assert (*filename == '/');                                                  
-    filename++;                                                                 
+                                                                                
+                                                                                
+    // Strip the subscription path from the filename                            
+    sub_t *subscr = (sub_t *) zlist_first(self->subs);                          
+    while(subscr) {                                                             
+        if(!strncmp(filename, subscr->path, strlen(subscr->path))) {            
+            filename += strlen(subscr->path);                                   
+            break;                                                              
+        }                                                                       
+    }                                                                           
+    if('/' == *filename) filename++;                                            
                                                                                 
     if (fmq_msg_operation (server->reply) == FMQ_MSG_FILE_CREATE) {             
         if (server->file == NULL) {                                             
@@ -596,14 +607,15 @@ process_the_patch (client_t *self, server_t *server)
             //  Zero-sized chunk means end of file, so report back to caller    
             zstr_sendm (self->pipe, "DELIVER");                                 
             zstr_sendm (self->pipe, filename);                                  
-            zstr_sendf (self->pipe, "%s/%s", inbox, filename);                  
+            zstr_sendf (self->pipe, "%s", filename_orig);                       
             zfile_destroy (&server->file);                                      
         }                                                                       
         zchunk_destroy (&chunk);                                                
     }                                                                           
     else                                                                        
     if (fmq_msg_operation (server->reply) == FMQ_MSG_FILE_DELETE) {             
-        zclock_log ("I: delete %s/%s", inbox, filename);                        
+        // No need to print this                                                
+        //zclock_log ("I: delete %s/%s", inbox, filename);                      
         zfile_t *file = zfile_new (inbox, filename);                            
         zfile_remove (file);                                                    
         zfile_destroy (&file);                                                  
@@ -611,7 +623,7 @@ process_the_patch (client_t *self, server_t *server)
         //  Report file deletion back to caller                                 
         zstr_sendm (self->pipe, "DELETED");                                     
         zstr_sendm (self->pipe, filename);                                      
-        zstr_sendf (self->pipe, "%s/%s", inbox, filename);                      
+        zstr_sendf (self->pipe, "%s/%s", inbox, filename_orig);                 
     }                                                                           
 }
 
@@ -825,8 +837,25 @@ client_thread (void *args, zctx_t *ctx, void *pipe)
             }
             pollset_size = 1 + self->nbr_servers;
         }
-        if (zmq_poll (pollset, pollset_size, self->heartbeat * ZMQ_POLL_MSEC) == -1)
+        int retval = zmq_poll (pollset, pollset_size, self->heartbeat * ZMQ_POLL_MSEC);
+        if (retval == -1)
             break;              //  Context has been shut down
+        if (retval == 0)
+        {
+            for (server_nbr = 0; server_nbr < self->nbr_servers; server_nbr++) {
+                server_t *server = self->servers [server_nbr];
+                if((server->expires_at > 0) && (zclock_time() >= server->expires_at))
+                {
+                    // Reconnect the server
+                    char *sav_endpoint = strdup(server->endpoint);
+                    server_destroy(&self->servers[server_nbr]);
+                    self->servers[server_nbr] = server_new(self->ctx, sav_endpoint);
+                    self->dirty = true;
+                    client_server_execute(self, self->servers[server_nbr], initialize_event);
+                    free(sav_endpoint);
+                }
+            }
+        }
 
         //  Process incoming messages; either of these can
         //  throw events into the state machine
