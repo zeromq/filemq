@@ -392,7 +392,7 @@ server_new (zctx_t *ctx, char *endpoint)
     self->endpoint = strdup (endpoint);
     self->dealer = zsocket_new (self->ctx, ZMQ_DEALER);
     self->request = $(codec)_new (0);
-    zsocket_connect (self->dealer, endpoint);
+    zsocket_connect (self->dealer, "%s", endpoint);
 .for class.state where item () = 1
     self->state = $(name:c)_state;
 .endfor
@@ -485,7 +485,7 @@ client_apply_config (client_t *self)
         zconfig_t *entry = zconfig_child (section);
         while (entry) {
             if (streq (zconfig_name (entry), "echo"))
-                zclock_log (zconfig_value (entry));
+                zclock_log ("%s", zconfig_value (entry));
             entry = zconfig_next (entry);
         }
 .for class.method where count (argument) > 0

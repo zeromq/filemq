@@ -1,8 +1,18 @@
 /*  =========================================================================
-    fmq_msg - work with filemq messages
+    fmq_msg - work with FILEMQ messages
 
-    Generated codec implementation for fmq_msg
-    -------------------------------------------------------------------------
+    Codec class for fmq_msg.
+
+    ** WARNING *************************************************************
+    THIS SOURCE FILE IS 100% GENERATED. If you edit this file, you will lose
+    your changes at the next build cycle. This is great for temporary printf
+    statements. DO NOT MAKE ANY CHANGES YOU WISH TO KEEP. The correct places
+    for commits are:
+
+    * The XML model used for this code generation: fmq_msg.xml
+    * The code generation script that built this file: zproto_codec_c
+    ************************************************************************
+    
     Copyright (c) 1991-2012 iMatix Corporation -- http://www.imatix.com     
     Copyright other contributors as noted in the AUTHORS file.              
                                                                             
@@ -25,7 +35,7 @@
 
 /*
 @header
-    fmq_msg - work with filemq messages
+    fmq_msg - work with FILEMQ messages
 @discuss
 @end
 */
@@ -36,61 +46,58 @@
 //  Structure of our class
 
 struct _fmq_msg_t {
-    zframe_t *address;          //  Address of peer if any
-    int id;                     //  fmq_msg message ID
-    byte *needle;               //  Read/write pointer for serialization
-    byte *ceiling;              //  Valid upper limit for read pointer
-    char *protocol;
-    uint16_t version;
-    char *path;
-    zhash_t *options;
-    size_t options_bytes;       //  Size of dictionary content
-    zhash_t *cache;
-    size_t cache_bytes;         //  Size of dictionary content
-    uint64_t credit;
-    uint64_t sequence;
-    byte operation;
-    char *filename;
-    uint64_t offset;
-    byte eof;
-    zhash_t *headers;
-    size_t headers_bytes;       //  Size of dictionary content
-    zframe_t *chunk;
-    char *reason;
+    zframe_t *routing_id;               //  Routing_id from ROUTER, if any
+    int id;                             //  fmq_msg message ID
+    byte *needle;                       //  Read/write pointer for serialization
+    byte *ceiling;                      //  Valid upper limit for read pointer
+    char *protocol;                     //  
+    uint16_t version;                   //  
+    char *path;                         //  
+    zhash_t *options;                   //  
+    size_t options_bytes;               //  Size of dictionary content
+    zhash_t *cache;                     //  
+    size_t cache_bytes;                 //  Size of dictionary content
+    uint64_t credit;                    //  
+    uint64_t sequence;                  //  
+    byte operation;                     //  
+    char *filename;                     //  
+    uint64_t offset;                    //  
+    byte eof;                           //  
+    zhash_t *headers;                   //  
+    size_t headers_bytes;               //  Size of dictionary content
+    zchunk_t *chunk;                    //  
+    char *reason;                       //  
 };
 
 //  --------------------------------------------------------------------------
 //  Network data encoding macros
 
-//  Strings are encoded with 1-byte length
-#define STRING_MAX  255
-
-//  Put a block to the frame
-#define PUT_BLOCK(host,size) { \
+//  Put a block of octets to the frame
+#define PUT_OCTETS(host,size) { \
     memcpy (self->needle, (host), size); \
     self->needle += size; \
-    }
+}
 
-//  Get a block from the frame
-#define GET_BLOCK(host,size) { \
+//  Get a block of octets from the frame
+#define GET_OCTETS(host,size) { \
     if (self->needle + size > self->ceiling) \
         goto malformed; \
     memcpy ((host), self->needle, size); \
     self->needle += size; \
-    }
+}
 
 //  Put a 1-byte number to the frame
 #define PUT_NUMBER1(host) { \
     *(byte *) self->needle = (host); \
     self->needle++; \
-    }
+}
 
 //  Put a 2-byte number to the frame
 #define PUT_NUMBER2(host) { \
     self->needle [0] = (byte) (((host) >> 8)  & 255); \
     self->needle [1] = (byte) (((host))       & 255); \
     self->needle += 2; \
-    }
+}
 
 //  Put a 4-byte number to the frame
 #define PUT_NUMBER4(host) { \
@@ -99,7 +106,7 @@ struct _fmq_msg_t {
     self->needle [2] = (byte) (((host) >> 8)  & 255); \
     self->needle [3] = (byte) (((host))       & 255); \
     self->needle += 4; \
-    }
+}
 
 //  Put a 8-byte number to the frame
 #define PUT_NUMBER8(host) { \
@@ -112,7 +119,7 @@ struct _fmq_msg_t {
     self->needle [6] = (byte) (((host) >> 8)  & 255); \
     self->needle [7] = (byte) (((host))       & 255); \
     self->needle += 8; \
-    }
+}
 
 //  Get a 1-byte number from the frame
 #define GET_NUMBER1(host) { \
@@ -120,7 +127,7 @@ struct _fmq_msg_t {
         goto malformed; \
     (host) = *(byte *) self->needle; \
     self->needle++; \
-    }
+}
 
 //  Get a 2-byte number from the frame
 #define GET_NUMBER2(host) { \
@@ -129,7 +136,7 @@ struct _fmq_msg_t {
     (host) = ((uint16_t) (self->needle [0]) << 8) \
            +  (uint16_t) (self->needle [1]); \
     self->needle += 2; \
-    }
+}
 
 //  Get a 4-byte number from the frame
 #define GET_NUMBER4(host) { \
@@ -140,7 +147,7 @@ struct _fmq_msg_t {
            + ((uint32_t) (self->needle [2]) << 8) \
            +  (uint32_t) (self->needle [3]); \
     self->needle += 4; \
-    }
+}
 
 //  Get a 8-byte number from the frame
 #define GET_NUMBER8(host) { \
@@ -155,18 +162,19 @@ struct _fmq_msg_t {
            + ((uint64_t) (self->needle [6]) << 8) \
            +  (uint64_t) (self->needle [7]); \
     self->needle += 8; \
-    }
+}
 
 //  Put a string to the frame
 #define PUT_STRING(host) { \
-    string_size = strlen (host); \
+    size_t string_size = strlen (host); \
     PUT_NUMBER1 (string_size); \
     memcpy (self->needle, (host), string_size); \
     self->needle += string_size; \
-    }
+}
 
 //  Get a string from the frame
 #define GET_STRING(host) { \
+    size_t string_size; \
     GET_NUMBER1 (string_size); \
     if (self->needle + string_size > (self->ceiling)) \
         goto malformed; \
@@ -174,7 +182,27 @@ struct _fmq_msg_t {
     memcpy ((host), self->needle, string_size); \
     (host) [string_size] = 0; \
     self->needle += string_size; \
-    }
+}
+
+//  Put a long string to the frame
+#define PUT_LONGSTR(host) { \
+    size_t string_size = strlen (host); \
+    PUT_NUMBER4 (string_size); \
+    memcpy (self->needle, (host), string_size); \
+    self->needle += string_size; \
+}
+
+//  Get a long string from the frame
+#define GET_LONGSTR(host) { \
+    size_t string_size; \
+    GET_NUMBER4 (string_size); \
+    if (self->needle + string_size > (self->ceiling)) \
+        goto malformed; \
+    (host) = (char *) malloc (string_size + 1); \
+    memcpy ((host), self->needle, string_size); \
+    (host) [string_size] = 0; \
+    self->needle += string_size; \
+}
 
 
 //  --------------------------------------------------------------------------
@@ -200,14 +228,14 @@ fmq_msg_destroy (fmq_msg_t **self_p)
         fmq_msg_t *self = *self_p;
 
         //  Free class properties
-        zframe_destroy (&self->address);
+        zframe_destroy (&self->routing_id);
         free (self->protocol);
         free (self->path);
         zhash_destroy (&self->options);
         zhash_destroy (&self->cache);
         free (self->filename);
         zhash_destroy (&self->headers);
-        zframe_destroy (&self->chunk);
+        zchunk_destroy (&self->chunk);
         free (self->reason);
 
         //  Free object itself
@@ -218,57 +246,47 @@ fmq_msg_destroy (fmq_msg_t **self_p)
 
 
 //  --------------------------------------------------------------------------
-//  Receive and parse a fmq_msg from the socket. Returns new object or
-//  NULL if error. Will block if there's no message waiting.
+//  Parse a fmq_msg from zmsg_t. Returns a new object, or NULL if
+//  the message could not be parsed, or was NULL. If the socket type is
+//  ZMQ_ROUTER, then parses the first frame as a routing_id. Destroys msg
+//  and nullifies the msg refernce.
 
 fmq_msg_t *
-fmq_msg_recv (void *input)
+fmq_msg_decode (zmsg_t **msg_p, int socket_type)
 {
-    assert (input);
+    assert (msg_p);
+    zmsg_t *msg = *msg_p;
+    if (msg == NULL)
+        return NULL;
+        
     fmq_msg_t *self = fmq_msg_new (0);
-    zframe_t *frame = NULL;
-    size_t string_size;
-    size_t list_size;
-    size_t hash_size;
-
-    //  Read valid message frame from socket; we loop over any
-    //  garbage data we might receive from badly-connected peers
-    while (true) {
-        //  If we're reading from a ROUTER socket, get address
-        if (zsocket_type (input) == ZMQ_ROUTER) {
-            zframe_destroy (&self->address);
-            self->address = zframe_recv (input);
-            if (!self->address)
-                goto empty;         //  Interrupted
-            if (!zsocket_rcvmore (input))
-                goto malformed;
+    //  If message came from a router socket, first frame is routing_id
+    if (socket_type == ZMQ_ROUTER) {
+        self->routing_id = zmsg_pop (msg);
+        //  If message was not valid, forget about it
+        if (!self->routing_id || !zmsg_next (msg)) {
+            fmq_msg_destroy (&self);
+            return (NULL);      //  Malformed or empty
         }
-        //  Read and parse command in frame
-        frame = zframe_recv (input);
-        if (!frame)
-            goto empty;             //  Interrupted
-
-        //  Get and check protocol signature
-        self->needle = zframe_data (frame);
-        self->ceiling = self->needle + zframe_size (frame);
-        uint16_t signature;
-        GET_NUMBER2 (signature);
-        if (signature == (0xAAA0 | 3))
-            break;                  //  Valid signature
-
-        //  Protocol assertion, drop message
-        while (zsocket_rcvmore (input)) {
-            zframe_destroy (&frame);
-            frame = zframe_recv (input);
-        }
-        zframe_destroy (&frame);
     }
+    //  Read and parse command in frame
+    zframe_t *frame = zmsg_pop (msg);
+    if (!frame) 
+        goto empty;             //  Malformed or empty
+
+    //  Get and check protocol signature
+    self->needle = zframe_data (frame);
+    self->ceiling = self->needle + zframe_size (frame);
+    uint16_t signature;
+    GET_NUMBER2 (signature);
+    if (signature != (0xAAA0 | 3))
+        goto empty;             //  Invalid signature
+
     //  Get message id and parse per message type
     GET_NUMBER1 (self->id);
 
     switch (self->id) {
         case FMQ_MSG_OHAI:
-            free (self->protocol);
             GET_STRING (self->protocol);
             if (strneq (self->protocol, "FILEMQ"))
                 goto malformed;
@@ -281,31 +299,34 @@ fmq_msg_recv (void *input)
             break;
 
         case FMQ_MSG_ICANHAZ:
-            free (self->path);
             GET_STRING (self->path);
-            GET_NUMBER1 (hash_size);
-            self->options = zhash_new ();
-            zhash_autofree (self->options);
-            while (hash_size--) {
-                char *string;
-                GET_STRING (string);
-                char *value = strchr (string, '=');
-                if (value)
-                    *value++ = 0;
-                zhash_insert (self->options, string, value);
-                free (string);
+            {
+                size_t hash_size;
+                GET_NUMBER4 (hash_size);
+                self->options = zhash_new ();
+                zhash_autofree (self->options);
+                while (hash_size--) {
+                    char *key, *value;
+                    GET_STRING (key);
+                    GET_LONGSTR (value);
+                    zhash_insert (self->options, key, value);
+                    free (key);
+                    free (value);
+                }
             }
-            GET_NUMBER1 (hash_size);
-            self->cache = zhash_new ();
-            zhash_autofree (self->cache);
-            while (hash_size--) {
-                char *string;
-                GET_STRING (string);
-                char *value = strchr (string, '=');
-                if (value)
-                    *value++ = 0;
-                zhash_insert (self->cache, string, value);
-                free (string);
+            {
+                size_t hash_size;
+                GET_NUMBER4 (hash_size);
+                self->cache = zhash_new ();
+                zhash_autofree (self->cache);
+                while (hash_size--) {
+                    char *key, *value;
+                    GET_STRING (key);
+                    GET_LONGSTR (value);
+                    zhash_insert (self->cache, key, value);
+                    free (key);
+                    free (value);
+                }
             }
             break;
 
@@ -320,26 +341,31 @@ fmq_msg_recv (void *input)
         case FMQ_MSG_CHEEZBURGER:
             GET_NUMBER8 (self->sequence);
             GET_NUMBER1 (self->operation);
-            free (self->filename);
             GET_STRING (self->filename);
             GET_NUMBER8 (self->offset);
             GET_NUMBER1 (self->eof);
-            GET_NUMBER1 (hash_size);
-            self->headers = zhash_new ();
-            zhash_autofree (self->headers);
-            while (hash_size--) {
-                char *string;
-                GET_STRING (string);
-                char *value = strchr (string, '=');
-                if (value)
-                    *value++ = 0;
-                zhash_insert (self->headers, string, value);
-                free (string);
+            {
+                size_t hash_size;
+                GET_NUMBER4 (hash_size);
+                self->headers = zhash_new ();
+                zhash_autofree (self->headers);
+                while (hash_size--) {
+                    char *key, *value;
+                    GET_STRING (key);
+                    GET_LONGSTR (value);
+                    zhash_insert (self->headers, key, value);
+                    free (key);
+                    free (value);
+                }
             }
-            //  Get next frame, leave current untouched
-            if (!zsocket_rcvmore (input))
-                goto malformed;
-            self->chunk = zframe_recv (input);
+            {
+                size_t chunk_size;
+                GET_NUMBER4 (chunk_size);
+                if (self->needle + chunk_size > (self->ceiling))
+                    goto malformed;
+                self->chunk = zchunk_new (self->needle, chunk_size);
+                self->needle += chunk_size;
+            }
             break;
 
         case FMQ_MSG_HUGZ:
@@ -352,12 +378,10 @@ fmq_msg_recv (void *input)
             break;
 
         case FMQ_MSG_SRSLY:
-            free (self->reason);
             GET_STRING (self->reason);
             break;
 
         case FMQ_MSG_RTFM:
-            free (self->reason);
             GET_STRING (self->reason);
             break;
 
@@ -366,6 +390,7 @@ fmq_msg_recv (void *input)
     }
     //  Successful return
     zframe_destroy (&frame);
+    zmsg_destroy (msg_p);
     return self;
 
     //  Error returns
@@ -373,16 +398,45 @@ fmq_msg_recv (void *input)
         printf ("E: malformed message '%d'\n", self->id);
     empty:
         zframe_destroy (&frame);
+        zmsg_destroy (msg_p);
         fmq_msg_destroy (&self);
         return (NULL);
 }
 
-//  Count size of key=value pair
+
+//  --------------------------------------------------------------------------
+//  Receive and parse a fmq_msg from the socket. Returns new object or
+//  NULL if error. Will block if there's no message waiting.
+
+fmq_msg_t *
+fmq_msg_recv (void *input)
+{
+    assert (input);
+    zmsg_t *msg = zmsg_recv (input);
+    return fmq_msg_decode (&msg, zsocket_type (input));
+}
+
+
+//  --------------------------------------------------------------------------
+//  Receive and parse a fmq_msg from the socket. Returns new object, 
+//  or NULL either if there was no input waiting, or the recv was interrupted.
+
+fmq_msg_t *
+fmq_msg_recv_nowait (void *input)
+{
+    assert (input);
+    zmsg_t *msg = zmsg_recv_nowait (input);
+    return fmq_msg_decode (&msg, zsocket_type (input));
+}
+
+
+//  Count size of key/value pair for serialization
+//  Key is encoded as string, value as longstr
 static int
 s_options_count (const char *key, void *item, void *argument)
 {
     fmq_msg_t *self = (fmq_msg_t *) argument;
-    self->options_bytes += strlen (key) + 1 + strlen ((char *) item) + 1;
+    self->options_bytes += 1 + strlen (key) + 4 + strlen ((char *) item);
     return 0;
 }
 
@@ -391,19 +445,19 @@ static int
 s_options_write (const char *key, void *item, void *argument)
 {
     fmq_msg_t *self = (fmq_msg_t *) argument;
-    char string [STRING_MAX + 1];
-    snprintf (string, STRING_MAX, "%s=%s", key, (char *) item);
-    size_t string_size;
-    PUT_STRING (string);
+    PUT_STRING (key);
+    PUT_LONGSTR ((char *) item);
     return 0;
 }
 
-//  Count size of key=value pair
+
+//  Count size of key/value pair for serialization
+//  Key is encoded as string, value as longstr
 static int
 s_cache_count (const char *key, void *item, void *argument)
 {
     fmq_msg_t *self = (fmq_msg_t *) argument;
-    self->cache_bytes += strlen (key) + 1 + strlen ((char *) item) + 1;
+    self->cache_bytes += 1 + strlen (key) + 4 + strlen ((char *) item);
     return 0;
 }
 
@@ -412,19 +466,19 @@ static int
 s_cache_write (const char *key, void *item, void *argument)
 {
     fmq_msg_t *self = (fmq_msg_t *) argument;
-    char string [STRING_MAX + 1];
-    snprintf (string, STRING_MAX, "%s=%s", key, (char *) item);
-    size_t string_size;
-    PUT_STRING (string);
+    PUT_STRING (key);
+    PUT_LONGSTR ((char *) item);
     return 0;
 }
 
-//  Count size of key=value pair
+
+//  Count size of key/value pair for serialization
+//  Key is encoded as string, value as longstr
 static int
 s_headers_count (const char *key, void *item, void *argument)
 {
     fmq_msg_t *self = (fmq_msg_t *) argument;
-    self->headers_bytes += strlen (key) + 1 + strlen ((char *) item) + 1;
+    self->headers_bytes += 1 + strlen (key) + 4 + strlen ((char *) item);
     return 0;
 }
 
@@ -433,27 +487,27 @@ static int
 s_headers_write (const char *key, void *item, void *argument)
 {
     fmq_msg_t *self = (fmq_msg_t *) argument;
-    char string [STRING_MAX + 1];
-    snprintf (string, STRING_MAX, "%s=%s", key, (char *) item);
-    size_t string_size;
-    PUT_STRING (string);
+    PUT_STRING (key);
+    PUT_LONGSTR ((char *) item);
     return 0;
 }
 
 
-//  --------------------------------------------------------------------------
-//  Send the fmq_msg to the socket, and destroy it
-//  Returns 0 if OK, else -1
+//  Encode fmq_msg into zmsg and destroy it. Returns a newly created
+//  object or NULL if error. Use when not in control of sending the message.
+//  If the socket_type is ZMQ_ROUTER, then stores the routing_id as the
+//  first frame of the resulting message.
 
-int
-fmq_msg_send (fmq_msg_t **self_p, void *output)
+zmsg_t *
+fmq_msg_encode (fmq_msg_t *self, int socket_type)
 {
-    assert (output);
-    assert (self_p);
-    assert (*self_p);
+    assert (self);
+    zmsg_t *msg = zmsg_new ();
 
-    //  Calculate size of serialized data
-    fmq_msg_t *self = *self_p;
+    //  If we're sending to a ROUTER, send the routing_id first
+    if (socket_type == ZMQ_ROUTER)
+        zmsg_prepend (msg, &self->routing_id);
+        
     size_t frame_size = 2 + 1;          //  Signature and message ID
     switch (self->id) {
         case FMQ_MSG_OHAI:
@@ -472,7 +526,7 @@ fmq_msg_send (fmq_msg_t **self_p, void *output)
             if (self->path)
                 frame_size += strlen (self->path);
             //  options is an array of key=value strings
-            frame_size++;       //  Size is one octet
+            frame_size += 4;    //  Size is 4 octets
             if (self->options) {
                 self->options_bytes = 0;
                 //  Add up size of dictionary contents
@@ -480,7 +534,7 @@ fmq_msg_send (fmq_msg_t **self_p, void *output)
             }
             frame_size += self->options_bytes;
             //  cache is an array of key=value strings
-            frame_size++;       //  Size is one octet
+            frame_size += 4;    //  Size is 4 octets
             if (self->cache) {
                 self->cache_bytes = 0;
                 //  Add up size of dictionary contents
@@ -513,13 +567,17 @@ fmq_msg_send (fmq_msg_t **self_p, void *output)
             //  eof is a 1-byte integer
             frame_size += 1;
             //  headers is an array of key=value strings
-            frame_size++;       //  Size is one octet
+            frame_size += 4;    //  Size is 4 octets
             if (self->headers) {
                 self->headers_bytes = 0;
                 //  Add up size of dictionary contents
                 zhash_foreach (self->headers, s_headers_count, self);
             }
             frame_size += self->headers_bytes;
+            //  chunk is a chunk with 4-byte length
+            frame_size += 4;
+            if (self->chunk)
+                frame_size += zchunk_size (self->chunk);
             break;
             
         case FMQ_MSG_HUGZ:
@@ -553,8 +611,6 @@ fmq_msg_send (fmq_msg_t **self_p, void *output)
     //  Now serialize message into the frame
     zframe_t *frame = zframe_new (NULL, frame_size);
     self->needle = zframe_data (frame);
-    size_t string_size;
-    int frame_flags = 0;
     PUT_NUMBER2 (0xAAA0 | 3);
     PUT_NUMBER1 (self->id);
 
@@ -563,38 +619,38 @@ fmq_msg_send (fmq_msg_t **self_p, void *output)
             PUT_STRING ("FILEMQ");
             PUT_NUMBER2 (FMQ_MSG_VERSION);
             break;
-            
+
         case FMQ_MSG_OHAI_OK:
             break;
-            
+
         case FMQ_MSG_ICANHAZ:
             if (self->path) {
                 PUT_STRING (self->path);
             }
             else
                 PUT_NUMBER1 (0);    //  Empty string
-            if (self->options != NULL) {
-                PUT_NUMBER1 (zhash_size (self->options));
+            if (self->options) {
+                PUT_NUMBER4 (zhash_size (self->options));
                 zhash_foreach (self->options, s_options_write, self);
             }
             else
-                PUT_NUMBER1 (0);    //  Empty dictionary
-            if (self->cache != NULL) {
-                PUT_NUMBER1 (zhash_size (self->cache));
+                PUT_NUMBER4 (0);    //  Empty dictionary
+            if (self->cache) {
+                PUT_NUMBER4 (zhash_size (self->cache));
                 zhash_foreach (self->cache, s_cache_write, self);
             }
             else
-                PUT_NUMBER1 (0);    //  Empty dictionary
+                PUT_NUMBER4 (0);    //  Empty dictionary
             break;
-            
+
         case FMQ_MSG_ICANHAZ_OK:
             break;
-            
+
         case FMQ_MSG_NOM:
             PUT_NUMBER8 (self->credit);
             PUT_NUMBER8 (self->sequence);
             break;
-            
+
         case FMQ_MSG_CHEEZBURGER:
             PUT_NUMBER8 (self->sequence);
             PUT_NUMBER1 (self->operation);
@@ -605,24 +661,32 @@ fmq_msg_send (fmq_msg_t **self_p, void *output)
                 PUT_NUMBER1 (0);    //  Empty string
             PUT_NUMBER8 (self->offset);
             PUT_NUMBER1 (self->eof);
-            if (self->headers != NULL) {
-                PUT_NUMBER1 (zhash_size (self->headers));
+            if (self->headers) {
+                PUT_NUMBER4 (zhash_size (self->headers));
                 zhash_foreach (self->headers, s_headers_write, self);
             }
             else
-                PUT_NUMBER1 (0);    //  Empty dictionary
-            frame_flags = ZFRAME_MORE;
+                PUT_NUMBER4 (0);    //  Empty dictionary
+            if (self->chunk) {
+                PUT_NUMBER4 (zchunk_size (self->chunk));
+                memcpy (self->needle,
+                        zchunk_data (self->chunk),
+                        zchunk_size (self->chunk));
+                self->needle += zchunk_size (self->chunk);
+            }
+            else
+                PUT_NUMBER4 (0);    //  Empty chunk
             break;
-            
+
         case FMQ_MSG_HUGZ:
             break;
-            
+
         case FMQ_MSG_HUGZ_OK:
             break;
-            
+
         case FMQ_MSG_KTHXBAI:
             break;
-            
+
         case FMQ_MSG_SRSLY:
             if (self->reason) {
                 PUT_STRING (self->reason);
@@ -630,7 +694,7 @@ fmq_msg_send (fmq_msg_t **self_p, void *output)
             else
                 PUT_NUMBER1 (0);    //  Empty string
             break;
-            
+
         case FMQ_MSG_RTFM:
             if (self->reason) {
                 PUT_STRING (self->reason);
@@ -638,40 +702,50 @@ fmq_msg_send (fmq_msg_t **self_p, void *output)
             else
                 PUT_NUMBER1 (0);    //  Empty string
             break;
-            
-    }
-    //  If we're sending to a ROUTER, we send the address first
-    if (zsocket_type (output) == ZMQ_ROUTER) {
-        assert (self->address);
-        if (zframe_send (&self->address, output, ZFRAME_MORE)) {
-            zframe_destroy (&frame);
-            fmq_msg_destroy (self_p);
-            return -1;
-        }
+
     }
     //  Now send the data frame
-    if (zframe_send (&frame, output, frame_flags)) {
-        zframe_destroy (&frame);
-        fmq_msg_destroy (self_p);
-        return -1;
-    }
-    
-    //  Now send any frame fields, in order
-    switch (self->id) {
-        case FMQ_MSG_CHEEZBURGER:
-            //  If chunk isn't set, send an empty frame
-            if (!self->chunk)
-                self->chunk = zframe_new (NULL, 0);
-            if (zframe_send (&self->chunk, output, 0)) {
-                zframe_destroy (&frame);
-                fmq_msg_destroy (self_p);
-                return -1;
-            }
-            break;
+    if (zmsg_append (msg, &frame)) {
+        zmsg_destroy (&msg);
+        fmq_msg_destroy (&self);
+        return NULL;
     }
     //  Destroy fmq_msg object
-    fmq_msg_destroy (self_p);
-    return 0;
+    fmq_msg_destroy (&self);
+    return msg;
+
+}
+
+//  --------------------------------------------------------------------------
+//  Send the fmq_msg to the socket, and destroy it
+//  Returns 0 if OK, else -1
+
+int
+fmq_msg_send (fmq_msg_t **self_p, void *output)
+{
+    assert (self_p);
+    assert (*self_p);
+    assert (output);
+
+    fmq_msg_t *self = *self_p;
+    zmsg_t *msg = fmq_msg_encode (self, zsocket_type (output));
+    if (msg && zmsg_send (&msg, output) == 0)
+        return 0;
+    else
+        return -1;              //  Failed to encode, or send
+}
+
+
+//  --------------------------------------------------------------------------
+//  Send the fmq_msg to the output, and do not destroy it
+
+int
+fmq_msg_send_again (fmq_msg_t *self, void *output)
+{
+    assert (self);
+    assert (output);
+    self = fmq_msg_dup (self);
+    return fmq_msg_send (&self, output);
 }
 
 
@@ -705,14 +779,16 @@ fmq_msg_send_ohai_ok (
 int
 fmq_msg_send_icanhaz (
     void *output,
-    char *path,
+    const char *path,
     zhash_t *options,
     zhash_t *cache)
 {
     fmq_msg_t *self = fmq_msg_new (FMQ_MSG_ICANHAZ);
     fmq_msg_set_path (self, path);
-    fmq_msg_set_options (self, zhash_dup (options));
-    fmq_msg_set_cache (self, zhash_dup (cache));
+    zhash_t *options_copy = zhash_dup (options);
+    fmq_msg_set_options (self, &options_copy);
+    zhash_t *cache_copy = zhash_dup (cache);
+    fmq_msg_set_cache (self, &cache_copy);
     return fmq_msg_send (&self, output);
 }
 
@@ -753,11 +829,11 @@ fmq_msg_send_cheezburger (
     void *output,
     uint64_t sequence,
     byte operation,
-    char *filename,
+    const char *filename,
     uint64_t offset,
     byte eof,
     zhash_t *headers,
-    zframe_t *chunk)
+    zchunk_t *chunk)
 {
     fmq_msg_t *self = fmq_msg_new (FMQ_MSG_CHEEZBURGER);
     fmq_msg_set_sequence (self, sequence);
@@ -765,8 +841,10 @@ fmq_msg_send_cheezburger (
     fmq_msg_set_filename (self, filename);
     fmq_msg_set_offset (self, offset);
     fmq_msg_set_eof (self, eof);
-    fmq_msg_set_headers (self, zhash_dup (headers));
-    fmq_msg_set_chunk (self, zframe_dup (chunk));
+    zhash_t *headers_copy = zhash_dup (headers);
+    fmq_msg_set_headers (self, &headers_copy);
+    zchunk_t *chunk_copy = zchunk_dup (chunk);
+    fmq_msg_set_chunk (self, &chunk_copy);
     return fmq_msg_send (&self, output);
 }
 
@@ -813,7 +891,7 @@ fmq_msg_send_kthxbai (
 int
 fmq_msg_send_srsly (
     void *output,
-    char *reason)
+    const char *reason)
 {
     fmq_msg_t *self = fmq_msg_new (FMQ_MSG_SRSLY);
     fmq_msg_set_reason (self, reason);
@@ -827,7 +905,7 @@ fmq_msg_send_srsly (
 int
 fmq_msg_send_rtfm (
     void *output,
-    char *reason)
+    const char *reason)
 {
     fmq_msg_t *self = fmq_msg_new (FMQ_MSG_RTFM);
     fmq_msg_set_reason (self, reason);
@@ -845,11 +923,12 @@ fmq_msg_dup (fmq_msg_t *self)
         return NULL;
         
     fmq_msg_t *copy = fmq_msg_new (self->id);
-    if (self->address)
-        copy->address = zframe_dup (self->address);
+    if (self->routing_id)
+        copy->routing_id = zframe_dup (self->routing_id);
+
     switch (self->id) {
         case FMQ_MSG_OHAI:
-            copy->protocol = strdup (self->protocol);
+            copy->protocol = self->protocol? strdup (self->protocol): NULL;
             copy->version = self->version;
             break;
 
@@ -857,9 +936,9 @@ fmq_msg_dup (fmq_msg_t *self)
             break;
 
         case FMQ_MSG_ICANHAZ:
-            copy->path = strdup (self->path);
-            copy->options = zhash_dup (self->options);
-            copy->cache = zhash_dup (self->cache);
+            copy->path = self->path? strdup (self->path): NULL;
+            copy->options = self->options? zhash_dup (self->options): NULL;
+            copy->cache = self->cache? zhash_dup (self->cache): NULL;
             break;
 
         case FMQ_MSG_ICANHAZ_OK:
@@ -873,11 +952,11 @@ fmq_msg_dup (fmq_msg_t *self)
         case FMQ_MSG_CHEEZBURGER:
             copy->sequence = self->sequence;
             copy->operation = self->operation;
-            copy->filename = strdup (self->filename);
+            copy->filename = self->filename? strdup (self->filename): NULL;
             copy->offset = self->offset;
             copy->eof = self->eof;
-            copy->headers = zhash_dup (self->headers);
-            copy->chunk = zframe_dup (self->chunk);
+            copy->headers = self->headers? zhash_dup (self->headers): NULL;
+            copy->chunk = self->chunk? zchunk_dup (self->chunk): NULL;
             break;
 
         case FMQ_MSG_HUGZ:
@@ -890,11 +969,11 @@ fmq_msg_dup (fmq_msg_t *self)
             break;
 
         case FMQ_MSG_SRSLY:
-            copy->reason = strdup (self->reason);
+            copy->reason = self->reason? strdup (self->reason): NULL;
             break;
 
         case FMQ_MSG_RTFM:
-            copy->reason = strdup (self->reason);
+            copy->reason = self->reason? strdup (self->reason): NULL;
             break;
 
     }
@@ -906,7 +985,6 @@ fmq_msg_dup (fmq_msg_t *self)
 static int
 s_options_dump (const char *key, void *item, void *argument)
 {
-    fmq_msg_t *self = (fmq_msg_t *) argument;
     printf ("        %s=%s\n", key, (char *) item);
     return 0;
 }
@@ -915,7 +993,6 @@ s_options_dump (const char *key, void *item, void *argument)
 static int
 s_cache_dump (const char *key, void *item, void *argument)
 {
-    fmq_msg_t *self = (fmq_msg_t *) argument;
     printf ("        %s=%s\n", key, (char *) item);
     return 0;
 }
@@ -924,7 +1001,6 @@ s_cache_dump (const char *key, void *item, void *argument)
 static int
 s_headers_dump (const char *key, void *item, void *argument)
 {
-    fmq_msg_t *self = (fmq_msg_t *) argument;
     printf ("        %s=%s\n", key, (char *) item);
     return 0;
 }
@@ -957,10 +1033,14 @@ fmq_msg_dump (fmq_msg_t *self)
             printf ("    options={\n");
             if (self->options)
                 zhash_foreach (self->options, s_options_dump, self);
+            else
+                printf ("(NULL)\n");
             printf ("    }\n");
             printf ("    cache={\n");
             if (self->cache)
                 zhash_foreach (self->cache, s_cache_dump, self);
+            else
+                printf ("(NULL)\n");
             printf ("    }\n");
             break;
             
@@ -987,21 +1067,14 @@ fmq_msg_dump (fmq_msg_t *self)
             printf ("    headers={\n");
             if (self->headers)
                 zhash_foreach (self->headers, s_headers_dump, self);
+            else
+                printf ("(NULL)\n");
             printf ("    }\n");
             printf ("    chunk={\n");
-            if (self->chunk) {
-                size_t size = zframe_size (self->chunk);
-                byte *data = zframe_data (self->chunk);
-                printf ("        size=%td\n", zframe_size (self->chunk));
-                if (size > 32)
-                    size = 32;
-                int chunk_index;
-                for (chunk_index = 0; chunk_index < size; chunk_index++) {
-                    if (chunk_index && (chunk_index % 4 == 0))
-                        printf ("-");
-                    printf ("%02X", data [chunk_index]);
-                }
-            }
+            if (self->chunk)
+                zchunk_print (self->chunk);
+            else
+                printf ("(NULL)\n");
             printf ("    }\n");
             break;
             
@@ -1038,21 +1111,21 @@ fmq_msg_dump (fmq_msg_t *self)
 
 
 //  --------------------------------------------------------------------------
-//  Get/set the message address
+//  Get/set the message routing_id
 
 zframe_t *
-fmq_msg_address (fmq_msg_t *self)
+fmq_msg_routing_id (fmq_msg_t *self)
 {
     assert (self);
-    return self->address;
+    return self->routing_id;
 }
 
 void
-fmq_msg_set_address (fmq_msg_t *self, zframe_t *address)
+fmq_msg_set_routing_id (fmq_msg_t *self, zframe_t *routing_id)
 {
-    if (self->address)
-        zframe_destroy (&self->address);
-    self->address = zframe_dup (address);
+    if (self->routing_id)
+        zframe_destroy (&self->routing_id);
+    self->routing_id = zframe_dup (routing_id);
 }
 
 
@@ -1075,7 +1148,7 @@ fmq_msg_set_id (fmq_msg_t *self, int id)
 //  --------------------------------------------------------------------------
 //  Return a printable command string
 
-char *
+const char *
 fmq_msg_command (fmq_msg_t *self)
 {
     assert (self);
@@ -1120,7 +1193,7 @@ fmq_msg_command (fmq_msg_t *self)
 //  --------------------------------------------------------------------------
 //  Get/set the path field
 
-char *
+const char *
 fmq_msg_path (fmq_msg_t *self)
 {
     assert (self);
@@ -1128,22 +1201,20 @@ fmq_msg_path (fmq_msg_t *self)
 }
 
 void
-fmq_msg_set_path (fmq_msg_t *self, char *format, ...)
+fmq_msg_set_path (fmq_msg_t *self, const char *format, ...)
 {
-    //  Format into newly allocated string
+    //  Format path from provided arguments
     assert (self);
     va_list argptr;
     va_start (argptr, format);
     free (self->path);
-    self->path = (char *) malloc (STRING_MAX + 1);
-    assert (self->path);
-    vsnprintf (self->path, STRING_MAX, format, argptr);
+    self->path = zsys_vprintf (format, argptr);
     va_end (argptr);
 }
 
 
 //  --------------------------------------------------------------------------
-//  Get/set the options field
+//  Get the options field without transferring ownership
 
 zhash_t *
 fmq_msg_options (fmq_msg_t *self)
@@ -1152,27 +1223,38 @@ fmq_msg_options (fmq_msg_t *self)
     return self->options;
 }
 
-//  Greedy function, takes ownership of options; if you don't want that
-//  then use zhash_dup() to pass a copy of options
+//  Get the options field and transfer ownership to caller
+
+zhash_t *
+fmq_msg_get_options (fmq_msg_t *self)
+{
+    zhash_t *options = self->options;
+    self->options = NULL;
+    return options;
+}
+
+//  Set the options field, transferring ownership from caller
 
 void
-fmq_msg_set_options (fmq_msg_t *self, zhash_t *options)
+fmq_msg_set_options (fmq_msg_t *self, zhash_t **options_p)
 {
     assert (self);
+    assert (options_p);
     zhash_destroy (&self->options);
-    self->options = options;
+    self->options = *options_p;
+    *options_p = NULL;
 }
 
 //  --------------------------------------------------------------------------
 //  Get/set a value in the options dictionary
 
-char *
-fmq_msg_options_string (fmq_msg_t *self, char *key, char *default_value)
+const char *
+fmq_msg_options_string (fmq_msg_t *self, const char *key, const char *default_value)
 {
     assert (self);
-    char *value = NULL;
+    const char *value = NULL;
     if (self->options)
-        value = (char *) (zhash_lookup (self->options, key));
+        value = (const char *) (zhash_lookup (self->options, key));
     if (!value)
         value = default_value;
 
@@ -1180,7 +1262,7 @@ fmq_msg_options_string (fmq_msg_t *self, char *key, char *default_value)
 }
 
 uint64_t
-fmq_msg_options_number (fmq_msg_t *self, char *key, uint64_t default_value)
+fmq_msg_options_number (fmq_msg_t *self, const char *key, uint64_t default_value)
 {
     assert (self);
     uint64_t value = default_value;
@@ -1194,15 +1276,13 @@ fmq_msg_options_number (fmq_msg_t *self, char *key, uint64_t default_value)
 }
 
 void
-fmq_msg_options_insert (fmq_msg_t *self, char *key, char *format, ...)
+fmq_msg_options_insert (fmq_msg_t *self, const char *key, const char *format, ...)
 {
-    //  Format string into buffer
+    //  Format into newly allocated string
     assert (self);
     va_list argptr;
     va_start (argptr, format);
-    char *string = (char *) malloc (STRING_MAX + 1);
-    assert (string);
-    vsnprintf (string, STRING_MAX, format, argptr);
+    char *string = zsys_vprintf (format, argptr);
     va_end (argptr);
 
     //  Store string in hash table
@@ -1222,7 +1302,7 @@ fmq_msg_options_size (fmq_msg_t *self)
 
 
 //  --------------------------------------------------------------------------
-//  Get/set the cache field
+//  Get the cache field without transferring ownership
 
 zhash_t *
 fmq_msg_cache (fmq_msg_t *self)
@@ -1231,27 +1311,38 @@ fmq_msg_cache (fmq_msg_t *self)
     return self->cache;
 }
 
-//  Greedy function, takes ownership of cache; if you don't want that
-//  then use zhash_dup() to pass a copy of cache
+//  Get the cache field and transfer ownership to caller
+
+zhash_t *
+fmq_msg_get_cache (fmq_msg_t *self)
+{
+    zhash_t *cache = self->cache;
+    self->cache = NULL;
+    return cache;
+}
+
+//  Set the cache field, transferring ownership from caller
 
 void
-fmq_msg_set_cache (fmq_msg_t *self, zhash_t *cache)
+fmq_msg_set_cache (fmq_msg_t *self, zhash_t **cache_p)
 {
     assert (self);
+    assert (cache_p);
     zhash_destroy (&self->cache);
-    self->cache = cache;
+    self->cache = *cache_p;
+    *cache_p = NULL;
 }
 
 //  --------------------------------------------------------------------------
 //  Get/set a value in the cache dictionary
 
-char *
-fmq_msg_cache_string (fmq_msg_t *self, char *key, char *default_value)
+const char *
+fmq_msg_cache_string (fmq_msg_t *self, const char *key, const char *default_value)
 {
     assert (self);
-    char *value = NULL;
+    const char *value = NULL;
     if (self->cache)
-        value = (char *) (zhash_lookup (self->cache, key));
+        value = (const char *) (zhash_lookup (self->cache, key));
     if (!value)
         value = default_value;
 
@@ -1259,7 +1350,7 @@ fmq_msg_cache_string (fmq_msg_t *self, char *key, char *default_value)
 }
 
 uint64_t
-fmq_msg_cache_number (fmq_msg_t *self, char *key, uint64_t default_value)
+fmq_msg_cache_number (fmq_msg_t *self, const char *key, uint64_t default_value)
 {
     assert (self);
     uint64_t value = default_value;
@@ -1273,15 +1364,13 @@ fmq_msg_cache_number (fmq_msg_t *self, char *key, uint64_t default_value)
 }
 
 void
-fmq_msg_cache_insert (fmq_msg_t *self, char *key, char *format, ...)
+fmq_msg_cache_insert (fmq_msg_t *self, const char *key, const char *format, ...)
 {
-    //  Format string into buffer
+    //  Format into newly allocated string
     assert (self);
     va_list argptr;
     va_start (argptr, format);
-    char *string = (char *) malloc (STRING_MAX + 1);
-    assert (string);
-    vsnprintf (string, STRING_MAX, format, argptr);
+    char *string = zsys_vprintf (format, argptr);
     va_end (argptr);
 
     //  Store string in hash table
@@ -1303,7 +1392,7 @@ fmq_msg_cache_size (fmq_msg_t *self)
 //  --------------------------------------------------------------------------
 //  Get/set the credit field
 
-uint64_t
+uint64_t 
 fmq_msg_credit (fmq_msg_t *self)
 {
     assert (self);
@@ -1321,7 +1410,7 @@ fmq_msg_set_credit (fmq_msg_t *self, uint64_t credit)
 //  --------------------------------------------------------------------------
 //  Get/set the sequence field
 
-uint64_t
+uint64_t 
 fmq_msg_sequence (fmq_msg_t *self)
 {
     assert (self);
@@ -1339,7 +1428,7 @@ fmq_msg_set_sequence (fmq_msg_t *self, uint64_t sequence)
 //  --------------------------------------------------------------------------
 //  Get/set the operation field
 
-byte
+byte 
 fmq_msg_operation (fmq_msg_t *self)
 {
     assert (self);
@@ -1357,7 +1446,7 @@ fmq_msg_set_operation (fmq_msg_t *self, byte operation)
 //  --------------------------------------------------------------------------
 //  Get/set the filename field
 
-char *
+const char *
 fmq_msg_filename (fmq_msg_t *self)
 {
     assert (self);
@@ -1365,16 +1454,14 @@ fmq_msg_filename (fmq_msg_t *self)
 }
 
 void
-fmq_msg_set_filename (fmq_msg_t *self, char *format, ...)
+fmq_msg_set_filename (fmq_msg_t *self, const char *format, ...)
 {
-    //  Format into newly allocated string
+    //  Format filename from provided arguments
     assert (self);
     va_list argptr;
     va_start (argptr, format);
     free (self->filename);
-    self->filename = (char *) malloc (STRING_MAX + 1);
-    assert (self->filename);
-    vsnprintf (self->filename, STRING_MAX, format, argptr);
+    self->filename = zsys_vprintf (format, argptr);
     va_end (argptr);
 }
 
@@ -1382,7 +1469,7 @@ fmq_msg_set_filename (fmq_msg_t *self, char *format, ...)
 //  --------------------------------------------------------------------------
 //  Get/set the offset field
 
-uint64_t
+uint64_t 
 fmq_msg_offset (fmq_msg_t *self)
 {
     assert (self);
@@ -1400,7 +1487,7 @@ fmq_msg_set_offset (fmq_msg_t *self, uint64_t offset)
 //  --------------------------------------------------------------------------
 //  Get/set the eof field
 
-byte
+byte 
 fmq_msg_eof (fmq_msg_t *self)
 {
     assert (self);
@@ -1416,7 +1503,7 @@ fmq_msg_set_eof (fmq_msg_t *self, byte eof)
 
 
 //  --------------------------------------------------------------------------
-//  Get/set the headers field
+//  Get the headers field without transferring ownership
 
 zhash_t *
 fmq_msg_headers (fmq_msg_t *self)
@@ -1425,27 +1512,38 @@ fmq_msg_headers (fmq_msg_t *self)
     return self->headers;
 }
 
-//  Greedy function, takes ownership of headers; if you don't want that
-//  then use zhash_dup() to pass a copy of headers
+//  Get the headers field and transfer ownership to caller
+
+zhash_t *
+fmq_msg_get_headers (fmq_msg_t *self)
+{
+    zhash_t *headers = self->headers;
+    self->headers = NULL;
+    return headers;
+}
+
+//  Set the headers field, transferring ownership from caller
 
 void
-fmq_msg_set_headers (fmq_msg_t *self, zhash_t *headers)
+fmq_msg_set_headers (fmq_msg_t *self, zhash_t **headers_p)
 {
     assert (self);
+    assert (headers_p);
     zhash_destroy (&self->headers);
-    self->headers = headers;
+    self->headers = *headers_p;
+    *headers_p = NULL;
 }
 
 //  --------------------------------------------------------------------------
 //  Get/set a value in the headers dictionary
 
-char *
-fmq_msg_headers_string (fmq_msg_t *self, char *key, char *default_value)
+const char *
+fmq_msg_headers_string (fmq_msg_t *self, const char *key, const char *default_value)
 {
     assert (self);
-    char *value = NULL;
+    const char *value = NULL;
     if (self->headers)
-        value = (char *) (zhash_lookup (self->headers, key));
+        value = (const char *) (zhash_lookup (self->headers, key));
     if (!value)
         value = default_value;
 
@@ -1453,7 +1551,7 @@ fmq_msg_headers_string (fmq_msg_t *self, char *key, char *default_value)
 }
 
 uint64_t
-fmq_msg_headers_number (fmq_msg_t *self, char *key, uint64_t default_value)
+fmq_msg_headers_number (fmq_msg_t *self, const char *key, uint64_t default_value)
 {
     assert (self);
     uint64_t value = default_value;
@@ -1467,15 +1565,13 @@ fmq_msg_headers_number (fmq_msg_t *self, char *key, uint64_t default_value)
 }
 
 void
-fmq_msg_headers_insert (fmq_msg_t *self, char *key, char *format, ...)
+fmq_msg_headers_insert (fmq_msg_t *self, const char *key, const char *format, ...)
 {
-    //  Format string into buffer
+    //  Format into newly allocated string
     assert (self);
     va_list argptr;
     va_start (argptr, format);
-    char *string = (char *) malloc (STRING_MAX + 1);
-    assert (string);
-    vsnprintf (string, STRING_MAX, format, argptr);
+    char *string = zsys_vprintf (format, argptr);
     va_end (argptr);
 
     //  Store string in hash table
@@ -1495,29 +1591,42 @@ fmq_msg_headers_size (fmq_msg_t *self)
 
 
 //  --------------------------------------------------------------------------
-//  Get/set the chunk field
+//  Get the chunk field without transferring ownership
 
-zframe_t *
+zchunk_t *
 fmq_msg_chunk (fmq_msg_t *self)
 {
     assert (self);
     return self->chunk;
 }
 
-//  Takes ownership of supplied frame
+//  Get the chunk field and transfer ownership to caller
+
+zchunk_t *
+fmq_msg_get_chunk (fmq_msg_t *self)
+{
+    zchunk_t *chunk = self->chunk;
+    self->chunk = NULL;
+    return chunk;
+}
+
+//  Set the chunk field, transferring ownership from caller
+
 void
-fmq_msg_set_chunk (fmq_msg_t *self, zframe_t *frame)
+fmq_msg_set_chunk (fmq_msg_t *self, zchunk_t **chunk_p)
 {
     assert (self);
-    if (self->chunk)
-        zframe_destroy (&self->chunk);
-    self->chunk = frame;
+    assert (chunk_p);
+    zchunk_destroy (&self->chunk);
+    self->chunk = *chunk_p;
+    *chunk_p = NULL;
 }
+
 
 //  --------------------------------------------------------------------------
 //  Get/set the reason field
 
-char *
+const char *
 fmq_msg_reason (fmq_msg_t *self)
 {
     assert (self);
@@ -1525,16 +1634,14 @@ fmq_msg_reason (fmq_msg_t *self)
 }
 
 void
-fmq_msg_set_reason (fmq_msg_t *self, char *format, ...)
+fmq_msg_set_reason (fmq_msg_t *self, const char *format, ...)
 {
-    //  Format into newly allocated string
+    //  Format reason from provided arguments
     assert (self);
     va_list argptr;
     va_start (argptr, format);
     free (self->reason);
-    self->reason = (char *) malloc (STRING_MAX + 1);
-    assert (self->reason);
-    vsnprintf (self->reason, STRING_MAX, format, argptr);
+    self->reason = zsys_vprintf (format, argptr);
     va_end (argptr);
 }
 
@@ -1561,64 +1668,127 @@ fmq_msg_test (bool verbose)
     void *output = zsocket_new (ctx, ZMQ_DEALER);
     assert (output);
     zsocket_bind (output, "inproc://selftest");
+
     void *input = zsocket_new (ctx, ZMQ_ROUTER);
     assert (input);
     zsocket_connect (input, "inproc://selftest");
     
     //  Encode/send/decode and verify each message type
-
+    int instance;
+    fmq_msg_t *copy;
     self = fmq_msg_new (FMQ_MSG_OHAI);
-    fmq_msg_send (&self, output);
     
-    self = fmq_msg_recv (input);
-    assert (self);
-    fmq_msg_destroy (&self);
+    //  Check that _dup works on empty message
+    copy = fmq_msg_dup (self);
+    assert (copy);
+    fmq_msg_destroy (&copy);
 
+    //  Send twice from same object
+    fmq_msg_send_again (self, output);
+    fmq_msg_send (&self, output);
+
+    for (instance = 0; instance < 2; instance++) {
+        self = fmq_msg_recv (input);
+        assert (self);
+        assert (fmq_msg_routing_id (self));
+        
+        fmq_msg_destroy (&self);
+    }
     self = fmq_msg_new (FMQ_MSG_OHAI_OK);
-    fmq_msg_send (&self, output);
     
-    self = fmq_msg_recv (input);
-    assert (self);
-    fmq_msg_destroy (&self);
+    //  Check that _dup works on empty message
+    copy = fmq_msg_dup (self);
+    assert (copy);
+    fmq_msg_destroy (&copy);
 
+    //  Send twice from same object
+    fmq_msg_send_again (self, output);
+    fmq_msg_send (&self, output);
+
+    for (instance = 0; instance < 2; instance++) {
+        self = fmq_msg_recv (input);
+        assert (self);
+        assert (fmq_msg_routing_id (self));
+        
+        fmq_msg_destroy (&self);
+    }
     self = fmq_msg_new (FMQ_MSG_ICANHAZ);
+    
+    //  Check that _dup works on empty message
+    copy = fmq_msg_dup (self);
+    assert (copy);
+    fmq_msg_destroy (&copy);
+
     fmq_msg_set_path (self, "Life is short but Now lasts for ever");
     fmq_msg_options_insert (self, "Name", "Brutus");
     fmq_msg_options_insert (self, "Age", "%d", 43);
     fmq_msg_cache_insert (self, "Name", "Brutus");
     fmq_msg_cache_insert (self, "Age", "%d", 43);
+    //  Send twice from same object
+    fmq_msg_send_again (self, output);
     fmq_msg_send (&self, output);
-    
-    self = fmq_msg_recv (input);
-    assert (self);
-    assert (streq (fmq_msg_path (self), "Life is short but Now lasts for ever"));
-    assert (fmq_msg_options_size (self) == 2);
-    assert (streq (fmq_msg_options_string (self, "Name", "?"), "Brutus"));
-    assert (fmq_msg_options_number (self, "Age", 0) == 43);
-    assert (fmq_msg_cache_size (self) == 2);
-    assert (streq (fmq_msg_cache_string (self, "Name", "?"), "Brutus"));
-    assert (fmq_msg_cache_number (self, "Age", 0) == 43);
-    fmq_msg_destroy (&self);
 
+    for (instance = 0; instance < 2; instance++) {
+        self = fmq_msg_recv (input);
+        assert (self);
+        assert (fmq_msg_routing_id (self));
+        
+        assert (streq (fmq_msg_path (self), "Life is short but Now lasts for ever"));
+        assert (fmq_msg_options_size (self) == 2);
+        assert (streq (fmq_msg_options_string (self, "Name", "?"), "Brutus"));
+        assert (fmq_msg_options_number (self, "Age", 0) == 43);
+        assert (fmq_msg_cache_size (self) == 2);
+        assert (streq (fmq_msg_cache_string (self, "Name", "?"), "Brutus"));
+        assert (fmq_msg_cache_number (self, "Age", 0) == 43);
+        fmq_msg_destroy (&self);
+    }
     self = fmq_msg_new (FMQ_MSG_ICANHAZ_OK);
-    fmq_msg_send (&self, output);
     
-    self = fmq_msg_recv (input);
-    assert (self);
-    fmq_msg_destroy (&self);
+    //  Check that _dup works on empty message
+    copy = fmq_msg_dup (self);
+    assert (copy);
+    fmq_msg_destroy (&copy);
 
+    //  Send twice from same object
+    fmq_msg_send_again (self, output);
+    fmq_msg_send (&self, output);
+
+    for (instance = 0; instance < 2; instance++) {
+        self = fmq_msg_recv (input);
+        assert (self);
+        assert (fmq_msg_routing_id (self));
+        
+        fmq_msg_destroy (&self);
+    }
     self = fmq_msg_new (FMQ_MSG_NOM);
+    
+    //  Check that _dup works on empty message
+    copy = fmq_msg_dup (self);
+    assert (copy);
+    fmq_msg_destroy (&copy);
+
     fmq_msg_set_credit (self, 123);
     fmq_msg_set_sequence (self, 123);
+    //  Send twice from same object
+    fmq_msg_send_again (self, output);
     fmq_msg_send (&self, output);
-    
-    self = fmq_msg_recv (input);
-    assert (self);
-    assert (fmq_msg_credit (self) == 123);
-    assert (fmq_msg_sequence (self) == 123);
-    fmq_msg_destroy (&self);
 
+    for (instance = 0; instance < 2; instance++) {
+        self = fmq_msg_recv (input);
+        assert (self);
+        assert (fmq_msg_routing_id (self));
+        
+        assert (fmq_msg_credit (self) == 123);
+        assert (fmq_msg_sequence (self) == 123);
+        fmq_msg_destroy (&self);
+    }
     self = fmq_msg_new (FMQ_MSG_CHEEZBURGER);
+    
+    //  Check that _dup works on empty message
+    copy = fmq_msg_dup (self);
+    assert (copy);
+    fmq_msg_destroy (&copy);
+
     fmq_msg_set_sequence (self, 123);
     fmq_msg_set_operation (self, 123);
     fmq_msg_set_filename (self, "Life is short but Now lasts for ever");
@@ -1626,60 +1796,122 @@ fmq_msg_test (bool verbose)
     fmq_msg_set_eof (self, 123);
     fmq_msg_headers_insert (self, "Name", "Brutus");
     fmq_msg_headers_insert (self, "Age", "%d", 43);
-    fmq_msg_set_chunk (self, zframe_new ("Captcha Diem", 12));
+    zchunk_t *cheezburger_chunk = zchunk_new ("Captcha Diem", 12);
+    fmq_msg_set_chunk (self, &cheezburger_chunk);
+    //  Send twice from same object
+    fmq_msg_send_again (self, output);
     fmq_msg_send (&self, output);
-    
-    self = fmq_msg_recv (input);
-    assert (self);
-    assert (fmq_msg_sequence (self) == 123);
-    assert (fmq_msg_operation (self) == 123);
-    assert (streq (fmq_msg_filename (self), "Life is short but Now lasts for ever"));
-    assert (fmq_msg_offset (self) == 123);
-    assert (fmq_msg_eof (self) == 123);
-    assert (fmq_msg_headers_size (self) == 2);
-    assert (streq (fmq_msg_headers_string (self, "Name", "?"), "Brutus"));
-    assert (fmq_msg_headers_number (self, "Age", 0) == 43);
-    assert (zframe_streq (fmq_msg_chunk (self), "Captcha Diem"));
-    fmq_msg_destroy (&self);
 
+    for (instance = 0; instance < 2; instance++) {
+        self = fmq_msg_recv (input);
+        assert (self);
+        assert (fmq_msg_routing_id (self));
+        
+        assert (fmq_msg_sequence (self) == 123);
+        assert (fmq_msg_operation (self) == 123);
+        assert (streq (fmq_msg_filename (self), "Life is short but Now lasts for ever"));
+        assert (fmq_msg_offset (self) == 123);
+        assert (fmq_msg_eof (self) == 123);
+        assert (fmq_msg_headers_size (self) == 2);
+        assert (streq (fmq_msg_headers_string (self, "Name", "?"), "Brutus"));
+        assert (fmq_msg_headers_number (self, "Age", 0) == 43);
+        assert (memcmp (zchunk_data (fmq_msg_chunk (self)), "Captcha Diem", 12) == 0);
+        fmq_msg_destroy (&self);
+    }
     self = fmq_msg_new (FMQ_MSG_HUGZ);
-    fmq_msg_send (&self, output);
     
-    self = fmq_msg_recv (input);
-    assert (self);
-    fmq_msg_destroy (&self);
+    //  Check that _dup works on empty message
+    copy = fmq_msg_dup (self);
+    assert (copy);
+    fmq_msg_destroy (&copy);
 
+    //  Send twice from same object
+    fmq_msg_send_again (self, output);
+    fmq_msg_send (&self, output);
+
+    for (instance = 0; instance < 2; instance++) {
+        self = fmq_msg_recv (input);
+        assert (self);
+        assert (fmq_msg_routing_id (self));
+        
+        fmq_msg_destroy (&self);
+    }
     self = fmq_msg_new (FMQ_MSG_HUGZ_OK);
-    fmq_msg_send (&self, output);
     
-    self = fmq_msg_recv (input);
-    assert (self);
-    fmq_msg_destroy (&self);
+    //  Check that _dup works on empty message
+    copy = fmq_msg_dup (self);
+    assert (copy);
+    fmq_msg_destroy (&copy);
 
+    //  Send twice from same object
+    fmq_msg_send_again (self, output);
+    fmq_msg_send (&self, output);
+
+    for (instance = 0; instance < 2; instance++) {
+        self = fmq_msg_recv (input);
+        assert (self);
+        assert (fmq_msg_routing_id (self));
+        
+        fmq_msg_destroy (&self);
+    }
     self = fmq_msg_new (FMQ_MSG_KTHXBAI);
-    fmq_msg_send (&self, output);
     
-    self = fmq_msg_recv (input);
-    assert (self);
-    fmq_msg_destroy (&self);
+    //  Check that _dup works on empty message
+    copy = fmq_msg_dup (self);
+    assert (copy);
+    fmq_msg_destroy (&copy);
 
+    //  Send twice from same object
+    fmq_msg_send_again (self, output);
+    fmq_msg_send (&self, output);
+
+    for (instance = 0; instance < 2; instance++) {
+        self = fmq_msg_recv (input);
+        assert (self);
+        assert (fmq_msg_routing_id (self));
+        
+        fmq_msg_destroy (&self);
+    }
     self = fmq_msg_new (FMQ_MSG_SRSLY);
-    fmq_msg_set_reason (self, "Life is short but Now lasts for ever");
-    fmq_msg_send (&self, output);
     
-    self = fmq_msg_recv (input);
-    assert (self);
-    assert (streq (fmq_msg_reason (self), "Life is short but Now lasts for ever"));
-    fmq_msg_destroy (&self);
+    //  Check that _dup works on empty message
+    copy = fmq_msg_dup (self);
+    assert (copy);
+    fmq_msg_destroy (&copy);
 
-    self = fmq_msg_new (FMQ_MSG_RTFM);
     fmq_msg_set_reason (self, "Life is short but Now lasts for ever");
+    //  Send twice from same object
+    fmq_msg_send_again (self, output);
     fmq_msg_send (&self, output);
+
+    for (instance = 0; instance < 2; instance++) {
+        self = fmq_msg_recv (input);
+        assert (self);
+        assert (fmq_msg_routing_id (self));
+        
+        assert (streq (fmq_msg_reason (self), "Life is short but Now lasts for ever"));
+        fmq_msg_destroy (&self);
+    }
+    self = fmq_msg_new (FMQ_MSG_RTFM);
     
-    self = fmq_msg_recv (input);
-    assert (self);
-    assert (streq (fmq_msg_reason (self), "Life is short but Now lasts for ever"));
-    fmq_msg_destroy (&self);
+    //  Check that _dup works on empty message
+    copy = fmq_msg_dup (self);
+    assert (copy);
+    fmq_msg_destroy (&copy);
+
+    fmq_msg_set_reason (self, "Life is short but Now lasts for ever");
+    //  Send twice from same object
+    fmq_msg_send_again (self, output);
+    fmq_msg_send (&self, output);
+
+    for (instance = 0; instance < 2; instance++) {
+        self = fmq_msg_recv (input);
+        assert (self);
+        assert (fmq_msg_routing_id (self));
+        
+        assert (streq (fmq_msg_reason (self), "Life is short but Now lasts for ever"));
+        fmq_msg_destroy (&self);
+    }
 
     zctx_destroy (&ctx);
     //  @end

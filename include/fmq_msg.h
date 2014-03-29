@@ -1,8 +1,17 @@
 /*  =========================================================================
-    fmq_msg - work with filemq messages
+    fmq_msg - work with FILEMQ messages
     
-    Generated codec header for fmq_msg
-    -------------------------------------------------------------------------
+    Codec header for fmq_msg.
+
+    ** WARNING *************************************************************
+    THIS SOURCE FILE IS 100% GENERATED. If you edit this file, you will lose
+    your changes at the next build cycle. This is great for temporary printf
+    statements. DO NOT MAKE ANY CHANGES YOU WISH TO KEEP. The correct places
+    for commits are:
+
+    * The XML model used for this code generation: fmq_msg.xml
+    * The code generation script that built this file: zproto_codec_c
+    ************************************************************************
     Copyright (c) 1991-2012 iMatix Corporation -- http://www.imatix.com     
     Copyright other contributors as noted in the AUTHORS file.              
                                                                             
@@ -26,34 +35,45 @@
 #ifndef __FMQ_MSG_H_INCLUDED__
 #define __FMQ_MSG_H_INCLUDED__
 
-/*  These are the fmq_msg messages
+/*  These are the fmq_msg messages:
+
     OHAI - Client opens peering
-        protocol      string
-        version       number 2
+        protocol            string      
+        version             number 2    
+
     OHAI_OK - Server grants the client access
+
     ICANHAZ - Client subscribes to a path
-        path          string
-        options       dictionary
-        cache         dictionary
+        path                string      
+        options             dictionary  
+        cache               dictionary  
+
     ICANHAZ_OK - Server confirms the subscription
+
     NOM - Client sends credit to the server
-        credit        number 8
-        sequence      number 8
+        credit              number 8    
+        sequence            number 8    
+
     CHEEZBURGER - The server sends a file chunk
-        sequence      number 8
-        operation     number 1
-        filename      string
-        offset        number 8
-        eof           number 1
-        headers       dictionary
-        chunk         frame
+        sequence            number 8    
+        operation           number 1    
+        filename            string      
+        offset              number 8    
+        eof                 number 1    
+        headers             dictionary  
+        chunk               chunk       
+
     HUGZ - Client or server sends a heartbeat
+
     HUGZ_OK - Client or server answers a heartbeat
+
     KTHXBAI - Client closes the peering
+
     SRSLY - Server refuses client due to access rights
-        reason        string
+        reason              string      
+
     RTFM - Server tells client it sent an invalid message
-        reason        string
+        reason              string      
 */
 
 #define FMQ_MSG_VERSION                     1
@@ -88,13 +108,37 @@ fmq_msg_t *
 void
     fmq_msg_destroy (fmq_msg_t **self_p);
 
-//  Receive and parse a fmq_msg from the input
+//  Parse a fmq_msg from zmsg_t. Returns a new object, or NULL if
+//  the message could not be parsed, or was NULL. If the socket type is
+//  ZMQ_ROUTER, then parses the first frame as a routing_id. Destroys msg
+//  and nullifies the msg refernce.
+fmq_msg_t *
+    fmq_msg_decode (zmsg_t **msg_p, int socket_type);
+
+//  Encode fmq_msg into zmsg and destroy it. Returns a newly created
+//  object or NULL if error. Use when not in control of sending the message.
+//  If the socket_type is ZMQ_ROUTER, then stores the routing_id as the
+//  first frame of the resulting message.
+zmsg_t *
+    fmq_msg_encode (fmq_msg_t *self, int socket_type);
+
+//  Receive and parse a fmq_msg from the socket. Returns new object, 
+//  or NULL if error. Will block if there's no message waiting.
 fmq_msg_t *
     fmq_msg_recv (void *input);
+
+//  Receive and parse a fmq_msg from the socket. Returns new object, 
+//  or NULL either if there was no input waiting, or the recv was interrupted.
+fmq_msg_t *
+    fmq_msg_recv_nowait (void *input);
 
 //  Send the fmq_msg to the output, and destroy it
 int
     fmq_msg_send (fmq_msg_t **self_p, void *output);
+
+//  Send the fmq_msg to the output, and do not destroy it
+int
+    fmq_msg_send_again (fmq_msg_t *self, void *output);
 
 //  Send the OHAI to the output in one step
 int
@@ -107,7 +151,7 @@ int
 //  Send the ICANHAZ to the output in one step
 int
     fmq_msg_send_icanhaz (void *output,
-        char *path,
+        const char *path,
         zhash_t *options,
         zhash_t *cache);
     
@@ -126,11 +170,11 @@ int
     fmq_msg_send_cheezburger (void *output,
         uint64_t sequence,
         byte operation,
-        char *filename,
+        const char *filename,
         uint64_t offset,
         byte eof,
         zhash_t *headers,
-        zframe_t *chunk);
+        zchunk_t *chunk);
     
 //  Send the HUGZ to the output in one step
 int
@@ -147,12 +191,12 @@ int
 //  Send the SRSLY to the output in one step
 int
     fmq_msg_send_srsly (void *output,
-        char *reason);
+        const char *reason);
     
 //  Send the RTFM to the output in one step
 int
     fmq_msg_send_rtfm (void *output,
-        char *reason);
+        const char *reason);
     
 //  Duplicate the fmq_msg message
 fmq_msg_t *
@@ -162,55 +206,69 @@ fmq_msg_t *
 void
     fmq_msg_dump (fmq_msg_t *self);
 
-//  Get/set the message address
+//  Get/set the message routing id
 zframe_t *
-    fmq_msg_address (fmq_msg_t *self);
+    fmq_msg_routing_id (fmq_msg_t *self);
 void
-    fmq_msg_set_address (fmq_msg_t *self, zframe_t *address);
+    fmq_msg_set_routing_id (fmq_msg_t *self, zframe_t *routing_id);
 
 //  Get the fmq_msg id and printable command
 int
     fmq_msg_id (fmq_msg_t *self);
 void
     fmq_msg_set_id (fmq_msg_t *self, int id);
-char *
+const char *
     fmq_msg_command (fmq_msg_t *self);
 
 //  Get/set the path field
-char *
+const char *
     fmq_msg_path (fmq_msg_t *self);
 void
-    fmq_msg_set_path (fmq_msg_t *self, char *format, ...);
+    fmq_msg_set_path (fmq_msg_t *self, const char *format, ...);
 
 //  Get/set the options field
 zhash_t *
     fmq_msg_options (fmq_msg_t *self);
+//  Get the options field and transfer ownership to caller
+zhash_t *
+    fmq_msg_get_options (fmq_msg_t *self);
+//  Set the options field, transferring ownership from caller
 void
-    fmq_msg_set_options (fmq_msg_t *self, zhash_t *options);
+    fmq_msg_set_options (fmq_msg_t *self, zhash_t **options_p);
     
 //  Get/set a value in the options dictionary
-char *
-    fmq_msg_options_string (fmq_msg_t *self, char *key, char *default_value);
+const char *
+    fmq_msg_options_string (fmq_msg_t *self,
+        const char *key, const char *default_value);
 uint64_t
-    fmq_msg_options_number (fmq_msg_t *self, char *key, uint64_t default_value);
+    fmq_msg_options_number (fmq_msg_t *self,
+        const char *key, uint64_t default_value);
 void
-    fmq_msg_options_insert (fmq_msg_t *self, char *key, char *format, ...);
+    fmq_msg_options_insert (fmq_msg_t *self,
+        const char *key, const char *format, ...);
 size_t
     fmq_msg_options_size (fmq_msg_t *self);
 
 //  Get/set the cache field
 zhash_t *
     fmq_msg_cache (fmq_msg_t *self);
+//  Get the cache field and transfer ownership to caller
+zhash_t *
+    fmq_msg_get_cache (fmq_msg_t *self);
+//  Set the cache field, transferring ownership from caller
 void
-    fmq_msg_set_cache (fmq_msg_t *self, zhash_t *cache);
+    fmq_msg_set_cache (fmq_msg_t *self, zhash_t **cache_p);
     
 //  Get/set a value in the cache dictionary
-char *
-    fmq_msg_cache_string (fmq_msg_t *self, char *key, char *default_value);
+const char *
+    fmq_msg_cache_string (fmq_msg_t *self,
+        const char *key, const char *default_value);
 uint64_t
-    fmq_msg_cache_number (fmq_msg_t *self, char *key, uint64_t default_value);
+    fmq_msg_cache_number (fmq_msg_t *self,
+        const char *key, uint64_t default_value);
 void
-    fmq_msg_cache_insert (fmq_msg_t *self, char *key, char *format, ...);
+    fmq_msg_cache_insert (fmq_msg_t *self,
+        const char *key, const char *format, ...);
 size_t
     fmq_msg_cache_size (fmq_msg_t *self);
 
@@ -233,10 +291,10 @@ void
     fmq_msg_set_operation (fmq_msg_t *self, byte operation);
 
 //  Get/set the filename field
-char *
+const char *
     fmq_msg_filename (fmq_msg_t *self);
 void
-    fmq_msg_set_filename (fmq_msg_t *self, char *format, ...);
+    fmq_msg_set_filename (fmq_msg_t *self, const char *format, ...);
 
 //  Get/set the offset field
 uint64_t
@@ -253,30 +311,41 @@ void
 //  Get/set the headers field
 zhash_t *
     fmq_msg_headers (fmq_msg_t *self);
+//  Get the headers field and transfer ownership to caller
+zhash_t *
+    fmq_msg_get_headers (fmq_msg_t *self);
+//  Set the headers field, transferring ownership from caller
 void
-    fmq_msg_set_headers (fmq_msg_t *self, zhash_t *headers);
+    fmq_msg_set_headers (fmq_msg_t *self, zhash_t **headers_p);
     
 //  Get/set a value in the headers dictionary
-char *
-    fmq_msg_headers_string (fmq_msg_t *self, char *key, char *default_value);
+const char *
+    fmq_msg_headers_string (fmq_msg_t *self,
+        const char *key, const char *default_value);
 uint64_t
-    fmq_msg_headers_number (fmq_msg_t *self, char *key, uint64_t default_value);
+    fmq_msg_headers_number (fmq_msg_t *self,
+        const char *key, uint64_t default_value);
 void
-    fmq_msg_headers_insert (fmq_msg_t *self, char *key, char *format, ...);
+    fmq_msg_headers_insert (fmq_msg_t *self,
+        const char *key, const char *format, ...);
 size_t
     fmq_msg_headers_size (fmq_msg_t *self);
 
-//  Get/set the chunk field
-zframe_t *
+//  Get a copy of the chunk field
+zchunk_t *
     fmq_msg_chunk (fmq_msg_t *self);
+//  Get the chunk field and transfer ownership to caller
+zchunk_t *
+    fmq_msg_get_chunk (fmq_msg_t *self);
+//  Set the chunk field, transferring ownership from caller
 void
-    fmq_msg_set_chunk (fmq_msg_t *self, zframe_t *frame);
+    fmq_msg_set_chunk (fmq_msg_t *self, zchunk_t **chunk_p);
 
 //  Get/set the reason field
-char *
+const char *
     fmq_msg_reason (fmq_msg_t *self);
 void
-    fmq_msg_set_reason (fmq_msg_t *self, char *format, ...);
+    fmq_msg_set_reason (fmq_msg_t *self, const char *format, ...);
 
 //  Self test of this class
 int

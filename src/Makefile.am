@@ -28,3 +28,8 @@ endif
 
 TESTS = fmq_selftest
 
+# Produce generated models; do this manually in src directory
+code:
+	gsl -q fmq_msg.xml
+	gsl -q -script:server_c -trace:0 -animate:0 fmq_server.xml
+	gsl -q -script:client_c -trace:0 -animate:0 fmq_client.xml

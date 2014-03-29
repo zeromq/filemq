@@ -227,7 +227,7 @@ struct _client_t {
     state_t state;              //  Current state
     event_t event;              //  Current event
     char *hashkey;              //  Key into clients hash
-    zframe_t *address;          //  Client address identity
+    zframe_t *routing_id;       //  Client routing id
     fmq_msg_t *request;         //  Last received request
     fmq_msg_t *reply;           //  Reply to send out, if any
 };
@@ -259,7 +259,7 @@ s_resolve_cache_path (const char *key, void *item, void *argument);
 //  Constructor
 
 static sub_t *
-sub_new (client_t *client, char *path, zhash_t *cache)
+sub_new (client_t *client, const char *path, zhash_t *cache)
 {
     sub_t *self = (sub_t *) zmalloc (sizeof (sub_t));
     self->client = client;
@@ -438,7 +438,7 @@ mount_sub_store (mount_t *self, client_t *client, fmq_msg_t *request)
     
     //  Store subscription along with any previous ones
     //  Coalesce subscriptions that are on same path
-    char *path = fmq_msg_path (request);
+    const char *path = fmq_msg_path (request);
     sub_t *sub = (sub_t *) zlist_first (self->subs);
     while (sub) {
         if (client == sub->client) {
@@ -498,14 +498,14 @@ mount_sub_purge (mount_t *self, client_t *client)
 //  Client methods
 
 static client_t *
-client_new (zframe_t *address)
+client_new (zframe_t *routing_id)
 {
     client_t *self = (client_t *) zmalloc (sizeof (client_t));
     self->state = start_state;
-    self->hashkey = zframe_strhex (address);
-    self->address = zframe_dup (address);
+    self->hashkey = zframe_strhex (routing_id);
+    self->routing_id = zframe_dup (routing_id);
     self->reply = fmq_msg_new (0);
-    fmq_msg_set_address (self->reply, self->address);
+    fmq_msg_set_routing_id (self->reply, self->routing_id);
     self->patches = zlist_new ();
     return self;
 }
@@ -516,7 +516,7 @@ client_destroy (client_t **self_p)
     assert (self_p);
     if (*self_p) {
         client_t *self = *self_p;
-        zframe_destroy (&self->address);
+        zframe_destroy (&self->routing_id);
         fmq_msg_destroy (&self->request);
         fmq_msg_destroy (&self->reply);
         free (self->hashkey);
@@ -630,12 +630,12 @@ server_apply_config (server_t *self)
         zconfig_t *entry = zconfig_child (section);
         while (entry) {
             if (streq (zconfig_name (entry), "echo"))
-                zclock_log (zconfig_value (entry));
+                zclock_log ("%s", zconfig_value (entry));
             entry = zconfig_next (entry);
         }
         if (streq (zconfig_name (section), "bind")) {
             char *endpoint = zconfig_resolve (section, "endpoint", "?");
-            self->port = zsocket_bind (self->router, endpoint);
+            self->port = zsocket_bind (self->router, "%s", endpoint);
         }
         else
         if (streq (zconfig_name (section), "publish")) {
@@ -663,7 +663,7 @@ server_control_message (server_t *self)
     char *method = zmsg_popstr (msg);
     if (streq (method, "BIND")) {
         char *endpoint = zmsg_popstr (msg);
-        self->port = zsocket_bind (self->router, endpoint);
+        self->port = zsocket_bind (self->router, "%s", endpoint);
         zstr_sendf (self->pipe, "%d", self->port);
         free (endpoint);
     }
@@ -732,7 +732,7 @@ static void
 store_client_subscription (server_t *self, client_t *client)
 {
     //  Find mount point with longest match to subscription         
-    char *path = fmq_msg_path (client->request);                    
+    const char *path = fmq_msg_path (client->request);              
                                                                     
     mount_t *check = (mount_t *) zlist_first (self->mounts);        
     mount_t *mount = check;                                         
@@ -814,9 +814,6 @@ get_next_patch_for_client (server_t *self, client_t *client)
             fmq_msg_set_sequence (client->reply, client->sequence++);           
             fmq_msg_set_operation (client->reply, FMQ_MSG_FILE_CREATE);         
             fmq_msg_set_offset (client->reply, client->offset);                 
-            fmq_msg_set_chunk (client->reply, zframe_new (                      
-                zchunk_data (chunk),                                            
-                zchunk_size (chunk)));                                          
                                                                                 
             client->offset += zchunk_size (chunk);                              
             client->credit -= zchunk_size (chunk);                              
@@ -827,11 +824,12 @@ get_next_patch_for_client (server_t *self, client_t *client)
                 zfile_destroy (&client->file);                                  
                 zdir_patch_destroy (&client->patch);                            
             }                                                                   
+            fmq_msg_set_chunk (client->reply, &chunk);                          
         }                                                                       
-        else                                                                    
+        else {                                                                  
             client->next_event = no_credit_event;                               
-                                                                                
-        zchunk_destroy (&chunk);                                                
+            zchunk_destroy (&chunk);                                            
+        }                                                                       
     }                                                                           
 }
 
@@ -849,7 +847,7 @@ server_client_execute (server_t *self, client_t *client, int event)
                     fmq_msg_set_id (client->reply, FMQ_MSG_OHAI_OK);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
-                    fmq_msg_set_address (client->reply, client->address);
+                    fmq_msg_set_routing_id (client->reply, client->routing_id);
                     client->state = ready_state;
                 }
                 else
@@ -864,7 +862,7 @@ server_client_execute (server_t *self, client_t *client, int event)
                     fmq_msg_set_id (client->reply, FMQ_MSG_RTFM);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
-                    fmq_msg_set_address (client->reply, client->address);
+                    fmq_msg_set_routing_id (client->reply, client->routing_id);
                     terminate_the_client (self, client);
                 }
                 break;
@@ -875,7 +873,7 @@ server_client_execute (server_t *self, client_t *client, int event)
                     fmq_msg_set_id (client->reply, FMQ_MSG_ICANHAZ_OK);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
-                    fmq_msg_set_address (client->reply, client->address);
+                    fmq_msg_set_routing_id (client->reply, client->routing_id);
                 }
                 else
                 if (client->event == nom_event) {
@@ -888,7 +886,7 @@ server_client_execute (server_t *self, client_t *client, int event)
                     fmq_msg_set_id (client->reply, FMQ_MSG_HUGZ_OK);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
-                    fmq_msg_set_address (client->reply, client->address);
+                    fmq_msg_set_routing_id (client->reply, client->routing_id);
                 }
                 else
                 if (client->event == kthxbai_event) {
@@ -904,7 +902,7 @@ server_client_execute (server_t *self, client_t *client, int event)
                     fmq_msg_set_id (client->reply, FMQ_MSG_HUGZ);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
-                    fmq_msg_set_address (client->reply, client->address);
+                    fmq_msg_set_routing_id (client->reply, client->routing_id);
                 }
                 else
                 if (client->event == expired_event) {
@@ -915,7 +913,7 @@ server_client_execute (server_t *self, client_t *client, int event)
                     fmq_msg_set_id (client->reply, FMQ_MSG_OHAI_OK);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
-                    fmq_msg_set_address (client->reply, client->address);
+                    fmq_msg_set_routing_id (client->reply, client->routing_id);
                     client->state = ready_state;
                 }
                 else {
@@ -923,7 +921,7 @@ server_client_execute (server_t *self, client_t *client, int event)
                     fmq_msg_set_id (client->reply, FMQ_MSG_RTFM);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
-                    fmq_msg_set_address (client->reply, client->address);
+                    fmq_msg_set_routing_id (client->reply, client->routing_id);
                     terminate_the_client (self, client);
                 }
                 break;
@@ -933,7 +931,7 @@ server_client_execute (server_t *self, client_t *client, int event)
                     fmq_msg_set_id (client->reply, FMQ_MSG_CHEEZBURGER);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
-                    fmq_msg_set_address (client->reply, client->address);
+                    fmq_msg_set_routing_id (client->reply, client->routing_id);
                     get_next_patch_for_client (self, client);
                 }
                 else
@@ -941,7 +939,7 @@ server_client_execute (server_t *self, client_t *client, int event)
                     fmq_msg_set_id (client->reply, FMQ_MSG_CHEEZBURGER);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
-                    fmq_msg_set_address (client->reply, client->address);
+                    fmq_msg_set_routing_id (client->reply, client->routing_id);
                     get_next_patch_for_client (self, client);
                 }
                 else
@@ -968,7 +966,7 @@ server_client_execute (server_t *self, client_t *client, int event)
                     fmq_msg_set_id (client->reply, FMQ_MSG_OHAI_OK);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
-                    fmq_msg_set_address (client->reply, client->address);
+                    fmq_msg_set_routing_id (client->reply, client->routing_id);
                     client->state = ready_state;
                 }
                 else {
@@ -976,7 +974,7 @@ server_client_execute (server_t *self, client_t *client, int event)
                     fmq_msg_set_id (client->reply, FMQ_MSG_RTFM);
                     fmq_msg_send (&client->reply, client->router);
                     client->reply = fmq_msg_new (0);
-                    fmq_msg_set_address (client->reply, client->address);
+                    fmq_msg_set_routing_id (client->reply, client->routing_id);
                     terminate_the_client (self, client);
                 }
                 break;
@@ -997,10 +995,10 @@ server_client_message (server_t *self)
     if (!request)
         return;         //  Interrupted; do nothing
 
-    char *hashkey = zframe_strhex (fmq_msg_address (request));
+    char *hashkey = zframe_strhex (fmq_msg_routing_id (request));
     client_t *client = (client_t *) zhash_lookup (self->clients, hashkey);
     if (client == NULL) {
-        client = client_new (fmq_msg_address (request));
+        client = client_new (fmq_msg_routing_id (request));
         client->heartbeat = self->heartbeat;
         client->router = self->router;
         zhash_insert (self->clients, hashkey, client);

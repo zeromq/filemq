@@ -309,7 +309,7 @@ server_new (zctx_t *ctx, char *endpoint)
     self->endpoint = strdup (endpoint);
     self->dealer = zsocket_new (self->ctx, ZMQ_DEALER);
     self->request = fmq_msg_new (0);
-    zsocket_connect (self->dealer, endpoint);
+    zsocket_connect (self->dealer, "%s", endpoint);
     self->state = start_state;
     
     return self;
@@ -389,7 +389,7 @@ client_apply_config (client_t *self)
         zconfig_t *entry = zconfig_child (section);
         while (entry) {
             if (streq (zconfig_name (entry), "echo"))
-                zclock_log (zconfig_value (entry));
+                zclock_log ("%s", zconfig_value (entry));
             entry = zconfig_next (entry);
         }
         if (streq (zconfig_name (section), "subscribe")) {
@@ -546,8 +546,9 @@ format_icanhaz_command (client_t *self, server_t *server)
     fmq_msg_set_path (server->request, self->sub->path);                   
     //  If client app wants full resync, send cache to server              
     if (atoi (zconfig_resolve (self->config, "client/resync", "0")) == 1) {
+        zhash_t *cache = sub_cache (self->sub);                            
         fmq_msg_options_insert (server->request, "RESYNC", "1");           
-        fmq_msg_set_cache (server->request, sub_cache (self->sub));        
+        fmq_msg_set_cache (server->request, &cache);                       
     }                                                                      
 }
 
@@ -569,62 +570,60 @@ refill_credit_as_needed (client_t *self, server_t *server)
 static void
 process_the_patch (client_t *self, server_t *server)
 {
-    char *inbox = zconfig_resolve (self->config, "client/inbox", ".inbox");     
-    char *filename = fmq_msg_filename (server->reply);                          
-    char *filename_orig = filename;                                             
-                                                                                
-    //  Filenames from server must start with slash                             
-    assert (*filename == '/');                                                  
-                                                                                
-                                                                                
-    // Strip the subscription path from the filename                            
-    sub_t *subscr = (sub_t *) zlist_first(self->subs);                          
-    while(subscr) {                                                             
-        if(!strncmp(filename, subscr->path, strlen(subscr->path))) {            
-            filename += strlen(subscr->path);                                   
-            break;                                                              
-        }                                                                       
-    }                                                                           
-    if('/' == *filename) filename++;                                            
-                                                                                
-    if (fmq_msg_operation (server->reply) == FMQ_MSG_FILE_CREATE) {             
-        if (server->file == NULL) {                                             
-            server->file = zfile_new (inbox, filename);                         
-            if (zfile_output (server->file)) {                                  
-                //  File not writeable, skip patch                              
-                zfile_destroy (&server->file);                                  
-                return;                                                         
-            }                                                                   
-        }                                                                       
-        //  Try to write, ignore errors in this version                         
-        zframe_t *frame = fmq_msg_chunk (server->reply);                        
-        zchunk_t *chunk = zchunk_new (zframe_data (frame), zframe_size (frame));
-        if (zchunk_size (chunk) > 0) {                                          
-            zfile_write (server->file, chunk, fmq_msg_offset (server->reply));  
-            server->credit -= zchunk_size (chunk);                              
-        }                                                                       
-        else {                                                                  
-            //  Zero-sized chunk means end of file, so report back to caller    
-            zstr_sendm (self->pipe, "DELIVER");                                 
-            zstr_sendm (self->pipe, filename);                                  
-            zstr_sendf (self->pipe, "%s", filename_orig);                       
-            zfile_destroy (&server->file);                                      
-        }                                                                       
-        zchunk_destroy (&chunk);                                                
-    }                                                                           
-    else                                                                        
-    if (fmq_msg_operation (server->reply) == FMQ_MSG_FILE_DELETE) {             
-        // No need to print this                                                
-        //zclock_log ("I: delete %s/%s", inbox, filename);                      
-        zfile_t *file = zfile_new (inbox, filename);                            
-        zfile_remove (file);                                                    
-        zfile_destroy (&file);                                                  
-                                                                                
-        //  Report file deletion back to caller                                 
-        zstr_sendm (self->pipe, "DELETED");                                     
-        zstr_sendm (self->pipe, filename);                                      
-        zstr_sendf (self->pipe, "%s/%s", inbox, filename_orig);                 
-    }                                                                           
+    char *inbox = zconfig_resolve (self->config, "client/inbox", ".inbox");   
+    const char *filename = fmq_msg_filename (server->reply);                  
+    const char *filename_orig = filename;                                     
+                                                                              
+    //  Filenames from server must start with slash                           
+    assert (*filename == '/');                                                
+                                                                              
+                                                                              
+    // Strip the subscription path from the filename                          
+    sub_t *subscr = (sub_t *) zlist_first(self->subs);                        
+    while(subscr) {                                                           
+        if(!strncmp(filename, subscr->path, strlen(subscr->path))) {          
+            filename += strlen(subscr->path);                                 
+            break;                                                            
+        }                                                                     
+    }                                                                         
+    if('/' == *filename) filename++;                                          
+                                                                              
+    if (fmq_msg_operation (server->reply) == FMQ_MSG_FILE_CREATE) {           
+        if (server->file == NULL) {                                           
+            server->file = zfile_new (inbox, filename);                       
+            if (zfile_output (server->file)) {                                
+                //  File not writeable, skip patch                            
+                zfile_destroy (&server->file);                                
+                return;                                                       
+            }                                                                 
+        }                                                                     
+        //  Try to write, ignore errors in this version                       
+        zchunk_t *chunk = fmq_msg_chunk (server->reply);                      
+        if (zchunk_size (chunk) > 0) {                                        
+            zfile_write (server->file, chunk, fmq_msg_offset (server->reply));
+            server->credit -= zchunk_size (chunk);                            
+        }                                                                     
+        else {                                                                
+            //  Zero-sized chunk means end of file, so report back to caller  
+            zstr_sendm (self->pipe, "DELIVER");                               
+            zstr_sendm (self->pipe, filename);                                
+            zstr_sendf (self->pipe, "%s", filename_orig);                     
+            zfile_destroy (&server->file);                                    
+        }                                                                     
+    }                                                                         
+    else                                                                      
+    if (fmq_msg_operation (server->reply) == FMQ_MSG_FILE_DELETE) {           
+        // No need to print this                                              
+        //zclock_log ("I: delete %s/%s", inbox, filename);                    
+        zfile_t *file = zfile_new (inbox, filename);                          
+        zfile_remove (file);                                                  
+        zfile_destroy (&file);                                                
+                                                                              
+        //  Report file deletion back to caller                               
+        zstr_sendm (self->pipe, "DELETED");                                   
+        zstr_sendm (self->pipe, filename);                                    
+        zstr_sendf (self->pipe, "%s/%s", inbox, filename_orig);               
+    }                                                                         
 }
 
 static void

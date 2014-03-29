@@ -107,7 +107,7 @@ mount_sub_store (mount_t *self, client_t *client, fmq_msg_t *request)
     
     //  Store subscription along with any previous ones
     //  Coalesce subscriptions that are on same path
-    char *path = fmq_msg_path (request);
+    const char *path = fmq_msg_path (request);
     sub_t *sub = (sub_t *) zlist_first (self->subs);
     while (sub) {
         if (client == sub->client) {

@@ -75,8 +75,9 @@ else
 fmq_msg_set_path (server->request, self->sub->path);
 //  If client app wants full resync, send cache to server
 if (atoi (zconfig_resolve (self->config, "client/resync", "0")) == 1) {
+    zhash_t *cache = sub_cache (self->sub);
     fmq_msg_options_insert (server->request, "RESYNC", "1");
-    fmq_msg_set_cache (server->request, sub_cache (self->sub));
+    fmq_msg_set_cache (server->request, &cache);
 }
 </action>
 
@@ -95,8 +96,8 @@ if (credit_to_send) {
 
 <action name = "process the patch">
 char *inbox = zconfig_resolve (self->config, "client/inbox", ".inbox");
-char *filename = fmq_msg_filename (server->reply);
-char *filename_orig = filename;
+const char *filename = fmq_msg_filename (server->reply);
+const char *filename_orig = filename;
 
 //  Filenames from server must start with slash
 assert (*filename == '/');
@@ -122,8 +123,7 @@ if (fmq_msg_operation (server->reply) == FMQ_MSG_FILE_CREATE) {
         }
     }
     //  Try to write, ignore errors in this version
-    zframe_t *frame = fmq_msg_chunk (server->reply);
-    zchunk_t *chunk = zchunk_new (zframe_data (frame), zframe_size (frame));
+    zchunk_t *chunk = fmq_msg_chunk (server->reply);
     if (zchunk_size (chunk) > 0) {
         zfile_write (server->file, chunk, fmq_msg_offset (server->reply));
         server->credit -= zchunk_size (chunk);
@@ -135,7 +135,6 @@ if (fmq_msg_operation (server->reply) == FMQ_MSG_FILE_CREATE) {
         zstr_sendf (self->pipe, "%s", filename_orig);
         zfile_destroy (&server->file);
     }
-    zchunk_destroy (&chunk);
 }
 else
 if (fmq_msg_operation (server->reply) == FMQ_MSG_FILE_DELETE) {

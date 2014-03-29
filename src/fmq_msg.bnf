@@ -1,0 +1,71 @@
+The following ABNF grammar defines the work with FILEMQ messages:
+
+    fmq_msg         = *(  OHAI |  OHAI-OK |  ICANHAZ |  ICANHAZ-OK |  NOM |  CHEEZBURGER |  HUGZ |  HUGZ-OK |  KTHXBAI |  SRSLY |  RTFM )
+
+    ;     Client opens peering
+    ohai            = signature %d1 protocol version
+    signature       = %xAA %xA3             ; two octets
+    protocol        = string                ; 
+    version         = number-2              ; 
+
+    ;     Server grants the client access
+    ohai_ok         = signature %d4
+
+    ;     Client subscribes to a path
+    icanhaz         = signature %d5 path options cache
+    path            = string                ; 
+    options         = dictionary            ; 
+    cache           = dictionary            ; 
+
+    ;     Server confirms the subscription
+    icanhaz_ok      = signature %d6
+
+    ;     Client sends credit to the server
+    nom             = signature %d7 credit sequence
+    credit          = number-8              ; 
+    sequence        = number-8              ; 
+
+    ;     The server sends a file chunk
+    cheezburger     = signature %d8 sequence operation filename offset eof headers chunk
+    sequence        = number-8              ; 
+    operation       = number-1              ; 
+    filename        = string                ; 
+    offset          = number-8              ; 
+    eof             = number-1              ; 
+    headers         = dictionary            ; 
+    chunk           = chunk                 ; 
+
+    ;     Client or server sends a heartbeat
+    hugz            = signature %d9
+
+    ;     Client or server answers a heartbeat
+    hugz_ok         = signature %d10
+
+    ;     Client closes the peering
+    kthxbai         = signature %d11
+
+    ;     Server refuses client due to access rights
+    srsly           = signature %d128 reason
+    reason          = string                ; 
+
+    ;     Server tells client it sent an invalid message
+    rtfm            = signature %d129 reason
+    reason          = string                ; 
+
+    ; A list of name/value pairs
+    dictionary      = dict-count *( dict-name dict-value )
+    dict-count      = number-4
+    dict-value      = longstr
+    dict-name       = string
+
+    ; A chunk has 4-octet length + binary contents
+    chunk           = number-4 *OCTET
+
+    ; Strings are always length + text contents
+    string          = number-1 *VCHAR
+
+    ; Numbers are unsigned integers in network byte order
+    number-1        = 1OCTET
+    number-2        = 2OCTET
+    number-4        = 4OCTET
+    number-8        = 8OCTET

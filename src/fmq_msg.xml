@@ -1,0 +1,76 @@
+<class
+    name = "fmq_msg"
+    signature = "3"
+    title = "work with FILEMQ messages"
+    script = "zproto_codec_c"
+    >
+    This is the FILEMQ protocol version 1.0
+    <include filename = "license.xml" />
+
+    <!-- Protocol version -->
+    <define name = "VERSION" value = "1" />
+
+    <!-- File operations -->
+    <define name = "FILE CREATE" value = "1" />
+    <define name = "FILE DELETE" value = "2" />
+
+    <message name = "OHAI" id = "1">
+    Client opens peering
+        <field name = "protocol" type = "string" value = "FILEMQ" />
+        <field name = "version" type = "number" size = "2" value = "FMQ_MSG_VERSION" />
+    </message>
+
+    <message name = "OHAI-OK" id = "4">
+    Server grants the client access
+    </message>
+
+    <message name = "ICANHAZ" id = "5">
+    Client subscribes to a path
+        <field name = "path" type = "string" />
+        <field name = "options" type = "dictionary" />
+        <field name = "cache" type = "dictionary" />
+    </message>
+
+    <message name = "ICANHAZ-OK" id = "6">
+    Server confirms the subscription
+    </message>
+
+    <message name = "NOM" id = "7">
+    Client sends credit to the server
+        <field name = "credit" type = "number" size = "8" />
+        <field name = "sequence" type = "number" size = "8" />
+    </message>
+
+    <message name = "CHEEZBURGER" id = "8">
+    The server sends a file chunk
+        <field name = "sequence" type = "number" size = "8" />
+        <field name = "operation" type = "number" size = "1" />
+        <field name = "filename" type = "string" />
+        <field name = "offset" type = "number" size = "8" />
+        <field name = "eof" type = "number" size = "1" />
+        <field name = "headers" type = "dictionary" />
+        <field name = "chunk" type = "chunk" />
+    </message>
+
+    <message name = "HUGZ" id = "9">
+    Client or server sends a heartbeat
+    </message>
+
+    <message name = "HUGZ-OK" id = "10">
+    Client or server answers a heartbeat
+    </message>
+
+    <message name = "KTHXBAI" id = "11">
+    Client closes the peering
+    </message>
+
+    <message name = "SRSLY" id = "128">
+    Server refuses client due to access rights
+        <field name = "reason" type = "string" />
+    </message>
+
+    <message name = "RTFM" id = "129">
+    Server tells client it sent an invalid message
+        <field name = "reason" type = "string" />
+    </message>
+</class>

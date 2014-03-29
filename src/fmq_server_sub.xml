@@ -19,7 +19,7 @@ s_resolve_cache_path (const char *key, void *item, void *argument);
 //  Constructor
 
 static sub_t *
-sub_new (client_t *client, char *path, zhash_t *cache)
+sub_new (client_t *client, const char *path, zhash_t *cache)
 {
     sub_t *self = (sub_t *) zmalloc (sizeof (sub_t));
     self->client = client;
