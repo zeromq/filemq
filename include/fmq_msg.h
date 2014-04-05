@@ -38,30 +38,30 @@
 /*  These are the fmq_msg messages:
 
     OHAI - Client opens peering
-        protocol            string      
-        version             number 2    
+        protocol            string      Constant "FILEMQ"
+        version             number 2    Protocol version 2
 
     OHAI_OK - Server grants the client access
 
     ICANHAZ - Client subscribes to a path
-        path                string      
-        options             dictionary  
-        cache               dictionary  
+        path                string      Full path or path prefix
+        options             dictionary  Subscription options
+        cache               dictionary  File SHA-1 signatures
 
     ICANHAZ_OK - Server confirms the subscription
 
     NOM - Client sends credit to the server
-        credit              number 8    
-        sequence            number 8    
+        credit              number 8    Credit, in bytes
+        sequence            number 8    Chunk sequence, 0 and up
 
     CHEEZBURGER - The server sends a file chunk
-        sequence            number 8    
-        operation           number 1    
-        filename            string      
-        offset              number 8    
-        eof                 number 1    
-        headers             dictionary  
-        chunk               chunk       
+        sequence            number 8    File offset in bytes
+        operation           number 1    Create=%d1 delete=%d2
+        filename            string      Relative name of file
+        offset              number 8    File offset in bytes
+        eof                 number 1    Last chunk in file?
+        headers             dictionary  File properties
+        chunk               chunk       Data chunk
 
     HUGZ - Client or server sends a heartbeat
 
@@ -70,10 +70,10 @@
     KTHXBAI - Client closes the peering
 
     SRSLY - Server refuses client due to access rights
-        reason              string      
+        reason              string      Printable explanation
 
     RTFM - Server tells client it sent an invalid message
-        reason              string      
+        reason              string      Printable explanation
 */
 
 #define FMQ_MSG_VERSION                     1
@@ -151,9 +151,9 @@ int
 //  Send the ICANHAZ to the output in one step
 int
     fmq_msg_send_icanhaz (void *output,
-        const char *path,
-        zhash_t *options,
-        zhash_t *cache);
+    const char *path,
+    zhash_t *options,
+    zhash_t *cache);
     
 //  Send the ICANHAZ_OK to the output in one step
 int
@@ -162,19 +162,19 @@ int
 //  Send the NOM to the output in one step
 int
     fmq_msg_send_nom (void *output,
-        uint64_t credit,
-        uint64_t sequence);
+    uint64_t credit,
+    uint64_t sequence);
     
 //  Send the CHEEZBURGER to the output in one step
 int
     fmq_msg_send_cheezburger (void *output,
-        uint64_t sequence,
-        byte operation,
-        const char *filename,
-        uint64_t offset,
-        byte eof,
-        zhash_t *headers,
-        zchunk_t *chunk);
+    uint64_t sequence,
+    byte operation,
+    const char *filename,
+    uint64_t offset,
+    byte eof,
+    zhash_t *headers,
+    zchunk_t *chunk);
     
 //  Send the HUGZ to the output in one step
 int
@@ -191,12 +191,12 @@ int
 //  Send the SRSLY to the output in one step
 int
     fmq_msg_send_srsly (void *output,
-        const char *reason);
+    const char *reason);
     
 //  Send the RTFM to the output in one step
 int
     fmq_msg_send_rtfm (void *output,
-        const char *reason);
+    const char *reason);
     
 //  Duplicate the fmq_msg message
 fmq_msg_t *

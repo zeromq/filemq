@@ -50,23 +50,23 @@ struct _fmq_msg_t {
     int id;                             //  fmq_msg message ID
     byte *needle;                       //  Read/write pointer for serialization
     byte *ceiling;                      //  Valid upper limit for read pointer
-    char *protocol;                     //  
-    uint16_t version;                   //  
-    char *path;                         //  
-    zhash_t *options;                   //  
+    char *protocol;                     //  Constant "FILEMQ"
+    uint16_t version;                   //  Protocol version 2
+    char *path;                         //  Full path or path prefix
+    zhash_t *options;                   //  Subscription options
     size_t options_bytes;               //  Size of dictionary content
-    zhash_t *cache;                     //  
+    zhash_t *cache;                     //  File SHA-1 signatures
     size_t cache_bytes;                 //  Size of dictionary content
-    uint64_t credit;                    //  
-    uint64_t sequence;                  //  
-    byte operation;                     //  
-    char *filename;                     //  
-    uint64_t offset;                    //  
-    byte eof;                           //  
-    zhash_t *headers;                   //  
+    uint64_t credit;                    //  Credit, in bytes
+    uint64_t sequence;                  //  Chunk sequence, 0 and up
+    byte operation;                     //  Create=%d1 delete=%d2
+    char *filename;                     //  Relative name of file
+    uint64_t offset;                    //  File offset in bytes
+    byte eof;                           //  Last chunk in file?
+    zhash_t *headers;                   //  File properties
     size_t headers_bytes;               //  Size of dictionary content
-    zchunk_t *chunk;                    //  
-    char *reason;                       //  
+    zchunk_t *chunk;                    //  Data chunk
+    char *reason;                       //  Printable explanation
 };
 
 //  --------------------------------------------------------------------------
@@ -925,7 +925,6 @@ fmq_msg_dup (fmq_msg_t *self)
     fmq_msg_t *copy = fmq_msg_new (self->id);
     if (self->routing_id)
         copy->routing_id = zframe_dup (self->routing_id);
-
     switch (self->id) {
         case FMQ_MSG_OHAI:
             copy->protocol = self->protocol? strdup (self->protocol): NULL;
@@ -1392,7 +1391,7 @@ fmq_msg_cache_size (fmq_msg_t *self)
 //  --------------------------------------------------------------------------
 //  Get/set the credit field
 
-uint64_t 
+uint64_t
 fmq_msg_credit (fmq_msg_t *self)
 {
     assert (self);
@@ -1410,7 +1409,7 @@ fmq_msg_set_credit (fmq_msg_t *self, uint64_t credit)
 //  --------------------------------------------------------------------------
 //  Get/set the sequence field
 
-uint64_t 
+uint64_t
 fmq_msg_sequence (fmq_msg_t *self)
 {
     assert (self);
@@ -1428,7 +1427,7 @@ fmq_msg_set_sequence (fmq_msg_t *self, uint64_t sequence)
 //  --------------------------------------------------------------------------
 //  Get/set the operation field
 
-byte 
+byte
 fmq_msg_operation (fmq_msg_t *self)
 {
     assert (self);
@@ -1469,7 +1468,7 @@ fmq_msg_set_filename (fmq_msg_t *self, const char *format, ...)
 //  --------------------------------------------------------------------------
 //  Get/set the offset field
 
-uint64_t 
+uint64_t
 fmq_msg_offset (fmq_msg_t *self)
 {
     assert (self);
@@ -1487,7 +1486,7 @@ fmq_msg_set_offset (fmq_msg_t *self, uint64_t offset)
 //  --------------------------------------------------------------------------
 //  Get/set the eof field
 
-byte 
+byte
 fmq_msg_eof (fmq_msg_t *self)
 {
     assert (self);

@@ -7,6 +7,21 @@
     This is the FILEMQ protocol version 1.0
     <include filename = "license.xml" />
 
+    <grammar>
+    FILEMQ          = open-peering *use-peering [ close-peering ]
+
+    open-peering    = C:OHAI ( S:OHAI-OK / error )
+
+    use-peering     = C:ICANHAZ ( S:ICANHAZ-OK / error )
+                    / C:NOM
+                    / S:CHEEZBURGER
+                    / C:HUGZ S:HUGZ-OK
+                    / S:HUGZ C:HUGZ-OK
+
+    close-peering   = C:KTHXBAI / S:KTHXBAI
+
+    error           = S:SRSLY / S:RTFM
+    </grammar>
     <!-- Protocol version -->
     <define name = "VERSION" value = "1" />
 
@@ -16,8 +31,8 @@
 
     <message name = "OHAI" id = "1">
     Client opens peering
-        <field name = "protocol" type = "string" value = "FILEMQ" />
-        <field name = "version" type = "number" size = "2" value = "FMQ_MSG_VERSION" />
+        <field name = "protocol" type = "string" value = "FILEMQ">Constant "FILEMQ"</field>
+        <field name = "version" type = "number" size = "2" value = "FMQ_MSG_VERSION">Protocol version 2</field>
     </message>
 
     <message name = "OHAI-OK" id = "4">
@@ -26,9 +41,9 @@
 
     <message name = "ICANHAZ" id = "5">
     Client subscribes to a path
-        <field name = "path" type = "string" />
-        <field name = "options" type = "dictionary" />
-        <field name = "cache" type = "dictionary" />
+        <field name = "path" type = "string">Full path or path prefix</field>
+        <field name = "options" type = "dictionary">Subscription options</field>
+        <field name = "cache" type = "dictionary">File SHA-1 signatures</field>
     </message>
 
     <message name = "ICANHAZ-OK" id = "6">
@@ -37,19 +52,19 @@
 
     <message name = "NOM" id = "7">
     Client sends credit to the server
-        <field name = "credit" type = "number" size = "8" />
-        <field name = "sequence" type = "number" size = "8" />
+        <field name = "credit" type = "number" size = "8">Credit, in bytes</field>
+        <field name = "sequence" type = "number" size = "8">Chunk sequence, 0 and up</field>
     </message>
 
     <message name = "CHEEZBURGER" id = "8">
     The server sends a file chunk
-        <field name = "sequence" type = "number" size = "8" />
-        <field name = "operation" type = "number" size = "1" />
-        <field name = "filename" type = "string" />
-        <field name = "offset" type = "number" size = "8" />
-        <field name = "eof" type = "number" size = "1" />
-        <field name = "headers" type = "dictionary" />
-        <field name = "chunk" type = "chunk" />
+        <field name = "sequence" type = "number" size = "8">File offset in bytes</field>
+        <field name = "operation" type = "number" size = "1">Create=%d1 delete=%d2</field>
+        <field name = "filename" type = "string">Relative name of file</field>
+        <field name = "offset" type = "number" size = "8">File offset in bytes</field>
+        <field name = "eof" type = "number" size = "1">Last chunk in file?</field>
+        <field name = "headers" type = "dictionary">File properties</field>
+        <field name = "chunk" type = "chunk">Data chunk</field>
     </message>
 
     <message name = "HUGZ" id = "9">
@@ -66,11 +81,11 @@
 
     <message name = "SRSLY" id = "128">
     Server refuses client due to access rights
-        <field name = "reason" type = "string" />
+        <field name = "reason" type = "string">Printable explanation</field>
     </message>
 
     <message name = "RTFM" id = "129">
     Server tells client it sent an invalid message
-        <field name = "reason" type = "string" />
+        <field name = "reason" type = "string">Printable explanation</field>
     </message>
 </class>
