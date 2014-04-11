@@ -323,7 +323,7 @@ struct _client_t {
     state_t state;              //  Current state
     event_t event;              //  Current event
     char *hashkey;              //  Key into clients hash
-    zframe_t *address;          //  Client address identity
+    zframe_t *routing_id;       //  Client routing id
     $(codec)_t *request;        //  Last received request
     $(codec)_t *reply;          //  Reply to send out, if any
 };
@@ -339,16 +339,16 @@ $(string.trim (declare.?''):)
 //  Client methods
 
 static client_t *
-client_new (zframe_t *address)
+client_new (zframe_t *routing_id)
 {
     client_t *self = (client_t *) zmalloc (sizeof (client_t));
 .for class.state where item () = 1
     self->state = $(name:c)_state;
 .endfor
-    self->hashkey = zframe_strhex (address);
-    self->address = zframe_dup (address);
+    self->hashkey = zframe_strhex (routing_id);
+    self->routing_id = zframe_dup (routing_id);
     self->reply = $(codec)_new (0);
-    $(codec)_set_address (self->reply, self->address);
+    $(codec)_set_routing_id (self->reply, self->routing_id);
 .for class.client
 .   for construct
     $(string.trim (construct.?''):block                                         )
@@ -363,7 +363,7 @@ client_destroy (client_t **self_p)
     assert (self_p);
     if (*self_p) {
         client_t *self = *self_p;
-        zframe_destroy (&self->address);
+        zframe_destroy (&self->routing_id);
         $(codec)_destroy (&self->request);
         $(codec)_destroy (&self->reply);
         free (self->hashkey);
@@ -480,7 +480,7 @@ server_apply_config (server_t *self)
         zconfig_t *entry = zconfig_child (section);
         while (entry) {
             if (streq (zconfig_name (entry), "echo"))
-                zclock_log (zconfig_value (entry));
+                zclock_log ("%s", zconfig_value (entry));
             entry = zconfig_next (entry);
         }
 .for class.method where count (argument) > 0
@@ -573,7 +573,7 @@ server_control_message (server_t *self)
 .endif
                     $(codec)_send (&client->reply, client->router);
                     client->reply = $(codec)_new (0);
-                    $(codec)_set_address (client->reply, client->address);
+                    $(codec)_set_routing_id (client->reply, client->routing_id);
 .       else
 .           if switches.animate ?= 1
                     zclock_log ("S:    + $(name)");
@@ -656,10 +656,10 @@ server_client_message (server_t *self)
     zclock_log ("Received message from client");
     $(codec)_dump (request);
 .endif
-    char *hashkey = zframe_strhex ($(codec)_address (request));
+    char *hashkey = zframe_strhex ($(codec)_routing_id (request));
     client_t *client = (client_t *) zhash_lookup (self->clients, hashkey);
     if (client == NULL) {
-        client = client_new ($(codec)_address (request));
+        client = client_new ($(codec)_routing_id (request));
         client->heartbeat = self->heartbeat;
         client->router = self->router;
         zhash_insert (self->clients, hashkey, client);

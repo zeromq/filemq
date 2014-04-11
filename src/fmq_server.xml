@@ -86,7 +86,7 @@ free (password);
 
 <action name = "store client subscription">
 //  Find mount point with longest match to subscription
-char *path = fmq_msg_path (client->request);
+const char *path = fmq_msg_path (client->request);
 
 mount_t *check = (mount_t *) zlist_first (self->mounts);
 mount_t *mount = check;
@@ -173,9 +173,6 @@ if (zdir_patch_op (client->patch) == patch_create) {
         fmq_msg_set_sequence (client->reply, client->sequence++);
         fmq_msg_set_operation (client->reply, FMQ_MSG_FILE_CREATE);
         fmq_msg_set_offset (client->reply, client->offset);
-        fmq_msg_set_chunk (client->reply, zframe_new (
-            zchunk_data (chunk),
-            zchunk_size (chunk)));
         
         client->offset += zchunk_size (chunk);
         client->credit -= zchunk_size (chunk);
@@ -186,11 +183,12 @@ if (zdir_patch_op (client->patch) == patch_create) {
             zfile_destroy (&client->file);
             zdir_patch_destroy (&client->patch);
         }
+        fmq_msg_set_chunk (client->reply, &chunk);
     }
-    else
+    else {
         client->next_event = no_credit_event;
-        
-    zchunk_destroy (&chunk);
+        zchunk_destroy (&chunk);
+    }
 }
 </action>
 
@@ -198,7 +196,7 @@ if (zdir_patch_op (client->patch) == patch_create) {
 
 <method name = "bind" return = "number">
 <argument name = "endpoint" type = "string" />
-self->port = zsocket_bind (self->router, endpoint);
+self->port = zsocket_bind (self->router, "%s", endpoint);
 <return>zstr_sendf (self->pipe, "%d", self->port);</return>
 </method>
 

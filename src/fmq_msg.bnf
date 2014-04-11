@@ -1,0 +1,83 @@
+The following ABNF grammar defines the work with FILEMQ messages:
+
+    FILEMQ          = open-peering *use-peering [ close-peering ]
+
+    open-peering    = C:OHAI ( S:OHAI-OK / error )
+
+    use-peering     = C:ICANHAZ ( S:ICANHAZ-OK / error )
+                    / C:NOM
+                    / S:CHEEZBURGER
+                    / C:HUGZ S:HUGZ-OK
+                    / S:HUGZ C:HUGZ-OK
+
+    close-peering   = C:KTHXBAI / S:KTHXBAI
+
+    error           = S:SRSLY / S:RTFM
+
+    ;     Client opens peering
+    ohai            = signature %d1 protocol version
+    signature       = %xAA %xA3             ; two octets
+    protocol        = string                ; Constant "FILEMQ"
+    version         = number-2              ; Protocol version 2
+
+    ;     Server grants the client access
+    ohai_ok         = signature %d4
+
+    ;     Client subscribes to a path
+    icanhaz         = signature %d5 path options cache
+    path            = string                ; Full path or path prefix
+    options         = dictionary            ; Subscription options
+    cache           = dictionary            ; File SHA-1 signatures
+
+    ;     Server confirms the subscription
+    icanhaz_ok      = signature %d6
+
+    ;     Client sends credit to the server
+    nom             = signature %d7 credit sequence
+    credit          = number-8              ; Credit, in bytes
+    sequence        = number-8              ; Chunk sequence, 0 and up
+
+    ;     The server sends a file chunk
+    cheezburger     = signature %d8 sequence operation filename offset eof headers chunk
+    sequence        = number-8              ; File offset in bytes
+    operation       = number-1              ; Create=%d1 delete=%d2
+    filename        = string                ; Relative name of file
+    offset          = number-8              ; File offset in bytes
+    eof             = number-1              ; Last chunk in file?
+    headers         = dictionary            ; File properties
+    chunk           = chunk                 ; Data chunk
+
+    ;     Client or server sends a heartbeat
+    hugz            = signature %d9
+
+    ;     Client or server answers a heartbeat
+    hugz_ok         = signature %d10
+
+    ;     Client closes the peering
+    kthxbai         = signature %d11
+
+    ;     Server refuses client due to access rights
+    srsly           = signature %d128 reason
+    reason          = string                ; Printable explanation
+
+    ;     Server tells client it sent an invalid message
+    rtfm            = signature %d129 reason
+    reason          = string                ; Printable explanation
+
+    ; A list of name/value pairs
+    dictionary      = dict-count *( dict-name dict-value )
+    dict-count      = number-4
+    dict-value      = longstr
+    dict-name       = string
+
+    ; A chunk has 4-octet length + binary contents
+    chunk           = number-4 *OCTET
+
+    ; Strings are always length + text contents
+    string          = number-1 *VCHAR
+
+    ; Numbers are unsigned integers in network byte order
+    number-1        = 1OCTET
+    number-2        = 2OCTET
+    number-4        = 4OCTET
+    number-8        = 8OCTET
