@@ -75,6 +75,7 @@ The following ABNF grammar defines the work with FILEMQ messages:
 
     ; Strings are always length + text contents
     string          = number-1 *VCHAR
+    longstr         = number-4 *VCHAR
 
     ; Numbers are unsigned integers in network byte order
     number-1        = 1OCTET
