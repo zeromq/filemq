@@ -40,7 +40,6 @@
 @end
 */
 
-#include <czmq.h>
 #include "../include/fmq_msg.h"
 
 //  Structure of our class
@@ -247,12 +246,11 @@ fmq_msg_destroy (fmq_msg_t **self_p)
 
 //  --------------------------------------------------------------------------
 //  Parse a fmq_msg from zmsg_t. Returns a new object, or NULL if
-//  the message could not be parsed, or was NULL. If the socket type is
-//  ZMQ_ROUTER, then parses the first frame as a routing_id. Destroys msg
-//  and nullifies the msg refernce.
+//  the message could not be parsed, or was NULL. Destroys msg and 
+//  nullifies the msg reference.
 
 fmq_msg_t *
-fmq_msg_decode (zmsg_t **msg_p, int socket_type)
+fmq_msg_decode (zmsg_t **msg_p)
 {
     assert (msg_p);
     zmsg_t *msg = *msg_p;
@@ -260,15 +258,6 @@ fmq_msg_decode (zmsg_t **msg_p, int socket_type)
         return NULL;
         
     fmq_msg_t *self = fmq_msg_new (0);
-    //  If message came from a router socket, first frame is routing_id
-    if (socket_type == ZMQ_ROUTER) {
-        self->routing_id = zmsg_pop (msg);
-        //  If message was not valid, forget about it
-        if (!self->routing_id || !zmsg_next (msg)) {
-            fmq_msg_destroy (&self);
-            return (NULL);      //  Malformed or empty
-        }
-    }
     //  Read and parse command in frame
     zframe_t *frame = zmsg_pop (msg);
     if (!frame) 
@@ -395,7 +384,7 @@ fmq_msg_decode (zmsg_t **msg_p, int socket_type)
 
     //  Error returns
     malformed:
-        printf ("E: malformed message '%d'\n", self->id);
+        zsys_error ("malformed message '%d'\n", self->id);
     empty:
         zframe_destroy (&frame);
         zmsg_destroy (msg_p);
@@ -405,109 +394,18 @@ fmq_msg_decode (zmsg_t **msg_p, int socket_type)
 
 
 //  --------------------------------------------------------------------------
-//  Receive and parse a fmq_msg from the socket. Returns new object or
-//  NULL if error. Will block if there's no message waiting.
-
-fmq_msg_t *
-fmq_msg_recv (void *input)
-{
-    assert (input);
-    zmsg_t *msg = zmsg_recv (input);
-    return fmq_msg_decode (&msg, zsocket_type (input));
-}
-
-
-//  --------------------------------------------------------------------------
-//  Receive and parse a fmq_msg from the socket. Returns new object, 
-//  or NULL either if there was no input waiting, or the recv was interrupted.
-
-fmq_msg_t *
-fmq_msg_recv_nowait (void *input)
-{
-    assert (input);
-    zmsg_t *msg = zmsg_recv_nowait (input);
-    return fmq_msg_decode (&msg, zsocket_type (input));
-}
-
-
-//  Count size of key/value pair for serialization
-//  Key is encoded as string, value as longstr
-static int
-s_options_count (const char *key, void *item, void *argument)
-{
-    fmq_msg_t *self = (fmq_msg_t *) argument;
-    self->options_bytes += 1 + strlen (key) + 4 + strlen ((char *) item);
-    return 0;
-}
-
-//  Serialize options key=value pair
-static int
-s_options_write (const char *key, void *item, void *argument)
-{
-    fmq_msg_t *self = (fmq_msg_t *) argument;
-    PUT_STRING (key);
-    PUT_LONGSTR ((char *) item);
-    return 0;
-}
-
-
-//  Count size of key/value pair for serialization
-//  Key is encoded as string, value as longstr
-static int
-s_cache_count (const char *key, void *item, void *argument)
-{
-    fmq_msg_t *self = (fmq_msg_t *) argument;
-    self->cache_bytes += 1 + strlen (key) + 4 + strlen ((char *) item);
-    return 0;
-}
-
-//  Serialize cache key=value pair
-static int
-s_cache_write (const char *key, void *item, void *argument)
-{
-    fmq_msg_t *self = (fmq_msg_t *) argument;
-    PUT_STRING (key);
-    PUT_LONGSTR ((char *) item);
-    return 0;
-}
-
-
-//  Count size of key/value pair for serialization
-//  Key is encoded as string, value as longstr
-static int
-s_headers_count (const char *key, void *item, void *argument)
-{
-    fmq_msg_t *self = (fmq_msg_t *) argument;
-    self->headers_bytes += 1 + strlen (key) + 4 + strlen ((char *) item);
-    return 0;
-}
-
-//  Serialize headers key=value pair
-static int
-s_headers_write (const char *key, void *item, void *argument)
-{
-    fmq_msg_t *self = (fmq_msg_t *) argument;
-    PUT_STRING (key);
-    PUT_LONGSTR ((char *) item);
-    return 0;
-}
-
-
 //  Encode fmq_msg into zmsg and destroy it. Returns a newly created
 //  object or NULL if error. Use when not in control of sending the message.
-//  If the socket_type is ZMQ_ROUTER, then stores the routing_id as the
-//  first frame of the resulting message.
 
 zmsg_t *
-fmq_msg_encode (fmq_msg_t *self, int socket_type)
+fmq_msg_encode (fmq_msg_t **self_p)
 {
-    assert (self);
+    assert (self_p);
+    assert (*self_p);
+    
+    fmq_msg_t *self = *self_p;
     zmsg_t *msg = zmsg_new ();
 
-    //  If we're sending to a ROUTER, send the routing_id first
-    if (socket_type == ZMQ_ROUTER)
-        zmsg_prepend (msg, &self->routing_id);
-        
     size_t frame_size = 2 + 1;          //  Signature and message ID
     switch (self->id) {
         case FMQ_MSG_OHAI:
@@ -530,7 +428,12 @@ fmq_msg_encode (fmq_msg_t *self, int socket_type)
             if (self->options) {
                 self->options_bytes = 0;
                 //  Add up size of dictionary contents
-                zhash_foreach (self->options, s_options_count, self);
+                char *item = (char *) zhash_first (self->options);
+                while (item) {
+                    self->options_bytes += 1 + strlen (zhash_cursor (self->options));
+                    self->options_bytes += 4 + strlen (item);
+                    item = (char *) zhash_next (self->options);
+                }
             }
             frame_size += self->options_bytes;
             //  cache is an array of key=value strings
@@ -538,7 +441,12 @@ fmq_msg_encode (fmq_msg_t *self, int socket_type)
             if (self->cache) {
                 self->cache_bytes = 0;
                 //  Add up size of dictionary contents
-                zhash_foreach (self->cache, s_cache_count, self);
+                char *item = (char *) zhash_first (self->cache);
+                while (item) {
+                    self->cache_bytes += 1 + strlen (zhash_cursor (self->cache));
+                    self->cache_bytes += 4 + strlen (item);
+                    item = (char *) zhash_next (self->cache);
+                }
             }
             frame_size += self->cache_bytes;
             break;
@@ -571,7 +479,12 @@ fmq_msg_encode (fmq_msg_t *self, int socket_type)
             if (self->headers) {
                 self->headers_bytes = 0;
                 //  Add up size of dictionary contents
-                zhash_foreach (self->headers, s_headers_count, self);
+                char *item = (char *) zhash_first (self->headers);
+                while (item) {
+                    self->headers_bytes += 1 + strlen (zhash_cursor (self->headers));
+                    self->headers_bytes += 4 + strlen (item);
+                    item = (char *) zhash_next (self->headers);
+                }
             }
             frame_size += self->headers_bytes;
             //  chunk is a chunk with 4-byte length
@@ -604,7 +517,7 @@ fmq_msg_encode (fmq_msg_t *self, int socket_type)
             break;
             
         default:
-            printf ("E: bad message type '%d', not sent\n", self->id);
+            zsys_error ("bad message type '%d', not sent\n", self->id);
             //  No recovery, this is a fatal application error
             assert (false);
     }
@@ -631,13 +544,23 @@ fmq_msg_encode (fmq_msg_t *self, int socket_type)
                 PUT_NUMBER1 (0);    //  Empty string
             if (self->options) {
                 PUT_NUMBER4 (zhash_size (self->options));
-                zhash_foreach (self->options, s_options_write, self);
+                char *item = (char *) zhash_first (self->options);
+                while (item) {
+                    PUT_STRING (zhash_cursor (self->options));
+                    PUT_LONGSTR (item);
+                    item = (char *) zhash_next (self->options);
+                }
             }
             else
                 PUT_NUMBER4 (0);    //  Empty dictionary
             if (self->cache) {
                 PUT_NUMBER4 (zhash_size (self->cache));
-                zhash_foreach (self->cache, s_cache_write, self);
+                char *item = (char *) zhash_first (self->cache);
+                while (item) {
+                    PUT_STRING (zhash_cursor (self->cache));
+                    PUT_LONGSTR (item);
+                    item = (char *) zhash_next (self->cache);
+                }
             }
             else
                 PUT_NUMBER4 (0);    //  Empty dictionary
@@ -663,7 +586,12 @@ fmq_msg_encode (fmq_msg_t *self, int socket_type)
             PUT_NUMBER1 (self->eof);
             if (self->headers) {
                 PUT_NUMBER4 (zhash_size (self->headers));
-                zhash_foreach (self->headers, s_headers_write, self);
+                char *item = (char *) zhash_first (self->headers);
+                while (item) {
+                    PUT_STRING (zhash_cursor (self->headers));
+                    PUT_LONGSTR (item);
+                    item = (char *) zhash_next (self->headers);
+                }
             }
             else
                 PUT_NUMBER4 (0);    //  Empty dictionary
@@ -707,14 +635,64 @@ fmq_msg_encode (fmq_msg_t *self, int socket_type)
     //  Now send the data frame
     if (zmsg_append (msg, &frame)) {
         zmsg_destroy (&msg);
-        fmq_msg_destroy (&self);
+        fmq_msg_destroy (self_p);
         return NULL;
     }
     //  Destroy fmq_msg object
-    fmq_msg_destroy (&self);
+    fmq_msg_destroy (self_p);
     return msg;
-
 }
+
+
+//  --------------------------------------------------------------------------
+//  Receive and parse a fmq_msg from the socket. Returns new object or
+//  NULL if error. Will block if there's no message waiting.
+
+fmq_msg_t *
+fmq_msg_recv (void *input)
+{
+    assert (input);
+    zmsg_t *msg = zmsg_recv (input);
+    //  If message came from a router socket, first frame is routing_id
+    zframe_t *routing_id = NULL;
+    if (zsocket_type (zsock_resolve (input)) == ZMQ_ROUTER) {
+        routing_id = zmsg_pop (msg);
+        //  If message was not valid, forget about it
+        if (!routing_id || !zmsg_next (msg))
+            return NULL;        //  Malformed or empty
+    }
+    fmq_msg_t *fmq_msg = fmq_msg_decode (&msg);
+    if (fmq_msg && zsocket_type (zsock_resolve (input)) == ZMQ_ROUTER)
+        fmq_msg->routing_id = routing_id;
+
+    return fmq_msg;
+}
+
+
+//  --------------------------------------------------------------------------
+//  Receive and parse a fmq_msg from the socket. Returns new object,
+//  or NULL either if there was no input waiting, or the recv was interrupted.
+
+fmq_msg_t *
+fmq_msg_recv_nowait (void *input)
+{
+    assert (input);
+    zmsg_t *msg = zmsg_recv_nowait (input);
+    //  If message came from a router socket, first frame is routing_id
+    zframe_t *routing_id = NULL;
+    if (zsocket_type (zsock_resolve (input)) == ZMQ_ROUTER) {
+        routing_id = zmsg_pop (msg);
+        //  If message was not valid, forget about it
+        if (!routing_id || !zmsg_next (msg))
+            return NULL;        //  Malformed or empty
+    }
+    fmq_msg_t *fmq_msg = fmq_msg_decode (&msg);
+    if (fmq_msg && zsocket_type (zsock_resolve (input)) == ZMQ_ROUTER)
+        fmq_msg->routing_id = routing_id;
+
+    return fmq_msg;
+}
+
 
 //  --------------------------------------------------------------------------
 //  Send the fmq_msg to the socket, and destroy it
@@ -727,8 +705,22 @@ fmq_msg_send (fmq_msg_t **self_p, void *output)
     assert (*self_p);
     assert (output);
 
+    //  Save routing_id if any, as encode will destroy it
     fmq_msg_t *self = *self_p;
-    zmsg_t *msg = fmq_msg_encode (self, zsocket_type (output));
+    zframe_t *routing_id = self->routing_id;
+    self->routing_id = NULL;
+
+    //  Encode fmq_msg message to a single zmsg
+    zmsg_t *msg = fmq_msg_encode (&self);
+    
+    //  If we're sending to a ROUTER, send the routing_id first
+    if (zsocket_type (zsock_resolve (output)) == ZMQ_ROUTER) {
+        assert (routing_id);
+        zmsg_prepend (msg, &routing_id);
+    }
+    else
+        zframe_destroy (&routing_id);
+        
     if (msg && zmsg_send (&msg, output) == 0)
         return 0;
     else
@@ -746,6 +738,165 @@ fmq_msg_send_again (fmq_msg_t *self, void *output)
     assert (output);
     self = fmq_msg_dup (self);
     return fmq_msg_send (&self, output);
+}
+
+
+//  --------------------------------------------------------------------------
+//  Encode OHAI message
+
+zmsg_t * 
+fmq_msg_encode_ohai (
+)
+{
+    fmq_msg_t *self = fmq_msg_new (FMQ_MSG_OHAI);
+    return fmq_msg_encode (&self);
+}
+
+
+//  --------------------------------------------------------------------------
+//  Encode OHAI_OK message
+
+zmsg_t * 
+fmq_msg_encode_ohai_ok (
+)
+{
+    fmq_msg_t *self = fmq_msg_new (FMQ_MSG_OHAI_OK);
+    return fmq_msg_encode (&self);
+}
+
+
+//  --------------------------------------------------------------------------
+//  Encode ICANHAZ message
+
+zmsg_t * 
+fmq_msg_encode_icanhaz (
+    const char *path,
+    zhash_t *options,
+    zhash_t *cache)
+{
+    fmq_msg_t *self = fmq_msg_new (FMQ_MSG_ICANHAZ);
+    fmq_msg_set_path (self, path);
+    zhash_t *options_copy = zhash_dup (options);
+    fmq_msg_set_options (self, &options_copy);
+    zhash_t *cache_copy = zhash_dup (cache);
+    fmq_msg_set_cache (self, &cache_copy);
+    return fmq_msg_encode (&self);
+}
+
+
+//  --------------------------------------------------------------------------
+//  Encode ICANHAZ_OK message
+
+zmsg_t * 
+fmq_msg_encode_icanhaz_ok (
+)
+{
+    fmq_msg_t *self = fmq_msg_new (FMQ_MSG_ICANHAZ_OK);
+    return fmq_msg_encode (&self);
+}
+
+
+//  --------------------------------------------------------------------------
+//  Encode NOM message
+
+zmsg_t * 
+fmq_msg_encode_nom (
+    uint64_t credit,
+    uint64_t sequence)
+{
+    fmq_msg_t *self = fmq_msg_new (FMQ_MSG_NOM);
+    fmq_msg_set_credit (self, credit);
+    fmq_msg_set_sequence (self, sequence);
+    return fmq_msg_encode (&self);
+}
+
+
+//  --------------------------------------------------------------------------
+//  Encode CHEEZBURGER message
+
+zmsg_t * 
+fmq_msg_encode_cheezburger (
+    uint64_t sequence,
+    byte operation,
+    const char *filename,
+    uint64_t offset,
+    byte eof,
+    zhash_t *headers,
+    zchunk_t *chunk)
+{
+    fmq_msg_t *self = fmq_msg_new (FMQ_MSG_CHEEZBURGER);
+    fmq_msg_set_sequence (self, sequence);
+    fmq_msg_set_operation (self, operation);
+    fmq_msg_set_filename (self, filename);
+    fmq_msg_set_offset (self, offset);
+    fmq_msg_set_eof (self, eof);
+    zhash_t *headers_copy = zhash_dup (headers);
+    fmq_msg_set_headers (self, &headers_copy);
+    zchunk_t *chunk_copy = zchunk_dup (chunk);
+    fmq_msg_set_chunk (self, &chunk_copy);
+    return fmq_msg_encode (&self);
+}
+
+
+//  --------------------------------------------------------------------------
+//  Encode HUGZ message
+
+zmsg_t * 
+fmq_msg_encode_hugz (
+)
+{
+    fmq_msg_t *self = fmq_msg_new (FMQ_MSG_HUGZ);
+    return fmq_msg_encode (&self);
+}
+
+
+//  --------------------------------------------------------------------------
+//  Encode HUGZ_OK message
+
+zmsg_t * 
+fmq_msg_encode_hugz_ok (
+)
+{
+    fmq_msg_t *self = fmq_msg_new (FMQ_MSG_HUGZ_OK);
+    return fmq_msg_encode (&self);
+}
+
+
+//  --------------------------------------------------------------------------
+//  Encode KTHXBAI message
+
+zmsg_t * 
+fmq_msg_encode_kthxbai (
+)
+{
+    fmq_msg_t *self = fmq_msg_new (FMQ_MSG_KTHXBAI);
+    return fmq_msg_encode (&self);
+}
+
+
+//  --------------------------------------------------------------------------
+//  Encode SRSLY message
+
+zmsg_t * 
+fmq_msg_encode_srsly (
+    const char *reason)
+{
+    fmq_msg_t *self = fmq_msg_new (FMQ_MSG_SRSLY);
+    fmq_msg_set_reason (self, reason);
+    return fmq_msg_encode (&self);
+}
+
+
+//  --------------------------------------------------------------------------
+//  Encode RTFM message
+
+zmsg_t * 
+fmq_msg_encode_rtfm (
+    const char *reason)
+{
+    fmq_msg_t *self = fmq_msg_new (FMQ_MSG_RTFM);
+    fmq_msg_set_reason (self, reason);
+    return fmq_msg_encode (&self);
 }
 
 
@@ -980,129 +1131,111 @@ fmq_msg_dup (fmq_msg_t *self)
 }
 
 
-//  Dump options key=value pair to stdout
-static int
-s_options_dump (const char *key, void *item, void *argument)
-{
-    printf ("        %s=%s\n", key, (char *) item);
-    return 0;
-}
-
-//  Dump cache key=value pair to stdout
-static int
-s_cache_dump (const char *key, void *item, void *argument)
-{
-    printf ("        %s=%s\n", key, (char *) item);
-    return 0;
-}
-
-//  Dump headers key=value pair to stdout
-static int
-s_headers_dump (const char *key, void *item, void *argument)
-{
-    printf ("        %s=%s\n", key, (char *) item);
-    return 0;
-}
-
-
 //  --------------------------------------------------------------------------
 //  Print contents of message to stdout
 
 void
-fmq_msg_dump (fmq_msg_t *self)
+fmq_msg_print (fmq_msg_t *self)
 {
     assert (self);
     switch (self->id) {
         case FMQ_MSG_OHAI:
-            puts ("OHAI:");
-            printf ("    protocol=filemq\n");
-            printf ("    version=fmq_msg_version\n");
+            zsys_debug ("FMQ_MSG_OHAI:");
+            zsys_debug ("    protocol=filemq");
+            zsys_debug ("    version=fmq_msg_version");
             break;
             
         case FMQ_MSG_OHAI_OK:
-            puts ("OHAI_OK:");
+            zsys_debug ("FMQ_MSG_OHAI_OK:");
             break;
             
         case FMQ_MSG_ICANHAZ:
-            puts ("ICANHAZ:");
+            zsys_debug ("FMQ_MSG_ICANHAZ:");
             if (self->path)
-                printf ("    path='%s'\n", self->path);
+                zsys_debug ("    path='%s'", self->path);
             else
-                printf ("    path=\n");
-            printf ("    options={\n");
-            if (self->options)
-                zhash_foreach (self->options, s_options_dump, self);
+                zsys_debug ("    path=");
+            zsys_debug ("    options=");
+            if (self->options) {
+                char *item = (char *) zhash_first (self->options);
+                while (item) {
+                    zsys_debug ("        %s=%s", zhash_cursor (self->options), item);
+                    item = (char *) zhash_next (self->options);
+                }
+            }
             else
-                printf ("(NULL)\n");
-            printf ("    }\n");
-            printf ("    cache={\n");
-            if (self->cache)
-                zhash_foreach (self->cache, s_cache_dump, self);
+                zsys_debug ("(NULL)");
+            zsys_debug ("    cache=");
+            if (self->cache) {
+                char *item = (char *) zhash_first (self->cache);
+                while (item) {
+                    zsys_debug ("        %s=%s", zhash_cursor (self->cache), item);
+                    item = (char *) zhash_next (self->cache);
+                }
+            }
             else
-                printf ("(NULL)\n");
-            printf ("    }\n");
+                zsys_debug ("(NULL)");
             break;
             
         case FMQ_MSG_ICANHAZ_OK:
-            puts ("ICANHAZ_OK:");
+            zsys_debug ("FMQ_MSG_ICANHAZ_OK:");
             break;
             
         case FMQ_MSG_NOM:
-            puts ("NOM:");
-            printf ("    credit=%ld\n", (long) self->credit);
-            printf ("    sequence=%ld\n", (long) self->sequence);
+            zsys_debug ("FMQ_MSG_NOM:");
+            zsys_debug ("    credit=%ld", (long) self->credit);
+            zsys_debug ("    sequence=%ld", (long) self->sequence);
             break;
             
         case FMQ_MSG_CHEEZBURGER:
-            puts ("CHEEZBURGER:");
-            printf ("    sequence=%ld\n", (long) self->sequence);
-            printf ("    operation=%ld\n", (long) self->operation);
+            zsys_debug ("FMQ_MSG_CHEEZBURGER:");
+            zsys_debug ("    sequence=%ld", (long) self->sequence);
+            zsys_debug ("    operation=%ld", (long) self->operation);
             if (self->filename)
-                printf ("    filename='%s'\n", self->filename);
+                zsys_debug ("    filename='%s'", self->filename);
             else
-                printf ("    filename=\n");
-            printf ("    offset=%ld\n", (long) self->offset);
-            printf ("    eof=%ld\n", (long) self->eof);
-            printf ("    headers={\n");
-            if (self->headers)
-                zhash_foreach (self->headers, s_headers_dump, self);
+                zsys_debug ("    filename=");
+            zsys_debug ("    offset=%ld", (long) self->offset);
+            zsys_debug ("    eof=%ld", (long) self->eof);
+            zsys_debug ("    headers=");
+            if (self->headers) {
+                char *item = (char *) zhash_first (self->headers);
+                while (item) {
+                    zsys_debug ("        %s=%s", zhash_cursor (self->headers), item);
+                    item = (char *) zhash_next (self->headers);
+                }
+            }
             else
-                printf ("(NULL)\n");
-            printf ("    }\n");
-            printf ("    chunk={\n");
-            if (self->chunk)
-                zchunk_print (self->chunk);
-            else
-                printf ("(NULL)\n");
-            printf ("    }\n");
+                zsys_debug ("(NULL)");
+            zsys_debug ("    chunk=[ ... ]");
             break;
             
         case FMQ_MSG_HUGZ:
-            puts ("HUGZ:");
+            zsys_debug ("FMQ_MSG_HUGZ:");
             break;
             
         case FMQ_MSG_HUGZ_OK:
-            puts ("HUGZ_OK:");
+            zsys_debug ("FMQ_MSG_HUGZ_OK:");
             break;
             
         case FMQ_MSG_KTHXBAI:
-            puts ("KTHXBAI:");
+            zsys_debug ("FMQ_MSG_KTHXBAI:");
             break;
             
         case FMQ_MSG_SRSLY:
-            puts ("SRSLY:");
+            zsys_debug ("FMQ_MSG_SRSLY:");
             if (self->reason)
-                printf ("    reason='%s'\n", self->reason);
+                zsys_debug ("    reason='%s'", self->reason);
             else
-                printf ("    reason=\n");
+                zsys_debug ("    reason=");
             break;
             
         case FMQ_MSG_RTFM:
-            puts ("RTFM:");
+            zsys_debug ("FMQ_MSG_RTFM:");
             if (self->reason)
-                printf ("    reason='%s'\n", self->reason);
+                zsys_debug ("    reason='%s'", self->reason);
             else
-                printf ("    reason=\n");
+                zsys_debug ("    reason=");
             break;
             
     }
@@ -1661,17 +1794,14 @@ fmq_msg_test (bool verbose)
     fmq_msg_destroy (&self);
 
     //  Create pair of sockets we can send through
-    zctx_t *ctx = zctx_new ();
-    assert (ctx);
-
-    void *output = zsocket_new (ctx, ZMQ_DEALER);
-    assert (output);
-    zsocket_bind (output, "inproc://selftest");
-
-    void *input = zsocket_new (ctx, ZMQ_ROUTER);
+    zsock_t *input = zsock_new (ZMQ_ROUTER);
     assert (input);
-    zsocket_connect (input, "inproc://selftest");
-    
+    zsock_connect (input, "inproc://selftest-fmq_msg");
+
+    zsock_t *output = zsock_new (ZMQ_DEALER);
+    assert (output);
+    zsock_bind (output, "inproc://selftest-fmq_msg");
+
     //  Encode/send/decode and verify each message type
     int instance;
     fmq_msg_t *copy;
@@ -1912,7 +2042,8 @@ fmq_msg_test (bool verbose)
         fmq_msg_destroy (&self);
     }
 
-    zctx_destroy (&ctx);
+    zsock_destroy (&input);
+    zsock_destroy (&output);
     //  @end
 
     printf ("OK\n");

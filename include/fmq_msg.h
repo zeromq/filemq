@@ -109,18 +109,15 @@ void
     fmq_msg_destroy (fmq_msg_t **self_p);
 
 //  Parse a fmq_msg from zmsg_t. Returns a new object, or NULL if
-//  the message could not be parsed, or was NULL. If the socket type is
-//  ZMQ_ROUTER, then parses the first frame as a routing_id. Destroys msg
-//  and nullifies the msg refernce.
+//  the message could not be parsed, or was NULL. Destroys msg and 
+//  nullifies the msg reference.
 fmq_msg_t *
-    fmq_msg_decode (zmsg_t **msg_p, int socket_type);
+    fmq_msg_decode (zmsg_t **msg_p);
 
 //  Encode fmq_msg into zmsg and destroy it. Returns a newly created
 //  object or NULL if error. Use when not in control of sending the message.
-//  If the socket_type is ZMQ_ROUTER, then stores the routing_id as the
-//  first frame of the resulting message.
 zmsg_t *
-    fmq_msg_encode (fmq_msg_t *self, int socket_type);
+    fmq_msg_encode (fmq_msg_t **self_p);
 
 //  Receive and parse a fmq_msg from the socket. Returns new object, 
 //  or NULL if error. Will block if there's no message waiting.
@@ -140,63 +137,139 @@ int
 int
     fmq_msg_send_again (fmq_msg_t *self, void *output);
 
+//  Encode the OHAI 
+zmsg_t *
+    fmq_msg_encode_ohai (
+);
+
+//  Encode the OHAI_OK 
+zmsg_t *
+    fmq_msg_encode_ohai_ok (
+);
+
+//  Encode the ICANHAZ 
+zmsg_t *
+    fmq_msg_encode_icanhaz (
+        const char *path,
+        zhash_t *options,
+        zhash_t *cache);
+
+//  Encode the ICANHAZ_OK 
+zmsg_t *
+    fmq_msg_encode_icanhaz_ok (
+);
+
+//  Encode the NOM 
+zmsg_t *
+    fmq_msg_encode_nom (
+        uint64_t credit,
+        uint64_t sequence);
+
+//  Encode the CHEEZBURGER 
+zmsg_t *
+    fmq_msg_encode_cheezburger (
+        uint64_t sequence,
+        byte operation,
+        const char *filename,
+        uint64_t offset,
+        byte eof,
+        zhash_t *headers,
+        zchunk_t *chunk);
+
+//  Encode the HUGZ 
+zmsg_t *
+    fmq_msg_encode_hugz (
+);
+
+//  Encode the HUGZ_OK 
+zmsg_t *
+    fmq_msg_encode_hugz_ok (
+);
+
+//  Encode the KTHXBAI 
+zmsg_t *
+    fmq_msg_encode_kthxbai (
+);
+
+//  Encode the SRSLY 
+zmsg_t *
+    fmq_msg_encode_srsly (
+        const char *reason);
+
+//  Encode the RTFM 
+zmsg_t *
+    fmq_msg_encode_rtfm (
+        const char *reason);
+
+
 //  Send the OHAI to the output in one step
+//  WARNING, this call will fail if output is of type ZMQ_ROUTER.
 int
     fmq_msg_send_ohai (void *output);
     
 //  Send the OHAI_OK to the output in one step
+//  WARNING, this call will fail if output is of type ZMQ_ROUTER.
 int
     fmq_msg_send_ohai_ok (void *output);
     
 //  Send the ICANHAZ to the output in one step
+//  WARNING, this call will fail if output is of type ZMQ_ROUTER.
 int
     fmq_msg_send_icanhaz (void *output,
-    const char *path,
-    zhash_t *options,
-    zhash_t *cache);
+        const char *path,
+        zhash_t *options,
+        zhash_t *cache);
     
 //  Send the ICANHAZ_OK to the output in one step
+//  WARNING, this call will fail if output is of type ZMQ_ROUTER.
 int
     fmq_msg_send_icanhaz_ok (void *output);
     
 //  Send the NOM to the output in one step
+//  WARNING, this call will fail if output is of type ZMQ_ROUTER.
 int
     fmq_msg_send_nom (void *output,
-    uint64_t credit,
-    uint64_t sequence);
+        uint64_t credit,
+        uint64_t sequence);
     
 //  Send the CHEEZBURGER to the output in one step
+//  WARNING, this call will fail if output is of type ZMQ_ROUTER.
 int
     fmq_msg_send_cheezburger (void *output,
-    uint64_t sequence,
-    byte operation,
-    const char *filename,
-    uint64_t offset,
-    byte eof,
-    zhash_t *headers,
-    zchunk_t *chunk);
+        uint64_t sequence,
+        byte operation,
+        const char *filename,
+        uint64_t offset,
+        byte eof,
+        zhash_t *headers,
+        zchunk_t *chunk);
     
 //  Send the HUGZ to the output in one step
+//  WARNING, this call will fail if output is of type ZMQ_ROUTER.
 int
     fmq_msg_send_hugz (void *output);
     
 //  Send the HUGZ_OK to the output in one step
+//  WARNING, this call will fail if output is of type ZMQ_ROUTER.
 int
     fmq_msg_send_hugz_ok (void *output);
     
 //  Send the KTHXBAI to the output in one step
+//  WARNING, this call will fail if output is of type ZMQ_ROUTER.
 int
     fmq_msg_send_kthxbai (void *output);
     
 //  Send the SRSLY to the output in one step
+//  WARNING, this call will fail if output is of type ZMQ_ROUTER.
 int
     fmq_msg_send_srsly (void *output,
-    const char *reason);
+        const char *reason);
     
 //  Send the RTFM to the output in one step
+//  WARNING, this call will fail if output is of type ZMQ_ROUTER.
 int
     fmq_msg_send_rtfm (void *output,
-    const char *reason);
+        const char *reason);
     
 //  Duplicate the fmq_msg message
 fmq_msg_t *
@@ -204,7 +277,7 @@ fmq_msg_t *
 
 //  Print contents of message to stdout
 void
-    fmq_msg_dump (fmq_msg_t *self);
+    fmq_msg_print (fmq_msg_t *self);
 
 //  Get/set the message routing id
 zframe_t *
@@ -351,6 +424,9 @@ void
 int
     fmq_msg_test (bool verbose);
 //  @end
+
+//  For backwards compatibility with old codecs
+#define fmq_msg_dump        fmq_msg_print
 
 #ifdef __cplusplus
 }
