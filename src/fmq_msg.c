@@ -40,6 +40,7 @@
 @end
 */
 
+#include <czmq.h>
 #include "../include/fmq_msg.h"
 
 //  Structure of our class
