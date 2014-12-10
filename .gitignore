@@ -1,4 +1,47 @@
-INSTALL
+# Object files
+*.o
+*.ko
+*.obj
+*.elf
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Libraries
+*.lib
+*.a
+*.la
+*.lo
+*.pc
+
+# Shared objects (inc. Windows DLLs)
+*.dll
+*.so
+*.so.*
+*.dylib
+
+# Executables
+filemq_selftest
+filemq_server
+filemq_client
+*.exe
+*.out
+*.app
+*.i*86
+*.x86_64
+*.hex
+
+# Man pages
+doc/*.1
+doc/*.3
+doc/*.7
+
+# autoconf files
+.deps
+.libs
+*.log
+*.trs
 Makefile
 Makefile.in
 aclocal.m4
@@ -7,34 +50,34 @@ config.log
 config.status
 config/
 configure
-doc/Makefile
-doc/Makefile.in
-doc/filemq.1
-doc/*.3
 libtool
-src/.deps/
-src/Makefile
-src/Makefile.in
-src/libfmq.pc
 src/platform.h
 src/platform.h.in
 src/platform.h.in~
 src/stamp-h1
-.libs/
-*.o
-*.lo
-*.la
-*.lst
-track
-core
-fmq_selftest
-src/fmqroot/send/*
-src/fmqroot/recv/*
-src/fmqroot/logs/*
-.cache
-mymusic
-testit
-src/fmq_selftest.log
-src/fmq_selftest.trs
 src/test-suite.log
+src/.dirstamp
 
+# qt-android build results
+builds/qt-android/prefix
+
+# Android - generated directories
+src/app/bin/
+src/app/gen/
+src/app/obj/
+src/app/local.properties
+
+# Android -dependencies
+builds/android/libsodium
+builds/android/libzmq
+builds/android/czmq
+builds/android/e2fsprogs
+builds/android/zyre
+src/app/jni/output
+
+# Additionals
+*.swp
+*.dirstamp
+*.xml.swp
+*.c.swp
+*.h.swp

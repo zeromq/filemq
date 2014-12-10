@@ -1,218 +1,119 @@
-<class name = "fmq_server" codec = "fmq_msg" title = "a FILEMQ server"
-  short = "The fmq_server class implements a generic FILEMQ server." >
-FileMQ protocol server
-<include filename = "license.xml" />
-<include filename = "fmq_server_fsm.xml" />
+<class
+    name = "fmq_server"
+    title = "FILEMQ Server"
+    script = "zproto_server_c"
+    protocol_class = "fmq_msg"
+    package_dir = "../include"
+    source_dir = "."
+    >
 
-<declare type = "forward">
-//  There's no point making these configurable
-#define CHUNK_SIZE      1000000
-</declare>
+    FileMQ protocol server
 
-<!-- Server and client contexts -->
-<!-- self is the server, client is each incoming connection -->
-<self>
-<context>
-zlist_t *mounts;            //  Mount points
-int port;                   //  Server port
-</context>
-<construct>
-self->mounts = zlist_new ();
-</construct>
-<destruct>
-//  Destroy mount points
-while (zlist_size (self->mounts)) {
-    mount_t *mount = (mount_t *) zlist_pop (self->mounts);
-    mount_destroy (&mount);
-}
-zlist_destroy (&self->mounts);
-</destruct>
-</self>
+    <!-- As specified by zproject our license is in the main dir. -->
+    <include filename = "../license.xml" />
 
-<client>
-<context>
-size_t credit;              //  Credit remaining
-zlist_t *patches;           //  Patches to send
-zdir_patch_t *patch;         //  Current patch
-zfile_t *file;           //  Current file we're sending
-off_t offset;               //  Offset of next read in file
-int64_t sequence;           //  Sequence number for chunk
-</context>
-<construct>
-self->patches = zlist_new ();
-</construct>
-<destruct>
-while (zlist_size (self->patches)) {
-    zdir_patch_t *patch = (zdir_patch_t *) zlist_pop (self->patches);
-    zdir_patch_destroy (&patch);
-}
-zlist_destroy (&self->patches);
-</destruct>
-</client>
-
-<!-- Embedded class for subscriptions -->
-<include filename = "fmq_server_sub.xml" />
-<!-- Embedded class for mount points -->
-<include filename = "fmq_server_mount.xml" />
-
-<!-- Action bodies -->
-<action name = "terminate the client">
-mount_t *mount = (mount_t *) zlist_first (self->mounts);
-while (mount) {
-    mount_sub_purge (mount, client);
-    mount = (mount_t *) zlist_next (self->mounts);
-}
-client->next_event = terminate_event;
-</action>
-
-<!--<action name = "try security mechanism">
-client->next_event = foe_event;
-char *login, *password;
-if (streq (fmq_msg_mechanism (client->request), "PLAIN")
-&&  fmq_sasl_plain_decode (fmq_msg_response (client->request), &login, &password) == 0) {
-    zconfig_t *account = zconfig_locate (self->config, "security/plain/account");
-    while (account) {
-        if (streq (zconfig_resolve (account, "login", ""), login)
-        &&  streq (zconfig_resolve (account, "password", ""), password)) {
-            client->next_event = friend_event;
-            break;
-        }
-        account = zconfig_next (account);
-    }
-}
-free (login);
-free (password);
-</action>-->
-
-<action name = "store client subscription">
-//  Find mount point with longest match to subscription
-const char *path = fmq_msg_path (client->request);
-
-mount_t *check = (mount_t *) zlist_first (self->mounts);
-mount_t *mount = check;
-while (check) {
-    //  If check->alias is prefix of path and alias is
-    //  longer than current mount then we have a new mount
-    if (strncmp (path, check->alias, strlen (check->alias)) == 0
-    &&  strlen (check->alias) > strlen (mount->alias))
-        mount = check;
-    check = (mount_t *) zlist_next (self->mounts);
-}
-//  If subscription matches nothing, discard it
-if (mount)
-    mount_sub_store (mount, client, client->request);
-</action>
-
-<action name = "store client credit">
-client->credit += fmq_msg_credit (client->request);
-</action>
-
-<!-- Hook actions -->
-<declare>
-//  Client hash function that checks if client is alive
-static int
-client_dispatch (const char *key, void *client, void *server)
-{
-    server_client_execute ((server_t *) server, (client_t *) client, dispatch_event);
-    return 0;
-}
-</declare>
-
-<action name = "monitor the server">
-bool activity = false;
-mount_t *mount = (mount_t *) zlist_first (self->mounts);
-while (mount) {
-    if (mount_refresh (mount, self))
-        activity = true;
-    mount = (mount_t *) zlist_next (self->mounts);
-}
-if (activity)
-    zhash_foreach (self->clients, client_dispatch, self);
-</action>
-
-<action name = "get next patch for client">
-//  Get next patch for client if we're not doing one already
-if (client->patch == NULL)
-    client->patch = (zdir_patch_t *) zlist_pop (client->patches);
-if (client->patch == NULL) {
-    client->next_event = finished_event;
-    return;
-}
-//  Get virtual path from patch
-fmq_msg_set_filename (client->reply, zdir_patch_vpath (client->patch));
-
-//  We can process a delete patch right away
-if (zdir_patch_op (client->patch) == patch_delete) {
-    fmq_msg_set_sequence (client->reply, client->sequence++);
-    fmq_msg_set_operation (client->reply, FMQ_MSG_FILE_DELETE);
-    client->next_event = send_delete_event;
+    <!-- State machine for a client connection -->
     
-    //  No reliability in this version, assume patch delivered safely
-    zdir_patch_destroy (&client->patch);
-}
-else
-if (zdir_patch_op (client->patch) == patch_create) {
-    //  Create patch refers to file, open that for input if needed
-    if (client->file == NULL) {
-        client->file = zfile_dup (zdir_patch_file (client->patch));
-        if (zfile_input (client->file)) {
-            //  File no longer available, skip it
-            zdir_patch_destroy (&client->patch);
-            zfile_destroy (&client->file);
-            client->next_event = next_patch_event;
-            return;
-        }
-        client->offset = 0;
-    }
-    //  Get next chunk for file
-    zchunk_t *chunk = zfile_read (client->file, CHUNK_SIZE, client->offset);
-    assert (chunk);
+    Names of states, events, and actions are case insensitive.
+    By convention however we use uppercase for protocol events.
 
-    //  Check if we have the credit to send chunk
-    if (zchunk_size (chunk) <= client->credit) {
-        fmq_msg_set_sequence (client->reply, client->sequence++);
-        fmq_msg_set_operation (client->reply, FMQ_MSG_FILE_CREATE);
-        fmq_msg_set_offset (client->reply, client->offset);
-        
-        client->offset += zchunk_size (chunk);
-        client->credit -= zchunk_size (chunk);
-        client->next_event = send_chunk_event;
-        
-        //  Zero-sized chunk means end of file
-        if (zchunk_size (chunk) == 0) {
-            zfile_destroy (&client->file);
-            zdir_patch_destroy (&client->patch);
-        }
-        fmq_msg_set_chunk (client->reply, &chunk);
-    }
-    else {
-        client->next_event = no_credit_event;
-        zchunk_destroy (&chunk);
-    }
-}
-</action>
+    <state name = "start" inherit = "defaults">
+        The server will remain in this state when a client connects
+        waiting for the client to initiate a conversation.
+        <event name = "OHAI" next = "ready">
+            The server receives the initiation of the converstation
+            and responds if everything is OK.
+            <action name = "send" message = "OHAI OK" />
+        </event>
+    </state>
 
-<!-- API methods -->
+    <state name = "ready" inherit = "defaults">
+        The server now has a connected client we at this point need
+        at least one subscrition and NOM credit before any files
+        get dispatched.
+        <event name = "ICANHAZ" next = "dispatching">
+            The server receives a subscription request from the
+            connected client and therefore stores that subscription
+            and responds if things are OK. This event does not move
+            the server to a new state.
+            <action name = "store client subscription" />
+            <action name = "send" message = "ICANHAZ OK" />
+            <action name = "check for client data" />
+        </event>
+        <event name = "NOM" next = "dispatching">
+            The server receives a credit from the client and can now
+            move on to the dispatching state and send data.
+            <action name = "store client credit" />
+            <action name = "check for client data" />
+        </event>
+        <event name = "dispatch" next = "dispatching">
+            Internal event for when a subscribed directory has a change
+            detected.
+            <action name = "check for client data" />
+        </event>
+        <!-- HUGZ (essentially a ping) is always valid -->
+        <event name = "HUGZ">
+            <action name = "send" message = "HUGZ OK" />
+        </event>
+        <!-- The client can terminate the connection at any time -->
+        <event name = "KTHXBAI">
+            <action name = "terminate" />
+        </event>
+        <!-- Client can restart connection at any time -->
+        <event name = "OHAI">
+            <action name = "send" message = "OHAI OK" />
+        </event>
+    </state>
 
-<method name = "bind" return = "number">
-<argument name = "endpoint" type = "string" />
-self->port = zsocket_bind (self->router, "%s", endpoint);
-<return>zstr_sendf (self->pipe, "%d", self->port);</return>
-</method>
+    <state name = "dispatching" inherit = "defaults">
+        The server now has client connection that has submitted a subscription
+        request and has given credit. The server can send data.
+        <event name = "send chunk">
+            <action name = "get next patch for client" />
+            <action name = "send" message = "CHEEZBURGER" />
+            <action name = "check for client data" />
+        </event>
+        <event name = "next patch">
+            <action name = "get next patch for client" />
+            <action name = "send" message = "CHEEZBURGER" />
+            <action name = "check for client data" />
+        </event>
+        <event name = "no credit" next = "ready">
+            <action name = "handle client no credit" />
+        </event>
+        <event name = "finished" next = "ready">
+            <action name = "handle client finished" />
+        </event>
+        <event name = "NOM">
+            The server receives a credit from the client and can now
+            move on to the dispatching state and send data.
+            <action name = "store client credit" />
+            <action name = "check for client data" />
+        </event>
+        <!-- HUGZ (essentially a ping) is always valid -->
+        <event name = "HUGZ">
+            <action name = "send" message = "HUGZ OK" />
+        </event>
+        <!-- The client can terminate the connection at any time -->
+        <event name = "KTHXBAI">
+            <action name = "terminate" />
+        </event>
+        <!-- Client can restart connection at any time -->
+        <event name = "OHAI" next = "ready">
+            <action name = "send" message = "OHAI OK" />
+        </event>
+    </state>
 
-<method name = "publish">
-<argument name = "location" type = "string" />
-<argument name = "alias" type = "string" />
-mount_t *mount = mount_new (location, alias);
-zlist_append (self->mounts, mount);
-</method>
-
-<method name = "set anonymous">
-<argument name = "enabled" type = "number" />
-//  Enable anonymous access without a config file
-zconfig_put (self->config, "security/anonymous", enabled? "1" :"0");
-</method>
-
-<include filename = "fmq_server_selftest.xml" />
+    <state name = "defaults">
+        <!-- All other protocol messages are invalide -->
+        <event name = "*">
+            <action name = "send" message = "RTFM" />
+            <action name = "terminate" />
+        </event>
+        <!-- This built-in event hits on a connection timeout -->
+        <event name = "expired">
+            <action name = "terminate" />
+        </event>
+    </state>
 
 </class>

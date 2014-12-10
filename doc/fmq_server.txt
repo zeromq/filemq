@@ -3,56 +3,96 @@ fmq_server(3)
 
 NAME
 ----
-fmq_server - a filemq server
+fmq_server - fmq_server
 
 SYNOPSIS
 --------
 ----
-//  Create a new fmq_server
-fmq_server_t *
-    fmq_server_new (void);
-
-//  Destroy the fmq_server
-void
-    fmq_server_destroy (fmq_server_t **self_p);
-
-//  Load server configuration data
-void
-    fmq_server_configure (fmq_server_t *self, const char *config_file);
-
-//  Set one configuration path value
-void
-    fmq_server_setoption (fmq_server_t *self, const char *path, const char *value);
-
+//  To work with fmq_server, use the CZMQ zactor API:
+//
+//  Create new fmq_server instance, passing logging prefix:
+//
+//      zactor_t *fmq_server = zactor_new (fmq_server, "myname");
 //  
-int
-    fmq_server_bind (fmq_server_t *self, const char *endpoint);
-
+//  Destroy fmq_server instance
+//
+//      zactor_destroy (&fmq_server);
 //  
+//  Enable verbose logging of commands and activity:
+//
+//      zstr_send (fmq_server, "VERBOSE");
+//
+//  Bind fmq_server to specified endpoint. TCP endpoints may specify
+//  the port number as "*" to aquire an ephemeral port:
+//
+//      zstr_sendx (fmq_server, "BIND", endpoint, NULL);
+//
+//  Return assigned port number, specifically when BIND was done using an
+//  an ephemeral port:
+//
+//      zstr_sendx (fmq_server, "PORT", NULL);
+//      char *command, *port_str;
+//      zstr_recvx (fmq_server, &command, &port_str, NULL);
+//      assert (streq (command, "PORT"));
+//
+//  Specify configuration file to load, overwriting any previous loaded
+//  configuration file or options:
+//
+//      zstr_sendx (fmq_server, "CONFIGURE", filename, NULL);
+//
+//  Set configuration path value:
+//
+//      zstr_sendx (fmq_server, "SET", path, value, NULL);
+//    
+//  Send zmsg_t instance to fmq_server:
+//
+//      zactor_send (fmq_server, &msg);
+//
+//  Receive zmsg_t instance from fmq_server:
+//
+//      zmsg_t *msg = zactor_recv (fmq_server);
+//
+//  This is the fmq_server constructor as a zactor_fn:
+//
 void
-    fmq_server_publish (fmq_server_t *self, const char *location, const char *alias);
-
-//  
-void
-    fmq_server_set_anonymous (fmq_server_t *self, long enabled);
+    fmq_server (zsock_t *pipe, void *args);
 
 //  Self test of this class
-int
+void
     fmq_server_test (bool verbose);
 ----
 
 DESCRIPTION
 -----------
 
-the fmq_server class implements a generic filemq server.
+Server class implementation of FileMQ.
 
+This is the server side implementation of the FileMQ protocol.
 
 EXAMPLE
 -------
 .From fmq_server_test method
 ----
-----
+zactor_t *server = zactor_new (fmq_server, "server");
+if (verbose)
+    zstr_send (server, "VERBOSE");
+zstr_sendx (server, "BIND", "ipc://@/fmq_server", NULL);
 
-SEE ALSO
---------
-linkfmq:filemq[1]
+zsock_t *client = zsock_new (ZMQ_DEALER);
+assert (client);
+zsock_set_rcvtimeo (client, 2000);
+zsock_connect (client, "ipc://@/fmq_server");
+
+//  TODO: fill this out
+fmq_msg_t *message = fmq_msg_new ();
+fmq_msg_set_id (message, FMQ_MSG_OHAI);
+fmq_msg_send (message, client);
+fmq_msg_recv (message, client);
+assert (fmq_msg_id (message) == FMQ_MSG_OHAI_OK);
+fmq_msg_set_id (message, FMQ_MSG_KTHXBAI);
+fmq_msg_send (message, client);
+fmq_msg_destroy (&message);
+
+zsock_destroy (&client);
+zactor_destroy (&server);
+----
