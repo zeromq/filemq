@@ -1,0 +1,26 @@
+filemq_client(1)
+================
+
+NAME
+----
+filemq_client - no title found
+
+SYNOPSIS
+--------
+----
+Please add @interface section in ../src/filemq_client.c.
+----
+
+DESCRIPTION
+-----------
+
+Please add @header section in ../src/filemq_client.c.
+
+Please add @discuss section in ../src/filemq_client.c.
+
+EXAMPLE
+-------
+.From filemq_client_test method
+----
+Please add @selftest section in ../src/filemq_client.c.
+----

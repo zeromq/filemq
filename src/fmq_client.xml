@@ -1,205 +1,210 @@
-<class name = "fmq_client" codec = "fmq_msg" title = "a FILEMQ client"
-  short = "The fmq_client class implements a generic FILEMQ client." >
-This is the FILEMQ/1.0 client protocol handler
-<include filename = "license.xml" />
-<include filename = "fmq_client_fsm.xml" />
+<class
+    name = "fmq_client"
+    title = "FILEMQ Client"
+    script = "zproto_client_c"
+    protocol_class = "fmq_msg"
+    package_dir = "../include"
+    source_dir = "."
+    >
 
-<declare>
-//  There's no point making these configurable
-#define CREDIT_SLICE    1000000
-#define CREDIT_MINIMUM  (CREDIT_SLICE * 4) + 1
-</declare>
+    This is the FILEMQ/2.0 client protocol handler
+    
+    <!-- As layed out by zproject, the license is in the main dir -->
+    <include filename = "../license.xml" />
 
-<!-- Client and server contexts -->
-<!-- self is the client, server is each outgoing connection -->
-<self>
-<context>
-zlist_t *subs;              //  Subscriptions
-sub_t *sub;                 //  Subscription we want to send
-</context>
-<construct>
-self->subs = zlist_new ();
-</construct>
-<destruct>
-//  Destroy subscriptions
-while (zlist_size (self->subs)) {
-    sub_t *sub = (sub_t *) zlist_pop (self->subs);
-    sub_destroy (&sub);
-}
-zlist_destroy (&self->subs);
-</destruct>
-</self>
+    <!-- State machine for a client connection -->
+    
+    Names of states, events, and actions are case insensitive.
+    By convention however we use uppercase for protocol events.
 
-<server>
-<context>
-size_t credit;              //  Current credit pending
-zfile_t *file;           //  File we're writing to
-</context>
-<construct>
-</construct>
-<destruct>
-</destruct>
-</server>
+    <state name = "start" inherit = "defaults">
+        Start up the client, connect to the server, and initiate a conversation
+        with the server. This is a short lived state and will either error on
+        connection, e.g. bad endpoint, or it will move on to connecting.
+        <event name = "constructor" next = "connecting">
+            <!-- Actually connect dealer socket to the server -->
+            <action name = "connect to server endpoint" />
+            <!-- Tell the engine to notify if the server is not heard from -->
+            <action name = "use connect timeout" />
+            <!-- Initiate FileMQ conversation with the server -->
+            <action name = "send" message = "OHAI" />
+        </event>
+        <event name = "connect error">
+            The dealer socket was not successfully connected to the server. This
+            could be due to a bad endpoint.
+            <action name = "handle connect error" />
+        </event>
+    </state>
 
-<!-- Embedded class for subscriptions -->
-<include filename = "fmq_client_sub.xml" />
+    <state name = "connecting" inherit = "defaults">
+        <event name = "OHAI OK" next = "connected">
+            The server is now connected and the user can be notified with a
+            success message via the command pipe.
+            <action name = "stayin alive" />
+            <action name = "connected to server" />
+        </event>
+        <event name = "expired">
+            If the timeout occurs during connection, terminate via the bombcmd
+            event.
+            <action name = "handle connect timeout" />
+        </event>
+    </state>
 
-<!--<action name = "try security mechanism">
-char *login = zconfig_resolve (self->config, "security/plain/login", "guest");
-char *password = zconfig_resolve (self->config, "security/plain/password", "");
-zframe_t *frame = fmq_sasl_plain_encode (login, password);
-fmq_msg_set_mechanism (server->request, "PLAIN");
-fmq_msg_set_response  (server->request, frame);
-</action>-->
+    <state name = "connected" inherit = "defaults">
+        <event name = "set inbox">
+            This event corresponds with the API method set inbox. This event
+            will leave the client in the connected state waiting for a valid
+            event.
+            <action name = "setup inbox" />
+        </event>
+        <event name = "subscribe" next = "subscribing">
+            This event corresponds with the API method subscribe. When the
+            actions of this event finish the client will move to the
+            subscribing state.
+            <action name = "format icanhaz command" />
+            <action name = "send" message = "ICANHAZ" />
+        </event>
+        <event name = "destructor">
+            This event corresponds with the API destructor. This will tell the
+            server we're leaving and then terminate.
+            <action name = "send" message = "KTHXBAI" />
+            <action name = "signal success">
+                Success or failure is required for the destructor api.
+            </action>
+            <action name = "terminate" />
+        </event>
+        <event name = "subscribe error">
+            In this state, error can be triggered from the subscribe event to
+            signal bad parameter from the "subscribe" API method. This is not
+            fatal, so stay in this state.
+            <action name = "subscribe failed" />
+        </event>
+        <event name = "expired">
+            Handle timeout in messaging from server by sending a ping. Will
+            try multiple times before giving up.
+            <action name = "handle connected timeout" />
+            <action name = "send" message = "HUGZ" />
+        </event>
+    </state>
 
-<action name = "connected to server">
-</action>
+    <state name = "subscribing" inherit = "defaults">
+        Wait for the server to respond to the subscription reuqest.
+        <event name = "ICANHAZ OK" next = "subscribed">
+            Subscription was successful, tell our user and move to the
+            subscribed state. A send credit will be triggered from this
+            action.
+            <action name = "stayin alive" />
+            <action name = "signal subscribe success" />
+        </event>
+        <event name = "expired">
+            <action name = "handle subscribe timeout" />
+        </event>
+    </state>
 
-<action name = "get first subscription">
-self->sub = (sub_t *) zlist_first (self->subs);
-if (self->sub)
-    server->next_event = ok_event;
-else
-    server->next_event = finished_event;
-</action>
+    <state name = "subscribed" inherit = "defaults">
+        In this state, we have our inbox and at least one subscription.
+        <event name = "send credit">
+            Send the credit.
+            <action name = "send" message = "NOM" />
+        </event>
+        <event name = "CHEEZBURGER">
+            Receive a portion of a file and make sure that the client has credit
+            with the server.
+            <action name = "stayin alive" />
+            <action name = "process the patch" />
+            <action name = "refill credit as needed" />
+        </event>
+        <event name = "finished">
+            Finished receiving current changes. Make sure client has credit.
+            <action name = "refill credit as needed" />
+        </event>
+        <event name = "destructor">
+            This event corresponds with the API destructor. This will tell the
+            server we're leaving and then terminate.
+            <action name = "send" message = "KTHXBAI" />
+            <action name = "signal success">
+                Success or failure is required for the destructor api.
+            </action>
+            <action name = "terminate" />
+        </event>
+        <event name = "expired">
+            Handle timeout in messaging from server by sending a ping. Will
+            try multiple times before giving up.
+            <action name = "handle connected timeout" />
+            <action name = "send" message = "HUGZ" />
+        </event>
+    </state>
 
-<action name = "get next subscription">
-self->sub = (sub_t *) zlist_next (self->subs);
-if (self->sub)
-    server->next_event = ok_event;
-else
-    server->next_event = finished_event;
-</action>
+    <state name = "defaults">
+        <event name = "SRSLY">
+            <action name = "stayin alive" />
+            <action name = "log access denied" />
+            <action name = "terminate" />
+        </event>
+        <event name = "RTFM">
+            <action name = "stayin alive" />
+            <action name = "log invalid message" />
+            <action name = "terminate" />
+        </event>
+        <event name = "HUGZ OK">
+            Just keeping the connection alive.
+            <action name = "stayin alive" />
+        </event>
+        <event name = "*">
+            <action name = "log protocol error" />
+        </event>
+        <event name = "bombcmd">
+            This event is used when a connection timeout occurs on a
+            synchronous API call.
+            <action name = "sync server not present" />
+            <action name = "terminate" />
+        </event>
+        <event name = "bombmsg">
+            This event is used when a communication timeout occurs and the
+            client is not in the middle of handling an API call.
+            <action name = "async server not present" />
+            <action name = "terminate" />
+        </event>
+    </state>
 
-<action name = "format icanhaz command">
-fmq_msg_set_path (server->request, self->sub->path);
-//  If client app wants full resync, send cache to server
-if (atoi (zconfig_resolve (self->config, "client/resync", "0")) == 1) {
-    zhash_t *cache = sub_cache (self->sub);
-    fmq_msg_options_insert (server->request, "RESYNC", "1");
-    fmq_msg_set_cache (server->request, &cache);
-}
-</action>
+    <!-- API methods -->
 
-<action name = "refill credit as needed">
-//  If credit has fallen too low, send more credit
-size_t credit_to_send = 0;
-while (server->credit < CREDIT_MINIMUM) {
-    credit_to_send += CREDIT_SLICE;
-    server->credit += CREDIT_SLICE;
-}
-if (credit_to_send) {
-    fmq_msg_set_credit (server->request, credit_to_send);
-    server->next_event = send_credit_event;
-}
-</action>
+    <method name = "constructor" return = "status">
+    Connect to server endpoint, with specified timeout in msecs (zero means
+    wait forever). Constructor succeeds if connection is successful.
+        <field name = "endpoint" type = "string" />
+        <field name = "timeout" type = "number" size = "4" />
+        <accept reply = "SUCCESS" />
+        <accept reply = "FAILURE" />
+    </method>
 
-<action name = "process the patch">
-char *inbox = zconfig_resolve (self->config, "client/inbox", ".inbox");
-const char *filename = fmq_msg_filename (server->reply);
-const char *filename_orig = filename;
+    <method name = "destructor" return = "status">
+    Disconnect from server.
+        <accept reply = "SUCCESS" />
+        <accept reply = "FAILURE" />
+    </method>
 
-//  Filenames from server must start with slash
-assert (*filename == '/');
+    <method name = "subscribe" return = "status">
+    Subscribe to a directory on the server, directory specified by path.
+        <field name = "path" type = "string" />
+        <accept reply = "SUCCESS" />
+        <accept reply = "FAILURE" />
+    </method>
 
+    <method name = "set inbox" return = "status">
+    Tell the api where to store files. This should be done before
+    subscribing to anything.
+        <field name = "path" type = "string" />
+        <accept reply = "SUCCESS" />
+        <accept reply = "FAILURE" />
+    </method>
 
-// Strip the subscription path from the filename
-sub_t *subscr = (sub_t *) zlist_first(self->subs);
-while(subscr) {
-    if(!strncmp(filename, subscr->path, strlen(subscr->path))) {
-        filename += strlen(subscr->path);
-        break;
-    }
-}
-if('/' == *filename) filename++;
+    <reply name = "SUCCESS">
+        <field name = "status" type = "number" size = "1" />
+    </reply>
 
-if (fmq_msg_operation (server->reply) == FMQ_MSG_FILE_CREATE) {
-    if (server->file == NULL) {
-        server->file = zfile_new (inbox, filename);
-        if (zfile_output (server->file)) {
-            //  File not writeable, skip patch
-            zfile_destroy (&server->file);
-            return;
-        }
-    }
-    //  Try to write, ignore errors in this version
-    zchunk_t *chunk = fmq_msg_chunk (server->reply);
-    if (zchunk_size (chunk) > 0) {
-        zfile_write (server->file, chunk, fmq_msg_offset (server->reply));
-        server->credit -= zchunk_size (chunk);
-    }
-    else {
-        //  Zero-sized chunk means end of file, so report back to caller
-        zstr_sendm (self->pipe, "DELIVER");
-        zstr_sendm (self->pipe, filename);
-        zstr_sendf (self->pipe, "%s", filename_orig);
-        zfile_destroy (&server->file);
-    }
-}
-else
-if (fmq_msg_operation (server->reply) == FMQ_MSG_FILE_DELETE) {
-    // No need to print this
-    //zclock_log ("I: delete %s/%s", inbox, filename);
-    zfile_t *file = zfile_new (inbox, filename);
-    zfile_remove (file);
-    zfile_destroy (&file);
-
-    //  Report file deletion back to caller
-    zstr_sendm (self->pipe, "DELETED");
-    zstr_sendm (self->pipe, filename);
-    zstr_sendf (self->pipe, "%s/%s", inbox, filename_orig);
-}
-</action>
-
-<action name = "log access denied">
-puts ("W: server denied us access, retrying...");
-</action>
-
-<action name = "log invalid message">
-puts ("E: server claims we sent an invalid message");
-</action>
-
-<action name = "log protocol error">
-puts ("E: protocol error");
-</action>
-
-<!-- Must happen before any connects -->
-<method name = "subscribe">
-<argument name = "path" type = "string" />
-//  Store subscription along with any previous ones
-//  Check we don't already have a subscription for this path
-self->sub = (sub_t *) zlist_first (self->subs);
-while (self->sub) {
-    if (streq (path, self->sub->path))
-        return;
-    self->sub = (sub_t *) zlist_next (self->subs);
-}
-//  Subscription path must start with '/'
-//  We'll do better error handling later
-assert (*path == '/');
-
-//  New subscription, store it for later replay
-char *inbox = zconfig_resolve (self->config, "client/inbox", ".inbox");
-self->sub = sub_new (self, inbox, path);
-zlist_append (self->subs, self->sub);
-</method>
-
-<method name = "set inbox">
-<argument name = "path" type = "string" />
-zconfig_put (self->config, "client/inbox", path);
-</method>
-
-<method name = "set resync">
-<argument name = "enabled" type = "number" />
-//  Request resynchronization from server
-zconfig_put (self->config, "client/resync", enabled? "1" :"0");
-</method>
-
-<selftest config = "client_test.cfg">
-<init>
-fmq_client_connect (self, "tcp://localhost:6001");
-zclock_sleep (1000);
-</init>
-</selftest>
-
+    <reply name = "FAILURE">
+        <field name = "status" type = "number" size = "1" />
+        <field name = "reason" type = "string" />
+    </reply>
 </class>

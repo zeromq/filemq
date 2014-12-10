@@ -1,25 +1,22 @@
 /*  =========================================================================
-    fmq_server - a filemq server
+    fmq_server - FILEMQ Server
 
-    Generated header for fmq_server protocol server
-    -------------------------------------------------------------------------
-    Copyright (c) 1991-2012 iMatix Corporation -- http://www.imatix.com     
-    Copyright other contributors as noted in the AUTHORS file.              
-                                                                            
-    This file is part of FILEMQ, see http://filemq.org.                     
-                                                                            
-    This is free software; you can redistribute it and/or modify it under   
-    the terms of the GNU Lesser General Public License as published by the  
-    Free Software Foundation; either version 3 of the License, or (at your  
-    option) any later version.                                              
-                                                                            
-    This software is distributed in the hope that it will be useful, but    
-    WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTA-   
-    BILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General  
-    Public License for more details.                                        
-                                                                            
-    You should have received a copy of the GNU Lesser General Public License
-    along with this program. If not, see http://www.gnu.org/licenses/.      
+    ** WARNING *************************************************************
+    THIS SOURCE FILE IS 100% GENERATED. If you edit this file, you will lose
+    your changes at the next build cycle. This is great for temporary printf
+    statements. DO NOT MAKE ANY CHANGES YOU WISH TO KEEP. The correct places
+    for commits are:
+
+     * The XML model used for this code generation: fmq_server.xml, or
+     * The code generation script that built this file: zproto_server_c
+    ************************************************************************
+    Copyright (c) the Contributors as noted in the AUTHORS file.       
+    This file is part of FileMQ, a C implemenation of the protocol:    
+    https://github.com/danriegsecker/filemq2.                          
+                                                                       
+    This Source Code Form is subject to the terms of the Mozilla Public
+    License, v. 2.0. If a copy of the MPL was not distributed with this
+    file, You can obtain one at http://mozilla.org/MPL/2.0/.           
     =========================================================================
 */
 
@@ -30,40 +27,58 @@
 extern "C" {
 #endif
 
-//  Opaque class structure
-typedef struct _fmq_server_t fmq_server_t;
-
 //  @interface
-//  Create a new fmq_server
-fmq_server_t *
-    fmq_server_new (void);
-
-//  Destroy the fmq_server
-void
-    fmq_server_destroy (fmq_server_t **self_p);
-
-//  Load server configuration data
-void
-    fmq_server_configure (fmq_server_t *self, const char *config_file);
-
-//  Set one configuration path value
-void
-    fmq_server_setoption (fmq_server_t *self, const char *path, const char *value);
-
+//  To work with fmq_server, use the CZMQ zactor API:
+//
+//  Create new fmq_server instance, passing logging prefix:
+//
+//      zactor_t *fmq_server = zactor_new (fmq_server, "myname");
 //  
-int
-    fmq_server_bind (fmq_server_t *self, const char *endpoint);
-
+//  Destroy fmq_server instance
+//
+//      zactor_destroy (&fmq_server);
 //  
+//  Enable verbose logging of commands and activity:
+//
+//      zstr_send (fmq_server, "VERBOSE");
+//
+//  Bind fmq_server to specified endpoint. TCP endpoints may specify
+//  the port number as "*" to aquire an ephemeral port:
+//
+//      zstr_sendx (fmq_server, "BIND", endpoint, NULL);
+//
+//  Return assigned port number, specifically when BIND was done using an
+//  an ephemeral port:
+//
+//      zstr_sendx (fmq_server, "PORT", NULL);
+//      char *command, *port_str;
+//      zstr_recvx (fmq_server, &command, &port_str, NULL);
+//      assert (streq (command, "PORT"));
+//
+//  Specify configuration file to load, overwriting any previous loaded
+//  configuration file or options:
+//
+//      zstr_sendx (fmq_server, "CONFIGURE", filename, NULL);
+//
+//  Set configuration path value:
+//
+//      zstr_sendx (fmq_server, "SET", path, value, NULL);
+//    
+//  Send zmsg_t instance to fmq_server:
+//
+//      zactor_send (fmq_server, &msg);
+//
+//  Receive zmsg_t instance from fmq_server:
+//
+//      zmsg_t *msg = zactor_recv (fmq_server);
+//
+//  This is the fmq_server constructor as a zactor_fn:
+//
 void
-    fmq_server_publish (fmq_server_t *self, const char *location, const char *alias);
-
-//  
-void
-    fmq_server_set_anonymous (fmq_server_t *self, long enabled);
+    fmq_server (zsock_t *pipe, void *args);
 
 //  Self test of this class
-int
+void
     fmq_server_test (bool verbose);
 //  @end
 

@@ -1,0 +1,175 @@
+#### fmq_client - FILEMQ Client
+
+Description of class for man page.
+
+Detailed discussion of the class, if any.
+
+This is the class interface:
+
+    //  Create a new fmq_client
+    //  Connect to server endpoint, with specified timeout in msecs (zero means wait    
+    //  forever). Constructor succeeds if connection is successful.                     
+    fmq_client_t *
+        fmq_client_new (const char *endpoint, int timeout);
+    
+    //  Destroy the fmq_client
+    void
+        fmq_client_destroy (fmq_client_t **self_p);
+    
+    //  Enable verbose logging of client activity
+    void
+        fmq_client_verbose (fmq_client_t *self);
+    
+    //  Return actor, when caller wants to work with multiple actors and/or
+    //  input sockets asynchronously.
+    zactor_t *
+        fmq_client_actor (fmq_client_t *self);
+    
+    //  Return message pipe for asynchronous message I/O. In the high-volume case,
+    //  we send methods and get replies to the actor, in a synchronous manner, and
+    //  we send/recv high volume message data to a second pipe, the msgpipe. In
+    //  the low-volume case we can do everything over the actor pipe, if traffic
+    //  is never ambiguous.
+    zsock_t *
+        fmq_client_msgpipe (fmq_client_t *self);
+    
+    //  Subscribe to a directory on the server, directory specified by path.            
+    //  Returns >= 0 if successful, -1 if interrupted.
+    int
+        fmq_client_subscribe (fmq_client_t *self, const char *path);
+    
+    //  Tell the api where to store files. This should be done before subscribing to    
+    //  anything.                                                                       
+    //  Returns >= 0 if successful, -1 if interrupted.
+    int
+        fmq_client_set_inbox (fmq_client_t *self, const char *path);
+    
+    //  Return last received status
+    int 
+        fmq_client_status (fmq_client_t *self);
+    
+    //  Return last received reason
+    const char *
+        fmq_client_reason (fmq_client_t *self);
+    
+    //  Self test of this class
+    void
+        fmq_client_test (bool verbose);
+
+This is the class self test code:
+
+    //  Start a server to test against, and bind to endpoint
+    zactor_t *server = zactor_new (fmq_server, "fmq_server");
+    if (verbose)
+        zstr_send (server, "VERBOSE");
+    zstr_sendx (server, "BIND", "ipc://@/filemq", NULL);
+    
+    //  Create directories used for the test.
+    zsys_debug ("attempting to create directory");
+    int rc = zsys_dir_create ("./fmqserver");
+    if (rc == 0)
+        zsys_debug ("./fmqserver created");
+    else
+        zsys_error ("./fmqserver NOT created");
+    assert (rc == 0);
+    rc = zsys_dir_create ("./fmqclient");
+    if (rc == 0)
+        zsys_debug ("./fmqclient created");
+    else
+        zsys_error ("./fmqclient NOT created");
+    assert (rc == 0);
+    
+    //  Tell the server to publish from directory just created
+    zsys_debug ("attempting to publish");
+    zstr_sendx (server, "PUBLISH", "./fmqserver", "/", NULL);
+    zsys_debug ("publish sent, attempt to get response");
+    char *response = zstr_recv (server);
+    assert (streq (response, "SUCCESS"));
+    zsys_debug ("fmq_client_test: received %s", response);
+    zstr_free (&response);
+    
+    //  Create the client
+    fmq_client_t *client = fmq_client_new ("ipc://@/filemq", 5000);
+    assert (client);
+    if (verbose)
+        fmq_client_verbose (client);
+    
+    //  Set the clients storage location
+    rc = fmq_client_set_inbox (client, "./fmqclient");
+    assert (rc >= 0);
+    
+    //  Subscribe to the server's root
+    rc = fmq_client_subscribe (client, "/");
+    assert (rc >= 0);
+    zsys_debug ("fmq_client_test: subscribed to server root");
+    
+    //  Get a reference to the msgpipe
+    zsock_t *pipe = fmq_client_msgpipe (client);
+    
+    //  Create and populate file that will be shared
+    zfile_t *sfile = zfile_new ("./fmqserver", "test_file.txt");
+    assert (sfile);
+    rc = zfile_output (sfile);
+    assert (rc == 0);
+    const char *data = "This is a test file for FileMQ.\n\tThat's all...\n";
+    zchunk_t *chunk = zchunk_new ((const void *) data, strlen (data));
+    assert (chunk);
+    rc = zfile_write (sfile, chunk, 0);
+    assert (rc == 0);
+    zchunk_destroy (&chunk);
+    zfile_close (sfile);
+    zfile_restat (sfile);
+    char *sdigest = zfile_digest (sfile);
+    assert (sdigest);
+    zsys_info ("fmq_client_test: Server file digest %s", sdigest);
+    
+    //  Wait for notification of file update
+    zmsg_t *pipemsg = zmsg_recv ( (void *) pipe);
+    zmsg_print (pipemsg);
+    zmsg_destroy (&pipemsg);
+    
+    //  See if the server and client files match
+    zfile_t *cfile = zfile_new ("./fmqclient", "test_file.txt");
+    assert (cfile);
+    zfile_restat (cfile);
+    char *cdigest = zfile_digest (cfile);
+    assert (cdigest);
+    zsys_info ("fmq_client_test: Client file digest %s", cdigest);
+    assert (streq (sdigest, cdigest));
+    
+    //  Delete the file the server is sharing
+    zfile_remove (sfile);
+    zfile_destroy (&sfile);
+    
+    //  Wait for notification of file update
+    pipemsg = zmsg_recv ( (void *) pipe);
+    zmsg_print (pipemsg);
+    zmsg_destroy (&pipemsg);
+    
+    //  Kill the client
+    fmq_client_destroy (&client);
+    zsys_debug ("fmq_client_test: client destroyed");
+    
+    //  Kill the server
+    zactor_destroy (&server);
+    zsys_debug ("fmq_client_test: server destroyed");
+    
+    //  Delete the file the client has
+    zfile_remove (cfile);
+    zfile_destroy (&cfile);
+    
+    //  Delete the directory used by the server
+    rc = zsys_dir_delete ("./fmqserver");
+    if (rc == 0)
+        zsys_debug ("./fmqserver has been deleted");
+    else
+        zsys_error ("./fmqserver was not deleted");
+    
+    //  Delete the directory used by the client
+    rc = zsys_dir_delete ("./fmqclient");
+    if (rc == 0)
+        zsys_debug ("./fmqclient has been deleted");
+    else
+        zsys_error ("./fmqclient was not deleted");
+    
+

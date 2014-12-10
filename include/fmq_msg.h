@@ -1,5 +1,5 @@
 /*  =========================================================================
-    fmq_msg - work with FILEMQ messages
+    fmq_msg - The FileMQ Protocol
     
     Codec header for fmq_msg.
 
@@ -9,26 +9,16 @@
     statements. DO NOT MAKE ANY CHANGES YOU WISH TO KEEP. The correct places
     for commits are:
 
-    * The XML model used for this code generation: fmq_msg.xml
-    * The code generation script that built this file: zproto_codec_c
+     * The XML model used for this code generation: fmq_msg.xml, or
+     * The code generation script that built this file: zproto_codec_c
     ************************************************************************
-    Copyright (c) 1991-2012 iMatix Corporation -- http://www.imatix.com     
-    Copyright other contributors as noted in the AUTHORS file.              
-                                                                            
-    This file is part of FILEMQ, see http://filemq.org.                     
-                                                                            
-    This is free software; you can redistribute it and/or modify it under   
-    the terms of the GNU Lesser General Public License as published by the  
-    Free Software Foundation; either version 3 of the License, or (at your  
-    option) any later version.                                              
-                                                                            
-    This software is distributed in the hope that it will be useful, but    
-    WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTA-   
-    BILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General  
-    Public License for more details.                                        
-                                                                            
-    You should have received a copy of the GNU Lesser General Public License
-    along with this program. If not, see http://www.gnu.org/licenses/.      
+    Copyright (c) the Contributors as noted in the AUTHORS file.       
+    This file is part of FileMQ, a C implemenation of the protocol:    
+    https://github.com/danriegsecker/filemq2.                          
+                                                                       
+    This Source Code Form is subject to the terms of the Mozilla Public
+    License, v. 2.0. If a copy of the MPL was not distributed with this
+    file, You can obtain one at http://mozilla.org/MPL/2.0/.           
     =========================================================================
 */
 
@@ -44,9 +34,9 @@
     OHAI_OK - Server grants the client access
 
     ICANHAZ - Client subscribes to a path
-        path                string      Full path or path prefix
-        options             dictionary  Subscription options
-        cache               dictionary  File SHA-1 signatures
+        path                longstr     Full path or path prefix
+        options             hash        Subscription options
+        cache               hash        File SHA-1 signatures
 
     ICANHAZ_OK - Server confirms the subscription
 
@@ -57,26 +47,26 @@
     CHEEZBURGER - The server sends a file chunk
         sequence            number 8    File offset in bytes
         operation           number 1    Create=%d1 delete=%d2
-        filename            string      Relative name of file
+        filename            longstr     Relative name of file
         offset              number 8    File offset in bytes
         eof                 number 1    Last chunk in file?
-        headers             dictionary  File properties
+        headers             hash        File properties
         chunk               chunk       Data chunk
 
-    HUGZ - Client or server sends a heartbeat
+    HUGZ - Client sends a heartbeat
 
-    HUGZ_OK - Client or server answers a heartbeat
+    HUGZ_OK - Server answers a heartbeat
 
     KTHXBAI - Client closes the peering
 
     SRSLY - Server refuses client due to access rights
-        reason              string      Printable explanation
+        reason              string      Printable explanation, 255 characters
 
     RTFM - Server tells client it sent an invalid message
-        reason              string      Printable explanation
+        reason              string      Printable explanation, 255 characters
 */
 
-#define FMQ_MSG_VERSION                     1
+#define FMQ_MSG_VERSION                     2
 #define FMQ_MSG_FILE_CREATE                 1
 #define FMQ_MSG_FILE_DELETE                 2
 
@@ -92,189 +82,36 @@
 #define FMQ_MSG_SRSLY                       128
 #define FMQ_MSG_RTFM                        129
 
+#include <czmq.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 //  Opaque class structure
+#ifndef FMQ_MSG_T_DEFINED
 typedef struct _fmq_msg_t fmq_msg_t;
+#define FMQ_MSG_T_DEFINED
+#endif
 
 //  @interface
-//  Create a new fmq_msg
+//  Create a new empty fmq_msg
 fmq_msg_t *
-    fmq_msg_new (int id);
+    fmq_msg_new (void);
 
-//  Destroy the fmq_msg
+//  Destroy a fmq_msg instance
 void
     fmq_msg_destroy (fmq_msg_t **self_p);
 
-//  Parse a fmq_msg from zmsg_t. Returns a new object, or NULL if
-//  the message could not be parsed, or was NULL. Destroys msg and 
-//  nullifies the msg reference.
-fmq_msg_t *
-    fmq_msg_decode (zmsg_t **msg_p);
-
-//  Encode fmq_msg into zmsg and destroy it. Returns a newly created
-//  object or NULL if error. Use when not in control of sending the message.
-zmsg_t *
-    fmq_msg_encode (fmq_msg_t **self_p);
-
-//  Receive and parse a fmq_msg from the socket. Returns new object, 
-//  or NULL if error. Will block if there's no message waiting.
-fmq_msg_t *
-    fmq_msg_recv (void *input);
-
-//  Receive and parse a fmq_msg from the socket. Returns new object, 
-//  or NULL either if there was no input waiting, or the recv was interrupted.
-fmq_msg_t *
-    fmq_msg_recv_nowait (void *input);
-
-//  Send the fmq_msg to the output, and destroy it
+//  Receive a fmq_msg from the socket. Returns 0 if OK, -1 if
+//  there was an error. Blocks if there is no message waiting.
 int
-    fmq_msg_send (fmq_msg_t **self_p, void *output);
+    fmq_msg_recv (fmq_msg_t *self, zsock_t *input);
 
-//  Send the fmq_msg to the output, and do not destroy it
+//  Send the fmq_msg to the output socket, does not destroy it
 int
-    fmq_msg_send_again (fmq_msg_t *self, void *output);
-
-//  Encode the OHAI 
-zmsg_t *
-    fmq_msg_encode_ohai (
-);
-
-//  Encode the OHAI_OK 
-zmsg_t *
-    fmq_msg_encode_ohai_ok (
-);
-
-//  Encode the ICANHAZ 
-zmsg_t *
-    fmq_msg_encode_icanhaz (
-        const char *path,
-        zhash_t *options,
-        zhash_t *cache);
-
-//  Encode the ICANHAZ_OK 
-zmsg_t *
-    fmq_msg_encode_icanhaz_ok (
-);
-
-//  Encode the NOM 
-zmsg_t *
-    fmq_msg_encode_nom (
-        uint64_t credit,
-        uint64_t sequence);
-
-//  Encode the CHEEZBURGER 
-zmsg_t *
-    fmq_msg_encode_cheezburger (
-        uint64_t sequence,
-        byte operation,
-        const char *filename,
-        uint64_t offset,
-        byte eof,
-        zhash_t *headers,
-        zchunk_t *chunk);
-
-//  Encode the HUGZ 
-zmsg_t *
-    fmq_msg_encode_hugz (
-);
-
-//  Encode the HUGZ_OK 
-zmsg_t *
-    fmq_msg_encode_hugz_ok (
-);
-
-//  Encode the KTHXBAI 
-zmsg_t *
-    fmq_msg_encode_kthxbai (
-);
-
-//  Encode the SRSLY 
-zmsg_t *
-    fmq_msg_encode_srsly (
-        const char *reason);
-
-//  Encode the RTFM 
-zmsg_t *
-    fmq_msg_encode_rtfm (
-        const char *reason);
-
-
-//  Send the OHAI to the output in one step
-//  WARNING, this call will fail if output is of type ZMQ_ROUTER.
-int
-    fmq_msg_send_ohai (void *output);
+    fmq_msg_send (fmq_msg_t *self, zsock_t *output);
     
-//  Send the OHAI_OK to the output in one step
-//  WARNING, this call will fail if output is of type ZMQ_ROUTER.
-int
-    fmq_msg_send_ohai_ok (void *output);
-    
-//  Send the ICANHAZ to the output in one step
-//  WARNING, this call will fail if output is of type ZMQ_ROUTER.
-int
-    fmq_msg_send_icanhaz (void *output,
-        const char *path,
-        zhash_t *options,
-        zhash_t *cache);
-    
-//  Send the ICANHAZ_OK to the output in one step
-//  WARNING, this call will fail if output is of type ZMQ_ROUTER.
-int
-    fmq_msg_send_icanhaz_ok (void *output);
-    
-//  Send the NOM to the output in one step
-//  WARNING, this call will fail if output is of type ZMQ_ROUTER.
-int
-    fmq_msg_send_nom (void *output,
-        uint64_t credit,
-        uint64_t sequence);
-    
-//  Send the CHEEZBURGER to the output in one step
-//  WARNING, this call will fail if output is of type ZMQ_ROUTER.
-int
-    fmq_msg_send_cheezburger (void *output,
-        uint64_t sequence,
-        byte operation,
-        const char *filename,
-        uint64_t offset,
-        byte eof,
-        zhash_t *headers,
-        zchunk_t *chunk);
-    
-//  Send the HUGZ to the output in one step
-//  WARNING, this call will fail if output is of type ZMQ_ROUTER.
-int
-    fmq_msg_send_hugz (void *output);
-    
-//  Send the HUGZ_OK to the output in one step
-//  WARNING, this call will fail if output is of type ZMQ_ROUTER.
-int
-    fmq_msg_send_hugz_ok (void *output);
-    
-//  Send the KTHXBAI to the output in one step
-//  WARNING, this call will fail if output is of type ZMQ_ROUTER.
-int
-    fmq_msg_send_kthxbai (void *output);
-    
-//  Send the SRSLY to the output in one step
-//  WARNING, this call will fail if output is of type ZMQ_ROUTER.
-int
-    fmq_msg_send_srsly (void *output,
-        const char *reason);
-    
-//  Send the RTFM to the output in one step
-//  WARNING, this call will fail if output is of type ZMQ_ROUTER.
-int
-    fmq_msg_send_rtfm (void *output,
-        const char *reason);
-    
-//  Duplicate the fmq_msg message
-fmq_msg_t *
-    fmq_msg_dup (fmq_msg_t *self);
-
 //  Print contents of message to stdout
 void
     fmq_msg_print (fmq_msg_t *self);
@@ -297,9 +134,9 @@ const char *
 const char *
     fmq_msg_path (fmq_msg_t *self);
 void
-    fmq_msg_set_path (fmq_msg_t *self, const char *format, ...);
+    fmq_msg_set_path (fmq_msg_t *self, const char *value);
 
-//  Get/set the options field
+//  Get a copy of the options field
 zhash_t *
     fmq_msg_options (fmq_msg_t *self);
 //  Get the options field and transfer ownership to caller
@@ -307,22 +144,9 @@ zhash_t *
     fmq_msg_get_options (fmq_msg_t *self);
 //  Set the options field, transferring ownership from caller
 void
-    fmq_msg_set_options (fmq_msg_t *self, zhash_t **options_p);
-    
-//  Get/set a value in the options dictionary
-const char *
-    fmq_msg_options_string (fmq_msg_t *self,
-        const char *key, const char *default_value);
-uint64_t
-    fmq_msg_options_number (fmq_msg_t *self,
-        const char *key, uint64_t default_value);
-void
-    fmq_msg_options_insert (fmq_msg_t *self,
-        const char *key, const char *format, ...);
-size_t
-    fmq_msg_options_size (fmq_msg_t *self);
+    fmq_msg_set_options (fmq_msg_t *self, zhash_t **hash_p);
 
-//  Get/set the cache field
+//  Get a copy of the cache field
 zhash_t *
     fmq_msg_cache (fmq_msg_t *self);
 //  Get the cache field and transfer ownership to caller
@@ -330,20 +154,7 @@ zhash_t *
     fmq_msg_get_cache (fmq_msg_t *self);
 //  Set the cache field, transferring ownership from caller
 void
-    fmq_msg_set_cache (fmq_msg_t *self, zhash_t **cache_p);
-    
-//  Get/set a value in the cache dictionary
-const char *
-    fmq_msg_cache_string (fmq_msg_t *self,
-        const char *key, const char *default_value);
-uint64_t
-    fmq_msg_cache_number (fmq_msg_t *self,
-        const char *key, uint64_t default_value);
-void
-    fmq_msg_cache_insert (fmq_msg_t *self,
-        const char *key, const char *format, ...);
-size_t
-    fmq_msg_cache_size (fmq_msg_t *self);
+    fmq_msg_set_cache (fmq_msg_t *self, zhash_t **hash_p);
 
 //  Get/set the credit field
 uint64_t
@@ -367,7 +178,7 @@ void
 const char *
     fmq_msg_filename (fmq_msg_t *self);
 void
-    fmq_msg_set_filename (fmq_msg_t *self, const char *format, ...);
+    fmq_msg_set_filename (fmq_msg_t *self, const char *value);
 
 //  Get/set the offset field
 uint64_t
@@ -381,7 +192,7 @@ byte
 void
     fmq_msg_set_eof (fmq_msg_t *self, byte eof);
 
-//  Get/set the headers field
+//  Get a copy of the headers field
 zhash_t *
     fmq_msg_headers (fmq_msg_t *self);
 //  Get the headers field and transfer ownership to caller
@@ -389,20 +200,7 @@ zhash_t *
     fmq_msg_get_headers (fmq_msg_t *self);
 //  Set the headers field, transferring ownership from caller
 void
-    fmq_msg_set_headers (fmq_msg_t *self, zhash_t **headers_p);
-    
-//  Get/set a value in the headers dictionary
-const char *
-    fmq_msg_headers_string (fmq_msg_t *self,
-        const char *key, const char *default_value);
-uint64_t
-    fmq_msg_headers_number (fmq_msg_t *self,
-        const char *key, uint64_t default_value);
-void
-    fmq_msg_headers_insert (fmq_msg_t *self,
-        const char *key, const char *format, ...);
-size_t
-    fmq_msg_headers_size (fmq_msg_t *self);
+    fmq_msg_set_headers (fmq_msg_t *self, zhash_t **hash_p);
 
 //  Get a copy of the chunk field
 zchunk_t *
@@ -418,7 +216,7 @@ void
 const char *
     fmq_msg_reason (fmq_msg_t *self);
 void
-    fmq_msg_set_reason (fmq_msg_t *self, const char *format, ...);
+    fmq_msg_set_reason (fmq_msg_t *self, const char *value);
 
 //  Self test of this class
 int
