@@ -133,6 +133,7 @@ LIBS="${PREVIOUS_LIBS}"
 
 # Platform specific checks
 filemq_on_mingw32="no"
+filemq_on_cygwin="no"
 filemq_on_android="no"
 
 # Host specific checks
@@ -224,6 +225,7 @@ case "${host_os}" in
         # Define on Cygwin to enable all library features
         CPPFLAGS="-D_GNU_SOURCE $CPPFLAGS"
         AC_DEFINE(FILEMQ_HAVE_CYGWIN, 1, [Have Cygwin])
+        filemq_on_cygwin="yes"
         ;;
     *)
         AC_MSG_ERROR([unsupported system: ${host_os}.])
@@ -258,11 +260,32 @@ if test "x$GCC" = "xyes"; then
     CPPFLAGS="-pedantic -Werror -Wall -Wc++-compat ${CPPFLAGS}"
 fi
 
+AM_CONDITIONAL(ENABLE_SHARED, test "x$enable_shared" = "xyes")
 AM_CONDITIONAL(ON_MINGW, test "x$filemq_on_mingw32" = "xyes")
+AM_CONDITIONAL(ON_CYGWIN, test "x$filemq_on_cygwin" = "xyes")
 AM_CONDITIONAL(ON_ANDROID, test "x$filemq_on_android" = "xyes")
 AM_CONDITIONAL(INSTALL_MAN, test "x$filemq_install_man" = "xyes")
 AM_CONDITIONAL(BUILD_DOC, test "x$filemq_build_doc" = "xyes")
-AM_CONDITIONAL([ENABLE_LABS], [test "x$enable_labs" = "xyes"])
+
+# Check for filemq_server intent
+AC_ARG_WITH([filemq_server],
+    AS_HELP_STRING([--with-filemq_server],
+        [Compile and install the filemq_server program [default=yes].]),
+    [with_filemq_server=$withval],
+    [with_filemq_server=yes])
+
+AM_CONDITIONAL([WITH_FILEMQ_SERVER], [test x$with_filemq_server != xno])
+AM_COND_IF([WITH_FILEMQ_SERVER], [AC_MSG_NOTICE([WITH_FILEMQ_SERVER defined])])
+
+# Check for filemq_client intent
+AC_ARG_WITH([filemq_client],
+    AS_HELP_STRING([--with-filemq_client],
+        [Compile and install the filemq_client program [default=yes].]),
+    [with_filemq_client=$withval],
+    [with_filemq_client=yes])
+
+AM_CONDITIONAL([WITH_FILEMQ_CLIENT], [test x$with_filemq_client != xno])
+AM_COND_IF([WITH_FILEMQ_CLIENT], [AC_MSG_NOTICE([WITH_FILEMQ_CLIENT defined])])
 
 # Checks for library functions.
 AC_TYPE_SIGNAL
@@ -275,7 +298,10 @@ AC_ARG_WITH([pkgconfigdir], AS_HELP_STRING([--with-pkgconfigdir=PATH],
 AC_SUBST([pkgconfigdir])
 
 # Specify output files
-AC_CONFIG_FILES([Makefile doc/Makefile src/libfilemq.pc])
+AC_CONFIG_FILES([Makefile
+                 doc/Makefile
+                 src/libfilemq.pc
+                 ])
 AC_OUTPUT
 
 ################################################################################

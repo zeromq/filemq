@@ -19,6 +19,8 @@
 #ifndef __filemq_library_H_INCLUDED__
 #define __filemq_library_H_INCLUDED__
 
+//  Set up environment for the application
+
 //  External dependencies
 #include <czmq.h>
 
