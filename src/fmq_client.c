@@ -541,7 +541,7 @@ fmq_client_test (bool verbose)
     zchunk_destroy (&chunk);
     zfile_close (sfile);
     zfile_restat (sfile);
-    char *sdigest = zfile_digest (sfile);
+    const char *sdigest = zfile_digest (sfile);
     assert (sdigest);
     zsys_info ("fmq_client_test: Server file digest %s", sdigest);
 
@@ -554,7 +554,7 @@ fmq_client_test (bool verbose)
     zfile_t *cfile = zfile_new ("./fmqclient", "test_file.txt");
     assert (cfile);
     zfile_restat (cfile);
-    char *cdigest = zfile_digest (cfile);
+    const char *cdigest = zfile_digest (cfile);
     assert (cdigest);
     zsys_info ("fmq_client_test: Client file digest %s", cdigest);
     assert (streq (sdigest, cdigest));
