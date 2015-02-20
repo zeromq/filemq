@@ -484,7 +484,7 @@ fmq_client_test (bool verbose)
     zactor_t *server = zactor_new (fmq_server, "fmq_server");
     if (verbose)
         zstr_send (server, "VERBOSE");
-    zstr_sendx (server, "BIND", "ipc://@/filemq", NULL);
+    zstr_sendx (server, "BIND", "ipc://filemq", NULL);
 
     //  Create directories used for the test.
     zsys_debug ("attempting to create directory");
@@ -511,7 +511,7 @@ fmq_client_test (bool verbose)
     zstr_free (&response);
 
     //  Create the client
-    fmq_client_t *client = fmq_client_new ("ipc://@/filemq", 5000);
+    fmq_client_t *client = fmq_client_new ("ipc://filemq", 5000);
     assert (client);
     if (verbose)
         fmq_client_verbose (client);
