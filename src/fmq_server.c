@@ -692,12 +692,12 @@ fmq_server_test (bool verbose)
     zactor_t *server = zactor_new (fmq_server, "server");
     if (verbose)
         zstr_send (server, "VERBOSE");
-    zstr_sendx (server, "BIND", "ipc://@/fmq_server", NULL);
+    zstr_sendx (server, "BIND", "ipc://fmq_server", NULL);
 
     zsock_t *client = zsock_new (ZMQ_DEALER);
     assert (client);
     zsock_set_rcvtimeo (client, 2000);
-    zsock_connect (client, "ipc://@/fmq_server");
+    zsock_connect (client, "ipc://fmq_server");
 
     //  TODO: fill this out
     fmq_msg_t *message = fmq_msg_new ();
