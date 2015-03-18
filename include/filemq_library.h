@@ -16,8 +16,8 @@
     =========================================================================
 */
 
-#ifndef __filemq_library_H_INCLUDED__
-#define __filemq_library_H_INCLUDED__
+#ifndef filemq_library_H_INCLUDED
+#define filemq_library_H_INCLUDED
 
 //  Set up environment for the application
 

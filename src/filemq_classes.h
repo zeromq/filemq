@@ -15,8 +15,8 @@
     =========================================================================
 */
 
-#ifndef __FILEMQ_CLASSES_H_INCLUDED__
-#define __FILEMQ_CLASSES_H_INCLUDED__
+#ifndef FILEMQ_CLASSES_H_INCLUDED
+#define FILEMQ_CLASSES_H_INCLUDED
 
 //  External API
 #include "../include/filemq.h"
