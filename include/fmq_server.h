@@ -20,8 +20,10 @@
     =========================================================================
 */
 
-#ifndef __FMQ_SERVER_H_INCLUDED__
-#define __FMQ_SERVER_H_INCLUDED__
+#ifndef FMQ_SERVER_H_INCLUDED
+#define FMQ_SERVER_H_INCLUDED
+
+#include <czmq.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -58,12 +60,16 @@ extern "C" {
 //  Specify configuration file to load, overwriting any previous loaded
 //  configuration file or options:
 //
-//      zstr_sendx (fmq_server, "CONFIGURE", filename, NULL);
+//      zstr_sendx (fmq_server, "LOAD", filename, NULL);
 //
 //  Set configuration path value:
 //
 //      zstr_sendx (fmq_server, "SET", path, value, NULL);
 //    
+//  Save configuration data to config file on disk:
+//
+//      zstr_sendx (fmq_server, "SAVE", filename, NULL);
+//
 //  Send zmsg_t instance to fmq_server:
 //
 //      zactor_send (fmq_server, &msg);

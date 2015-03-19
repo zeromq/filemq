@@ -38,21 +38,33 @@ struct _fmq_msg_t {
     int id;                             //  fmq_msg message ID
     byte *needle;                       //  Read/write pointer for serialization
     byte *ceiling;                      //  Valid upper limit for read pointer
-    char *path;                         //  Full path or path prefix
-    zhash_t *options;                   //  Subscription options
-    size_t options_bytes;               //  Size of dictionary content
-    zhash_t *cache;                     //  File SHA-1 signatures
-    size_t cache_bytes;                 //  Size of dictionary content
-    uint64_t credit;                    //  Credit, in bytes
-    uint64_t sequence;                  //  Chunk sequence, 0 and up
-    byte operation;                     //  Create=%d1 delete=%d2
-    char *filename;                     //  Relative name of file
-    uint64_t offset;                    //  File offset in bytes
-    byte eof;                           //  Last chunk in file?
-    zhash_t *headers;                   //  File properties
-    size_t headers_bytes;               //  Size of dictionary content
-    zchunk_t *chunk;                    //  Data chunk
-    char reason [256];                  //  Printable explanation, 255 characters
+    /* Full path or path prefix  */
+    char *path;
+    /* Subscription options  */
+    zhash_t *options;
+    size_t options_bytes;               //  Size of hash content
+    /* File SHA-1 signatures  */
+    zhash_t *cache;
+    size_t cache_bytes;                 //  Size of hash content
+    /* Credit, in bytes  */
+    uint64_t credit;
+    /* Chunk sequence, 0 and up  */
+    uint64_t sequence;
+    /* Create=%d1 delete=%d2  */
+    byte operation;
+    /* Relative name of file  */
+    char *filename;
+    /* File offset in bytes  */
+    uint64_t offset;
+    /* Last chunk in file?  */
+    byte eof;
+    /* File properties  */
+    zhash_t *headers;
+    size_t headers_bytes;               //  Size of hash content
+    /* Data chunk     */
+    zchunk_t *chunk;
+    /* Printable explanation, 255 characters  */
+    char reason [256];
 };
 
 //  --------------------------------------------------------------------------
@@ -312,7 +324,8 @@ fmq_msg_recv (fmq_msg_t *self, zsock_t *input)
                 self->options = zhash_new ();
                 zhash_autofree (self->options);
                 while (hash_size--) {
-                    char key [256], *value = NULL;
+                    char key [256];
+                    char *value = NULL;
                     GET_STRING (key);
                     GET_LONGSTR (value);
                     zhash_insert (self->options, key, value);
@@ -325,7 +338,8 @@ fmq_msg_recv (fmq_msg_t *self, zsock_t *input)
                 self->cache = zhash_new ();
                 zhash_autofree (self->cache);
                 while (hash_size--) {
-                    char key [256], *value = NULL;
+                    char key [256];
+                    char *value = NULL;
                     GET_STRING (key);
                     GET_LONGSTR (value);
                     zhash_insert (self->cache, key, value);
@@ -354,7 +368,8 @@ fmq_msg_recv (fmq_msg_t *self, zsock_t *input)
                 self->headers = zhash_new ();
                 zhash_autofree (self->headers);
                 while (hash_size--) {
-                    char key [256], *value = NULL;
+                    char key [256];
+                    char *value = NULL;
                     GET_STRING (key);
                     GET_LONGSTR (value);
                     zhash_insert (self->headers, key, value);
@@ -368,6 +383,7 @@ fmq_msg_recv (fmq_msg_t *self, zsock_t *input)
                     zsys_warning ("fmq_msg: chunk is missing data");
                     goto malformed;
                 }
+                zchunk_destroy (&self->chunk);
                 self->chunk = zchunk_new (self->needle, chunk_size);
                 self->needle += chunk_size;
             }
@@ -516,7 +532,7 @@ fmq_msg_send (fmq_msg_t *self, zsock_t *output)
                 }
             }
             else
-                PUT_NUMBER4 (0);    //  Empty dictionary
+                PUT_NUMBER4 (0);    //  Empty hash
             if (self->cache) {
                 PUT_NUMBER4 (zhash_size (self->cache));
                 char *item = (char *) zhash_first (self->cache);
@@ -527,7 +543,7 @@ fmq_msg_send (fmq_msg_t *self, zsock_t *output)
                 }
             }
             else
-                PUT_NUMBER4 (0);    //  Empty dictionary
+                PUT_NUMBER4 (0);    //  Empty hash
             break;
 
         case FMQ_MSG_NOM:
@@ -555,7 +571,7 @@ fmq_msg_send (fmq_msg_t *self, zsock_t *output)
                 }
             }
             else
-                PUT_NUMBER4 (0);    //  Empty dictionary
+                PUT_NUMBER4 (0);    //  Empty hash
             if (self->chunk) {
                 PUT_NUMBER4 (zchunk_size (self->chunk));
                 memcpy (self->needle,
@@ -1069,6 +1085,9 @@ int
 fmq_msg_test (bool verbose)
 {
     printf (" * fmq_msg: ");
+
+    //  Silence an "unused" warning by "using" the verbose variable
+    if (verbose) {;}
 
     //  @selftest
     //  Simple create/destroy test

@@ -9,12 +9,15 @@ int main (int argc, char *argv [])
     }
 
     //  Create the client
-    fmq_client_t *client = fmq_client_new ("tcp://localhost:5670", 1000);
+    fmq_client_t *client = fmq_client_new ();
     assert (client);
-    fmq_client_verbose (client);
+    fmq_client_verbose = 1;
+
+    int rc = fmq_client_connect (client, "tcp://localhost:5670", 1000);
+    assert (rc == 0);
 
     //  Set the clients storage location
-    int rc = fmq_client_set_inbox (client, argv [1]);
+    rc = fmq_client_set_inbox (client, argv [1]);
     assert (rc >= 0);
 
     //  Subscribe to the server's root
