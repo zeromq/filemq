@@ -22,8 +22,8 @@
     =========================================================================
 */
 
-#ifndef __FMQ_MSG_H_INCLUDED__
-#define __FMQ_MSG_H_INCLUDED__
+#ifndef FMQ_MSG_H_INCLUDED
+#define FMQ_MSG_H_INCLUDED
 
 /*  These are the fmq_msg messages:
 
