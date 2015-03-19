@@ -21,7 +21,7 @@
         Start up the client, connect to the server, and initiate a conversation
         with the server. This is a short lived state and will either error on
         connection, e.g. bad endpoint, or it will move on to connecting.
-        <event name = "constructor" next = "connecting">
+        <event name = "connect" next = "connecting">
             <!-- Actually connect dealer socket to the server -->
             <action name = "connect to server endpoint" />
             <!-- Tell the engine to notify if the server is not heard from -->
@@ -169,9 +169,9 @@
 
     <!-- API methods -->
 
-    <method name = "constructor" return = "status">
+    <method name = "connect" return = "status">
     Connect to server endpoint, with specified timeout in msecs (zero means
-    wait forever). Constructor succeeds if connection is successful.
+    wait forever). Connect succeeds if connection is successful.
         <field name = "endpoint" type = "string" />
         <field name = "timeout" type = "number" size = "4" />
         <accept reply = "SUCCESS" />

@@ -20,8 +20,10 @@
     =========================================================================
 */
 
-#ifndef __FMQ_CLIENT_H_INCLUDED__
-#define __FMQ_CLIENT_H_INCLUDED__
+#ifndef FMQ_CLIENT_H_INCLUDED
+#define FMQ_CLIENT_H_INCLUDED
+
+#include <czmq.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -34,19 +36,14 @@ typedef struct _fmq_client_t fmq_client_t;
 #endif
 
 //  @interface
-//  Create a new fmq_client
-//  Connect to server endpoint, with specified timeout in msecs (zero means wait    
-//  forever). Constructor succeeds if connection is successful.                     
+//  Create a new fmq_client, return the reference if successful, or NULL
+//  if construction failed due to lack of available memory.
 fmq_client_t *
-    fmq_client_new (const char *endpoint, int timeout);
+    fmq_client_new (void);
 
-//  Destroy the fmq_client
+//  Destroy the fmq_client and free all memory used by the object.
 void
     fmq_client_destroy (fmq_client_t **self_p);
-
-//  Enable verbose logging of client activity
-void
-    fmq_client_verbose (fmq_client_t *self);
 
 //  Return actor, when caller wants to work with multiple actors and/or
 //  input sockets asynchronously.
@@ -61,19 +58,25 @@ zactor_t *
 zsock_t *
     fmq_client_msgpipe (fmq_client_t *self);
 
+//  Connect to server endpoint, with specified timeout in msecs (zero means wait    
+//  forever). Connect succeeds if connection is successful.                         
+//  Returns >= 0 if successful, -1 if interrupted.
+uint8_t 
+    fmq_client_connect (fmq_client_t *self, const char *endpoint, uint32_t timeout);
+
 //  Subscribe to a directory on the server, directory specified by path.            
 //  Returns >= 0 if successful, -1 if interrupted.
-int
+uint8_t 
     fmq_client_subscribe (fmq_client_t *self, const char *path);
 
 //  Tell the api where to store files. This should be done before subscribing to    
 //  anything.                                                                       
 //  Returns >= 0 if successful, -1 if interrupted.
-int
+uint8_t 
     fmq_client_set_inbox (fmq_client_t *self, const char *path);
 
 //  Return last received status
-int 
+uint8_t 
     fmq_client_status (fmq_client_t *self);
 
 //  Return last received reason
@@ -83,6 +86,11 @@ const char *
 //  Self test of this class
 void
     fmq_client_test (bool verbose);
+
+//  To enable verbose tracing (animation) of fmq_client instances, set
+//  this to true. This lets you trace from and including construction.
+extern volatile int
+    fmq_client_verbose;
 //  @end
 
 #ifdef __cplusplus

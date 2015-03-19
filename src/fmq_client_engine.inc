@@ -35,7 +35,7 @@ typedef enum {
 
 typedef enum {
     NULL_event = 0,
-    constructor_event = 1,
+    connect_event = 1,
     connect_error_event = 2,
     ohai_ok_event = 3,
     expired_event = 4,
@@ -69,7 +69,7 @@ s_state_name [] = {
 static char *
 s_event_name [] = {
     "(NONE)",
-    "constructor",
+    "connect",
     "connect_error",
     "OHAI_OK",
     "expired",
@@ -87,7 +87,7 @@ s_event_name [] = {
     "bombcmd",
     "bombmsg"
 };
- 
+
 
 //  ---------------------------------------------------------------------------
 //  Context for the client. This embeds the application-level client context
@@ -97,7 +97,7 @@ s_event_name [] = {
 //  These are the different method arguments we manage automatically
 struct _client_args_t {
     char *endpoint;
-    int timeout;
+    uint32_t timeout;
     char *path;
 };
 
@@ -110,6 +110,7 @@ typedef struct {
     fmq_msg_t *message;         //  Message received or sent
     client_args_t args;         //  Method arguments structure
     bool terminated;            //  True if client is shutdown
+    bool fsm_stopped;           //  "terminate" action called
     size_t timeout;             //  inactivity timeout, msecs
     state_t state;              //  Current state
     event_t event;              //  Current event
@@ -118,7 +119,6 @@ typedef struct {
     int expiry_timer;           //  zloop timer for timeouts
     int wakeup_timer;           //  zloop timer for alarms
     event_t wakeup_event;       //  Wake up with this event
-    bool verbose;               //  Verbose logging enabled?
 } s_client_t;
 
 static int
@@ -175,6 +175,10 @@ static void
     sync_server_not_present (client_t *self);
 static void
     async_server_not_present (client_t *self);
+
+//  Global tracing/animation indicator; we can't use a client method as
+//  that only works after construction (which we often want to trace).
+volatile int fmq_client_verbose = false;
 
 //  Create a new client connection
 
@@ -360,7 +364,7 @@ s_protocol_event (s_client_t *self, fmq_msg_t *message)
 
 
 //  Execute state machine as long as we have events; if event is NULL_event,
-//  or state machine is terminated, do nothing.
+//  or state machine is stopped, do nothing.
 
 static void
 s_client_execute (s_client_t *self, event_t event)
@@ -371,32 +375,34 @@ s_client_execute (s_client_t *self, event_t event)
         zloop_timer_end (self->loop, self->wakeup_timer);
         self->wakeup_timer = 0;
     }
-    while (!self->terminated && self->next_event != NULL_event) {
+    while (!self->terminated                    //  Actor is dying
+        && !self->fsm_stopped                   //  FSM has finished
+        && self->next_event != NULL_event) {
         self->event = self->next_event;
         self->next_event = NULL_event;
         self->exception = NULL_event;
-        if (self->verbose) {
+        if (fmq_client_verbose) {
             zsys_debug ("fmq_client: %s:", s_state_name [self->state]);
             zsys_debug ("fmq_client:        %s", s_event_name [self->event]);
         }
         switch (self->state) {
             case start_state:
-                if (self->event == constructor_event) {
+                if (self->event == connect_event) {
                     if (!self->exception) {
                         //  connect to server endpoint
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ connect to server endpoint");
                         connect_to_server_endpoint (&self->client);
                     }
                     if (!self->exception) {
                         //  use connect timeout
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ use connect timeout");
                         use_connect_timeout (&self->client);
                     }
                     if (!self->exception) {
                         //  send OHAI
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ send OHAI");
                         fmq_msg_set_id (self->message, FMQ_MSG_OHAI);
                         fmq_msg_send (self->message, self->dealer);
@@ -408,7 +414,7 @@ s_client_execute (s_client_t *self, event_t event)
                 if (self->event == connect_error_event) {
                     if (!self->exception) {
                         //  handle connect error
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ handle connect error");
                         handle_connect_error (&self->client);
                     }
@@ -417,49 +423,49 @@ s_client_execute (s_client_t *self, event_t event)
                 if (self->event == srsly_event) {
                     if (!self->exception) {
                         //  stayin alive
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ stayin alive");
                         stayin_alive (&self->client);
                     }
                     if (!self->exception) {
                         //  log access denied
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ log access denied");
                         log_access_denied (&self->client);
                     }
                     if (!self->exception) {
                         //  terminate
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ terminate");
-                        self->terminated = true;
+                        self->fsm_stopped = true;
                     }
                 }
                 else
                 if (self->event == rtfm_event) {
                     if (!self->exception) {
                         //  stayin alive
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ stayin alive");
                         stayin_alive (&self->client);
                     }
                     if (!self->exception) {
                         //  log invalid message
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ log invalid message");
                         log_invalid_message (&self->client);
                     }
                     if (!self->exception) {
                         //  terminate
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ terminate");
-                        self->terminated = true;
+                        self->fsm_stopped = true;
                     }
                 }
                 else
                 if (self->event == hugz_ok_event) {
                     if (!self->exception) {
                         //  stayin alive
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ stayin alive");
                         stayin_alive (&self->client);
                     }
@@ -468,37 +474,37 @@ s_client_execute (s_client_t *self, event_t event)
                 if (self->event == bombcmd_event) {
                     if (!self->exception) {
                         //  sync server not present
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ sync server not present");
                         sync_server_not_present (&self->client);
                     }
                     if (!self->exception) {
                         //  terminate
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ terminate");
-                        self->terminated = true;
+                        self->fsm_stopped = true;
                     }
                 }
                 else
                 if (self->event == bombmsg_event) {
                     if (!self->exception) {
                         //  async server not present
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ async server not present");
                         async_server_not_present (&self->client);
                     }
                     if (!self->exception) {
                         //  terminate
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ terminate");
-                        self->terminated = true;
+                        self->fsm_stopped = true;
                     }
                 }
                 else {
                     //  Handle unexpected protocol events
                     if (!self->exception) {
                         //  log protocol error
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ log protocol error");
                         log_protocol_error (&self->client);
                     }
@@ -509,13 +515,13 @@ s_client_execute (s_client_t *self, event_t event)
                 if (self->event == ohai_ok_event) {
                     if (!self->exception) {
                         //  stayin alive
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ stayin alive");
                         stayin_alive (&self->client);
                     }
                     if (!self->exception) {
                         //  connected to server
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ connected to server");
                         connected_to_server (&self->client);
                     }
@@ -526,7 +532,7 @@ s_client_execute (s_client_t *self, event_t event)
                 if (self->event == expired_event) {
                     if (!self->exception) {
                         //  handle connect timeout
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ handle connect timeout");
                         handle_connect_timeout (&self->client);
                     }
@@ -535,49 +541,49 @@ s_client_execute (s_client_t *self, event_t event)
                 if (self->event == srsly_event) {
                     if (!self->exception) {
                         //  stayin alive
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ stayin alive");
                         stayin_alive (&self->client);
                     }
                     if (!self->exception) {
                         //  log access denied
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ log access denied");
                         log_access_denied (&self->client);
                     }
                     if (!self->exception) {
                         //  terminate
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ terminate");
-                        self->terminated = true;
+                        self->fsm_stopped = true;
                     }
                 }
                 else
                 if (self->event == rtfm_event) {
                     if (!self->exception) {
                         //  stayin alive
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ stayin alive");
                         stayin_alive (&self->client);
                     }
                     if (!self->exception) {
                         //  log invalid message
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ log invalid message");
                         log_invalid_message (&self->client);
                     }
                     if (!self->exception) {
                         //  terminate
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ terminate");
-                        self->terminated = true;
+                        self->fsm_stopped = true;
                     }
                 }
                 else
                 if (self->event == hugz_ok_event) {
                     if (!self->exception) {
                         //  stayin alive
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ stayin alive");
                         stayin_alive (&self->client);
                     }
@@ -586,37 +592,37 @@ s_client_execute (s_client_t *self, event_t event)
                 if (self->event == bombcmd_event) {
                     if (!self->exception) {
                         //  sync server not present
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ sync server not present");
                         sync_server_not_present (&self->client);
                     }
                     if (!self->exception) {
                         //  terminate
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ terminate");
-                        self->terminated = true;
+                        self->fsm_stopped = true;
                     }
                 }
                 else
                 if (self->event == bombmsg_event) {
                     if (!self->exception) {
                         //  async server not present
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ async server not present");
                         async_server_not_present (&self->client);
                     }
                     if (!self->exception) {
                         //  terminate
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ terminate");
-                        self->terminated = true;
+                        self->fsm_stopped = true;
                     }
                 }
                 else {
                     //  Handle unexpected protocol events
                     if (!self->exception) {
                         //  log protocol error
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ log protocol error");
                         log_protocol_error (&self->client);
                     }
@@ -627,7 +633,7 @@ s_client_execute (s_client_t *self, event_t event)
                 if (self->event == set_inbox_event) {
                     if (!self->exception) {
                         //  setup inbox
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ setup inbox");
                         setup_inbox (&self->client);
                     }
@@ -636,13 +642,13 @@ s_client_execute (s_client_t *self, event_t event)
                 if (self->event == subscribe_event) {
                     if (!self->exception) {
                         //  format icanhaz command
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ format icanhaz command");
                         format_icanhaz_command (&self->client);
                     }
                     if (!self->exception) {
                         //  send ICANHAZ
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ send ICANHAZ");
                         fmq_msg_set_id (self->message, FMQ_MSG_ICANHAZ);
                         fmq_msg_send (self->message, self->dealer);
@@ -654,29 +660,29 @@ s_client_execute (s_client_t *self, event_t event)
                 if (self->event == destructor_event) {
                     if (!self->exception) {
                         //  send KTHXBAI
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ send KTHXBAI");
                         fmq_msg_set_id (self->message, FMQ_MSG_KTHXBAI);
                         fmq_msg_send (self->message, self->dealer);
                     }
                     if (!self->exception) {
                         //  signal success
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ signal success");
                         signal_success (&self->client);
                     }
                     if (!self->exception) {
                         //  terminate
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ terminate");
-                        self->terminated = true;
+                        self->fsm_stopped = true;
                     }
                 }
                 else
                 if (self->event == subscribe_error_event) {
                     if (!self->exception) {
                         //  subscribe failed
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ subscribe failed");
                         subscribe_failed (&self->client);
                     }
@@ -685,13 +691,13 @@ s_client_execute (s_client_t *self, event_t event)
                 if (self->event == expired_event) {
                     if (!self->exception) {
                         //  handle connected timeout
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ handle connected timeout");
                         handle_connected_timeout (&self->client);
                     }
                     if (!self->exception) {
                         //  send HUGZ
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ send HUGZ");
                         fmq_msg_set_id (self->message, FMQ_MSG_HUGZ);
                         fmq_msg_send (self->message, self->dealer);
@@ -701,49 +707,49 @@ s_client_execute (s_client_t *self, event_t event)
                 if (self->event == srsly_event) {
                     if (!self->exception) {
                         //  stayin alive
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ stayin alive");
                         stayin_alive (&self->client);
                     }
                     if (!self->exception) {
                         //  log access denied
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ log access denied");
                         log_access_denied (&self->client);
                     }
                     if (!self->exception) {
                         //  terminate
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ terminate");
-                        self->terminated = true;
+                        self->fsm_stopped = true;
                     }
                 }
                 else
                 if (self->event == rtfm_event) {
                     if (!self->exception) {
                         //  stayin alive
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ stayin alive");
                         stayin_alive (&self->client);
                     }
                     if (!self->exception) {
                         //  log invalid message
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ log invalid message");
                         log_invalid_message (&self->client);
                     }
                     if (!self->exception) {
                         //  terminate
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ terminate");
-                        self->terminated = true;
+                        self->fsm_stopped = true;
                     }
                 }
                 else
                 if (self->event == hugz_ok_event) {
                     if (!self->exception) {
                         //  stayin alive
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ stayin alive");
                         stayin_alive (&self->client);
                     }
@@ -752,37 +758,37 @@ s_client_execute (s_client_t *self, event_t event)
                 if (self->event == bombcmd_event) {
                     if (!self->exception) {
                         //  sync server not present
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ sync server not present");
                         sync_server_not_present (&self->client);
                     }
                     if (!self->exception) {
                         //  terminate
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ terminate");
-                        self->terminated = true;
+                        self->fsm_stopped = true;
                     }
                 }
                 else
                 if (self->event == bombmsg_event) {
                     if (!self->exception) {
                         //  async server not present
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ async server not present");
                         async_server_not_present (&self->client);
                     }
                     if (!self->exception) {
                         //  terminate
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ terminate");
-                        self->terminated = true;
+                        self->fsm_stopped = true;
                     }
                 }
                 else {
                     //  Handle unexpected protocol events
                     if (!self->exception) {
                         //  log protocol error
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ log protocol error");
                         log_protocol_error (&self->client);
                     }
@@ -793,13 +799,13 @@ s_client_execute (s_client_t *self, event_t event)
                 if (self->event == icanhaz_ok_event) {
                     if (!self->exception) {
                         //  stayin alive
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ stayin alive");
                         stayin_alive (&self->client);
                     }
                     if (!self->exception) {
                         //  signal subscribe success
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ signal subscribe success");
                         signal_subscribe_success (&self->client);
                     }
@@ -810,7 +816,7 @@ s_client_execute (s_client_t *self, event_t event)
                 if (self->event == expired_event) {
                     if (!self->exception) {
                         //  handle subscribe timeout
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ handle subscribe timeout");
                         handle_subscribe_timeout (&self->client);
                     }
@@ -819,49 +825,49 @@ s_client_execute (s_client_t *self, event_t event)
                 if (self->event == srsly_event) {
                     if (!self->exception) {
                         //  stayin alive
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ stayin alive");
                         stayin_alive (&self->client);
                     }
                     if (!self->exception) {
                         //  log access denied
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ log access denied");
                         log_access_denied (&self->client);
                     }
                     if (!self->exception) {
                         //  terminate
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ terminate");
-                        self->terminated = true;
+                        self->fsm_stopped = true;
                     }
                 }
                 else
                 if (self->event == rtfm_event) {
                     if (!self->exception) {
                         //  stayin alive
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ stayin alive");
                         stayin_alive (&self->client);
                     }
                     if (!self->exception) {
                         //  log invalid message
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ log invalid message");
                         log_invalid_message (&self->client);
                     }
                     if (!self->exception) {
                         //  terminate
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ terminate");
-                        self->terminated = true;
+                        self->fsm_stopped = true;
                     }
                 }
                 else
                 if (self->event == hugz_ok_event) {
                     if (!self->exception) {
                         //  stayin alive
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ stayin alive");
                         stayin_alive (&self->client);
                     }
@@ -870,37 +876,37 @@ s_client_execute (s_client_t *self, event_t event)
                 if (self->event == bombcmd_event) {
                     if (!self->exception) {
                         //  sync server not present
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ sync server not present");
                         sync_server_not_present (&self->client);
                     }
                     if (!self->exception) {
                         //  terminate
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ terminate");
-                        self->terminated = true;
+                        self->fsm_stopped = true;
                     }
                 }
                 else
                 if (self->event == bombmsg_event) {
                     if (!self->exception) {
                         //  async server not present
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ async server not present");
                         async_server_not_present (&self->client);
                     }
                     if (!self->exception) {
                         //  terminate
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ terminate");
-                        self->terminated = true;
+                        self->fsm_stopped = true;
                     }
                 }
                 else {
                     //  Handle unexpected protocol events
                     if (!self->exception) {
                         //  log protocol error
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ log protocol error");
                         log_protocol_error (&self->client);
                     }
@@ -911,7 +917,7 @@ s_client_execute (s_client_t *self, event_t event)
                 if (self->event == send_credit_event) {
                     if (!self->exception) {
                         //  send NOM
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ send NOM");
                         fmq_msg_set_id (self->message, FMQ_MSG_NOM);
                         fmq_msg_send (self->message, self->dealer);
@@ -921,19 +927,19 @@ s_client_execute (s_client_t *self, event_t event)
                 if (self->event == cheezburger_event) {
                     if (!self->exception) {
                         //  stayin alive
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ stayin alive");
                         stayin_alive (&self->client);
                     }
                     if (!self->exception) {
                         //  process the patch
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ process the patch");
                         process_the_patch (&self->client);
                     }
                     if (!self->exception) {
                         //  refill credit as needed
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ refill credit as needed");
                         refill_credit_as_needed (&self->client);
                     }
@@ -942,7 +948,7 @@ s_client_execute (s_client_t *self, event_t event)
                 if (self->event == finished_event) {
                     if (!self->exception) {
                         //  refill credit as needed
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ refill credit as needed");
                         refill_credit_as_needed (&self->client);
                     }
@@ -951,35 +957,35 @@ s_client_execute (s_client_t *self, event_t event)
                 if (self->event == destructor_event) {
                     if (!self->exception) {
                         //  send KTHXBAI
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ send KTHXBAI");
                         fmq_msg_set_id (self->message, FMQ_MSG_KTHXBAI);
                         fmq_msg_send (self->message, self->dealer);
                     }
                     if (!self->exception) {
                         //  signal success
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ signal success");
                         signal_success (&self->client);
                     }
                     if (!self->exception) {
                         //  terminate
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ terminate");
-                        self->terminated = true;
+                        self->fsm_stopped = true;
                     }
                 }
                 else
                 if (self->event == expired_event) {
                     if (!self->exception) {
                         //  handle connected timeout
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ handle connected timeout");
                         handle_connected_timeout (&self->client);
                     }
                     if (!self->exception) {
                         //  send HUGZ
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ send HUGZ");
                         fmq_msg_set_id (self->message, FMQ_MSG_HUGZ);
                         fmq_msg_send (self->message, self->dealer);
@@ -989,49 +995,49 @@ s_client_execute (s_client_t *self, event_t event)
                 if (self->event == srsly_event) {
                     if (!self->exception) {
                         //  stayin alive
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ stayin alive");
                         stayin_alive (&self->client);
                     }
                     if (!self->exception) {
                         //  log access denied
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ log access denied");
                         log_access_denied (&self->client);
                     }
                     if (!self->exception) {
                         //  terminate
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ terminate");
-                        self->terminated = true;
+                        self->fsm_stopped = true;
                     }
                 }
                 else
                 if (self->event == rtfm_event) {
                     if (!self->exception) {
                         //  stayin alive
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ stayin alive");
                         stayin_alive (&self->client);
                     }
                     if (!self->exception) {
                         //  log invalid message
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ log invalid message");
                         log_invalid_message (&self->client);
                     }
                     if (!self->exception) {
                         //  terminate
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ terminate");
-                        self->terminated = true;
+                        self->fsm_stopped = true;
                     }
                 }
                 else
                 if (self->event == hugz_ok_event) {
                     if (!self->exception) {
                         //  stayin alive
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ stayin alive");
                         stayin_alive (&self->client);
                     }
@@ -1040,37 +1046,37 @@ s_client_execute (s_client_t *self, event_t event)
                 if (self->event == bombcmd_event) {
                     if (!self->exception) {
                         //  sync server not present
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ sync server not present");
                         sync_server_not_present (&self->client);
                     }
                     if (!self->exception) {
                         //  terminate
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ terminate");
-                        self->terminated = true;
+                        self->fsm_stopped = true;
                     }
                 }
                 else
                 if (self->event == bombmsg_event) {
                     if (!self->exception) {
                         //  async server not present
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ async server not present");
                         async_server_not_present (&self->client);
                     }
                     if (!self->exception) {
                         //  terminate
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ terminate");
-                        self->terminated = true;
+                        self->fsm_stopped = true;
                     }
                 }
                 else {
                     //  Handle unexpected protocol events
                     if (!self->exception) {
                         //  log protocol error
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ log protocol error");
                         log_protocol_error (&self->client);
                     }
@@ -1081,49 +1087,49 @@ s_client_execute (s_client_t *self, event_t event)
                 if (self->event == srsly_event) {
                     if (!self->exception) {
                         //  stayin alive
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ stayin alive");
                         stayin_alive (&self->client);
                     }
                     if (!self->exception) {
                         //  log access denied
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ log access denied");
                         log_access_denied (&self->client);
                     }
                     if (!self->exception) {
                         //  terminate
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ terminate");
-                        self->terminated = true;
+                        self->fsm_stopped = true;
                     }
                 }
                 else
                 if (self->event == rtfm_event) {
                     if (!self->exception) {
                         //  stayin alive
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ stayin alive");
                         stayin_alive (&self->client);
                     }
                     if (!self->exception) {
                         //  log invalid message
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ log invalid message");
                         log_invalid_message (&self->client);
                     }
                     if (!self->exception) {
                         //  terminate
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ terminate");
-                        self->terminated = true;
+                        self->fsm_stopped = true;
                     }
                 }
                 else
                 if (self->event == hugz_ok_event) {
                     if (!self->exception) {
                         //  stayin alive
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ stayin alive");
                         stayin_alive (&self->client);
                     }
@@ -1132,37 +1138,37 @@ s_client_execute (s_client_t *self, event_t event)
                 if (self->event == bombcmd_event) {
                     if (!self->exception) {
                         //  sync server not present
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ sync server not present");
                         sync_server_not_present (&self->client);
                     }
                     if (!self->exception) {
                         //  terminate
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ terminate");
-                        self->terminated = true;
+                        self->fsm_stopped = true;
                     }
                 }
                 else
                 if (self->event == bombmsg_event) {
                     if (!self->exception) {
                         //  async server not present
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ async server not present");
                         async_server_not_present (&self->client);
                     }
                     if (!self->exception) {
                         //  terminate
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ terminate");
-                        self->terminated = true;
+                        self->fsm_stopped = true;
                     }
                 }
                 else {
                     //  Handle unexpected protocol events
                     if (!self->exception) {
                         //  log protocol error
-                        if (self->verbose)
+                        if (fmq_client_verbose)
                             zsys_debug ("fmq_client:            $ log protocol error");
                         log_protocol_error (&self->client);
                     }
@@ -1171,12 +1177,12 @@ s_client_execute (s_client_t *self, event_t event)
         }
         //  If we had an exception event, interrupt normal programming
         if (self->exception) {
-            if (self->verbose)
+            if (fmq_client_verbose)
                 zsys_debug ("fmq_client:            ! %s", s_event_name [self->exception]);
             self->next_event = self->exception;
         }
         else
-        if (self->verbose)
+        if (fmq_client_verbose)
             zsys_debug ("fmq_client:            > %s", s_state_name [self->state]);
     }
 }
@@ -1211,19 +1217,16 @@ s_client_handle_cmdpipe (zloop_t *loop, zsock_t *reader, void *argument)
     char *method = zstr_recv (self->cmdpipe);
     if (!method)
         return -1;                  //  Interrupted; exit zloop
-    if (self->verbose)
+    if (fmq_client_verbose)
         zsys_debug ("fmq_client:        API command=%s", method);
 
-    if (streq (method, "VERBOSE"))
-        self->verbose = true;       //  Start verbose logging
-    else
     if (streq (method, "$TERM"))
         self->terminated = true;    //  Shutdown the engine
     else
-    if (streq (method, "CONSTRUCTOR")) {
+    if (streq (method, "CONNECT")) {
         zstr_free (&self->args.endpoint);
-        zsock_recv (self->cmdpipe, "si", &self->args.endpoint, &self->args.timeout);
-        s_client_execute (self, constructor_event);
+        zsock_recv (self->cmdpipe, "s4", &self->args.endpoint, &self->args.timeout);
+        s_client_execute (self, connect_event);
     }
     else
     if (streq (method, "DESTRUCTOR")) {
@@ -1266,9 +1269,15 @@ s_client_handle_msgpipe (zloop_t *loop, zsock_t *reader, void *argument)
         char *method = zstr_recv (self->msgpipe);
         if (!method)
             return -1;              //  Interrupted; exit zloop
-        if (self->verbose)
+        if (fmq_client_verbose)
             zsys_debug ("fmq_client:        API message=%s", method);
 
+        //  Front-end shuts down msgpipe before cmdpipe, this little
+        //  handshake just ensures all traffic on the msgpipe has been
+        //  flushed before the calling thread continues with destroying
+        //  the actor.
+        if (streq (method, "$FLUSH"))
+            zsock_signal (self->cmdpipe, 0);
         //  Cleanup pipe if any argument frames are still waiting to be eaten
         if (zsock_rcvmore (self->msgpipe)) {
             zsys_error ("fmq_client: trailing API message frames (%s)", method);
@@ -1323,7 +1332,7 @@ fmq_client (zsock_t *cmdpipe, void *msgpipe)
     s_client_t *self = s_client_new (cmdpipe, (zsock_t *) msgpipe);
     if (self) {
         zsock_signal (cmdpipe, 0);
-        
+
         //  Set up handler for the sockets the client uses
         engine_handle_socket ((client_t *) self, self->cmdpipe, s_client_handle_cmdpipe);
         engine_handle_socket ((client_t *) self, self->msgpipe, s_client_handle_msgpipe);
@@ -1346,31 +1355,23 @@ fmq_client (zsock_t *cmdpipe, void *msgpipe)
 struct _fmq_client_t {
     zactor_t *actor;            //  Client actor
     zsock_t *msgpipe;           //  Pipe for async message flow
-    int status;                 //  Returned by actor reply
+    uint8_t status;             //  Returned by actor reply
     char *reason;               //  Returned by actor reply
 };
 
 
 //  ---------------------------------------------------------------------------
 //  Create a new fmq_client
-//  Connect to server endpoint, with specified timeout in msecs (zero means wait    
-//  forever). Constructor succeeds if connection is successful.                     
-
-static int
-fmq_client_constructor (fmq_client_t *self, const char *endpoint, int timeout);
 
 fmq_client_t *
-fmq_client_new (const char *endpoint, int timeout)
+fmq_client_new (void)
 {
     fmq_client_t *self = (fmq_client_t *) zmalloc (sizeof (fmq_client_t));
     if (self) {
         zsock_t *backend;
         self->msgpipe = zsys_create_pipe (&backend);
-        self->actor = zactor_new (fmq_client, backend);
-        if (self->actor)
-            self->status = fmq_client_constructor (self, endpoint, timeout);
-        if (self->status == -1)
-            zactor_destroy (&self->actor);
+        if (self->msgpipe)
+            self->actor = zactor_new (fmq_client, backend);
         if (!self->actor)
             fmq_client_destroy (&self);
     }
@@ -1382,7 +1383,7 @@ fmq_client_new (const char *endpoint, int timeout)
 //  Destroy the fmq_client
 //  Disconnect from server.                                                         
 
-static int
+static uint8_t 
 fmq_client_destructor (fmq_client_t *self);
 
 void
@@ -1391,25 +1392,21 @@ fmq_client_destroy (fmq_client_t **self_p)
     assert (self_p);
     if (*self_p) {
         fmq_client_t *self = *self_p;
-        if (self->actor)
+        if (self->actor && !zsys_interrupted) {
+            //  Before destroying the actor we have to flush any pending
+            //  traffic on the msgpipe, otherwise it gets lost in a fire and
+            //  forget scenario. We do this by sending $FLUSH to the msgpipe
+            //  and waiting for a signal back on the cmdpipe.
+            if (zstr_send (self->msgpipe, "$FLUSH") == 0)
+                zsock_wait (self->actor);
             fmq_client_destructor (self);
+        }
         zactor_destroy (&self->actor);
         zsock_destroy (&self->msgpipe);
         zstr_free (&self->reason);
         free (self);
         *self_p = NULL;
     }
-}
-
-
-//  ---------------------------------------------------------------------------
-//  Enable verbose logging of client activity
-
-void
-fmq_client_verbose (fmq_client_t *self)
-{
-    assert (self);
-    zsock_send (self->actor, "s", "VERBOSE");
 }
 
 
@@ -1454,19 +1451,19 @@ s_accept_reply (fmq_client_t *self, ...)
         char *reply = zstr_recv (self->actor);
         if (!reply)
             break;              //  Interrupted or timed-out
-        
+
         va_list args;
         va_start (args, self);
         char *filter = va_arg (args, char *);
         while (filter) {
             if (streq (reply, filter)) {
                 if (streq (reply, "SUCCESS")) {
-                    zsock_recv (self->actor, "i", &self->status);
+                    zsock_recv (self->actor, "1", &self->status);
                 }
                 else
                 if (streq (reply, "FAILURE")) {
                     zstr_free (&self->reason);
-                    zsock_recv (self->actor, "is", &self->status, &self->reason);
+                    zsock_recv (self->actor, "1s", &self->status, &self->reason);
                 }
                 break;
             }
@@ -1486,14 +1483,15 @@ s_accept_reply (fmq_client_t *self, ...)
 
 //  ---------------------------------------------------------------------------
 //  Connect to server endpoint, with specified timeout in msecs (zero means wait    
-//  forever). Constructor succeeds if connection is successful.                     
+//  forever). Connect succeeds if connection is successful.                         
 //  Returns >= 0 if successful, -1 if interrupted.
 
-static int
-fmq_client_constructor (fmq_client_t *self, const char *endpoint, int timeout)
+uint8_t 
+fmq_client_connect (fmq_client_t *self, const char *endpoint, uint32_t timeout)
 {
     assert (self);
-    zsock_send (self->actor, "ssi", "CONSTRUCTOR", endpoint, timeout);
+
+    zsock_send (self->actor, "ss4", "CONNECT", endpoint, timeout);
     if (s_accept_reply (self, "SUCCESS", "FAILURE", NULL))
         return -1;              //  Interrupted or timed-out
     return self->status;
@@ -1504,10 +1502,11 @@ fmq_client_constructor (fmq_client_t *self, const char *endpoint, int timeout)
 //  Disconnect from server.                                                         
 //  Returns >= 0 if successful, -1 if interrupted.
 
-int
+uint8_t 
 fmq_client_destructor (fmq_client_t *self)
 {
     assert (self);
+
     zsock_send (self->actor, "s", "DESTRUCTOR");
     if (s_accept_reply (self, "SUCCESS", "FAILURE", NULL))
         return -1;              //  Interrupted or timed-out
@@ -1519,10 +1518,11 @@ fmq_client_destructor (fmq_client_t *self)
 //  Subscribe to a directory on the server, directory specified by path.            
 //  Returns >= 0 if successful, -1 if interrupted.
 
-int
+uint8_t 
 fmq_client_subscribe (fmq_client_t *self, const char *path)
 {
     assert (self);
+
     zsock_send (self->actor, "ss", "SUBSCRIBE", path);
     if (s_accept_reply (self, "SUCCESS", "FAILURE", NULL))
         return -1;              //  Interrupted or timed-out
@@ -1535,10 +1535,11 @@ fmq_client_subscribe (fmq_client_t *self, const char *path)
 //  anything.                                                                       
 //  Returns >= 0 if successful, -1 if interrupted.
 
-int
+uint8_t 
 fmq_client_set_inbox (fmq_client_t *self, const char *path)
 {
     assert (self);
+
     zsock_send (self->actor, "ss", "SET INBOX", path);
     if (s_accept_reply (self, "SUCCESS", "FAILURE", NULL))
         return -1;              //  Interrupted or timed-out
@@ -1549,7 +1550,7 @@ fmq_client_set_inbox (fmq_client_t *self, const char *path)
 //  ---------------------------------------------------------------------------
 //  Return last received status
 
-int 
+uint8_t 
 fmq_client_status (fmq_client_t *self)
 {
     assert (self);

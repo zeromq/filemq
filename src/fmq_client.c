@@ -43,7 +43,7 @@ typedef struct {
     zsock_t *dealer;            //  Socket to talk to server
     fmq_msg_t *message;         //  Message to/from server
     client_args_t *args;        //  Arguments from methods
-    
+
     //  TODO: Add specific properties for your application
     size_t credit;              //  Current credit pending
     zfile_t *file;              //  File we're currently writing
@@ -147,6 +147,29 @@ use_connect_timeout (client_t *self)
 
 
 //  ---------------------------------------------------------------------------
+//  handle_connect_error
+//
+
+static void
+handle_connect_error (client_t *self)
+{
+    zsys_warning ("unable to connect to the server");
+    engine_set_next_event (self, bombcmd_event);
+}
+
+
+//  ---------------------------------------------------------------------------
+//  stayin_alive
+//
+
+static void
+stayin_alive (client_t *self)
+{
+    self->timeouts = 0;
+}
+
+
+//  ---------------------------------------------------------------------------
 //  connected_to_server
 //
 
@@ -155,6 +178,38 @@ connected_to_server (client_t *self)
 {
     zsys_debug ("connected to server");
     zsock_send (self->cmdpipe, "si", "SUCCESS", 0);
+}
+
+
+//  ---------------------------------------------------------------------------
+//  handle_connect_timeout
+//
+
+static void
+handle_connect_timeout (client_t *self)
+{
+    if (self->timeouts <= 3)
+        self->timeouts++;
+    else {
+        zsys_warning ("server did not respond to the request to communicate");
+        engine_set_next_event (self, bombcmd_event);
+    }
+}
+
+
+//  ---------------------------------------------------------------------------
+//  setup_inbox
+//
+
+static void
+setup_inbox (client_t *self)
+{
+    if (!self->inbox) {
+        self->inbox = strdup (self->args->path);
+        zsock_send (self->cmdpipe, "si", "SUCCESS", 0);
+    }
+    else
+        zsock_send (self->cmdpipe, "sis", "FAILURE", -1, "inbox already set");
 }
 
 
@@ -193,6 +248,78 @@ format_icanhaz_command (client_t *self)
     free (path);
 
     fmq_msg_set_path (self->message, self->sub->path);
+}
+
+
+//  ---------------------------------------------------------------------------
+//  signal_success
+//
+
+static void
+signal_success (client_t *self)
+{
+    zsock_send (self->cmdpipe, "si", "SUCCESS", 0);
+}
+
+
+//  ---------------------------------------------------------------------------
+//  subscribe_failed
+//
+
+static void
+subscribe_failed (client_t *self)
+{
+    zsock_send (self->cmdpipe, "sis", "FAILURE", -1, "subscription failed");
+}
+
+
+//  ---------------------------------------------------------------------------
+//  handle_connected_timeout
+//
+
+static void
+handle_connected_timeout (client_t *self)
+{
+    if (self->timeouts <= 3)
+        self->timeouts++;
+    else
+        engine_set_next_event (self, bombmsg_event);
+}
+
+
+//  ---------------------------------------------------------------------------
+//  signal_subscribe_success
+//
+
+static void
+signal_subscribe_success (client_t *self)
+{
+    zsock_send (self->cmdpipe, "si", "SUCCESS", 0);
+    size_t credit_to_send = 0;
+    while (self->credit < CREDIT_MINIMUM) {
+        credit_to_send += CREDIT_SLICE;
+        self->credit += CREDIT_SLICE;
+    }
+    if (credit_to_send) {
+        fmq_msg_set_credit (self->message, credit_to_send);
+        engine_set_next_event (self, send_credit_event);
+    }
+}
+
+
+//  ---------------------------------------------------------------------------
+//  handle_subscribe_timeout
+//
+
+static void
+handle_subscribe_timeout (client_t *self)
+{
+    if (self->timeouts <= 3)
+        self->timeouts++;
+    else {
+        zsys_warning ("server did not respond to subscription request");
+        engine_set_next_event (self, bombcmd_event);
+    }
 }
 
 
@@ -321,122 +448,6 @@ log_protocol_error (client_t *self)
 
 
 //  ---------------------------------------------------------------------------
-//  setup_inbox
-//
-
-static void
-setup_inbox (client_t *self)
-{
-    if (!self->inbox) {
-        self->inbox = strdup (self->args->path);
-        zsock_send (self->cmdpipe, "si", "SUCCESS", 0);
-    }
-    else
-        zsock_send (self->cmdpipe, "sis", "FAILURE", -1, "inbox already set");
-}
-
-
-//  ---------------------------------------------------------------------------
-//  signal_subscribe_success
-//
-
-static void
-signal_subscribe_success (client_t *self)
-{
-    zsock_send (self->cmdpipe, "si", "SUCCESS", 0);
-    size_t credit_to_send = 0;
-    while (self->credit < CREDIT_MINIMUM) {
-        credit_to_send += CREDIT_SLICE;
-        self->credit += CREDIT_SLICE;
-    }
-    if (credit_to_send) {
-        fmq_msg_set_credit (self->message, credit_to_send);
-        engine_set_next_event (self, send_credit_event);
-    }
-}
-
-
-//  ---------------------------------------------------------------------------
-//  subscribe_failed
-//
-
-static void
-subscribe_failed (client_t *self)
-{
-    zsock_send (self->cmdpipe, "sis", "FAILURE", -1, "subscription failed");
-}
-
-
-//  ---------------------------------------------------------------------------
-//  signal_success
-//
-
-static void
-signal_success (client_t *self)
-{
-    zsock_send (self->cmdpipe, "si", "SUCCESS", 0);
-}
-
-
-//  ---------------------------------------------------------------------------
-//  handle_connect_error
-//
-
-static void
-handle_connect_error (client_t *self)
-{
-    zsys_warning ("unable to connect to the server");
-    engine_set_next_event (self, bombcmd_event);
-}
-
-
-//  ---------------------------------------------------------------------------
-//  handle_connect_timeout
-//
-
-static void
-handle_connect_timeout (client_t *self)
-{
-    if (self->timeouts <= 3)
-        self->timeouts++;
-    else {
-        zsys_warning ("server did not respond to the request to communicate");
-        engine_set_next_event (self, bombcmd_event);
-    }
-}
-
-
-//  ---------------------------------------------------------------------------
-//  handle_subscribe_timeout
-//
-
-static void
-handle_subscribe_timeout (client_t *self)
-{
-    if (self->timeouts <= 3)
-        self->timeouts++;
-    else {
-        zsys_warning ("server did not respond to subscription request");
-        engine_set_next_event (self, bombcmd_event);
-    }
-}
-
-
-//  ---------------------------------------------------------------------------
-//  handle_connected_timeout
-//
-
-static void
-handle_connected_timeout (client_t *self)
-{
-    if (self->timeouts <= 3)
-        self->timeouts++;
-    else
-        engine_set_next_event (self, bombmsg_event);
-}
-
-
-//  ---------------------------------------------------------------------------
 //  sync_server_not_present
 //
 
@@ -459,26 +470,15 @@ async_server_not_present (client_t *self)
 
 
 //  ---------------------------------------------------------------------------
-//  stayin_alive
-//
-
-static void
-stayin_alive (client_t *self)
-{
-    self->timeouts = 0;
-}
-
-
-//  ---------------------------------------------------------------------------
 //  Selftest
 
 void
 fmq_client_test (bool verbose)
 {
-    printf (" * fmq_client: \n");
+    printf (" * fmq_client:");
     if (verbose)
         printf ("\n");
-    
+
     //  @selftest
     //  Start a server to test against, and bind to endpoint
     zactor_t *server = zactor_new (fmq_server, "fmq_server");
@@ -511,10 +511,12 @@ fmq_client_test (bool verbose)
     zstr_free (&response);
 
     //  Create the client
-    fmq_client_t *client = fmq_client_new ("ipc://filemq", 5000);
+    fmq_client_t *client = fmq_client_new ();
     assert (client);
-    if (verbose)
-        fmq_client_verbose (client);
+	fmq_client_verbose = verbose;
+
+    rc = fmq_client_connect (client, "ipc://filemq", 5000);
+    assert (rc == 0);
 
     //  Set the clients storage location
     rc = fmq_client_set_inbox (client, "./fmqclient");
