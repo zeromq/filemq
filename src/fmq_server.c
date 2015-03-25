@@ -170,7 +170,7 @@ sub_patch_add (sub_t *self, zdir_patch_t *patch)
         zsys_debug ("path=%s, op=%d, vpath=%s", zdir_patch_path (patch),
             zdir_patch_op (patch), zdir_patch_vpath (patch));
         zhash_insert (self->cache,
-            zdir_patch_digest (patch), zdir_patch_vpath (patch));
+            zdir_patch_digest (patch), (void *) zdir_patch_vpath (patch));
     }
 
     zsys_debug ("+++ adding following patch to client list +++");
