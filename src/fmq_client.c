@@ -338,13 +338,21 @@ process_the_patch (client_t *self)
     }
 
     sub_t *subscr = (sub_t *) zlist_first (self->subs);
+    int found = 0;
     while (subscr) {
         if (!strncmp (filename, subscr->path, strlen (subscr->path))) {
             filename += strlen (subscr->path);
             zsys_debug ("subscription found for %s", filename);
+            found = 1;
             break;
         }
+        subscr = (sub_t *) zlist_next (self->subs);
     }
+    if (!found) {
+        zsys_debug ("subscription not found for %s", filename);
+        return;
+    }
+
     if ('/' == *filename) filename++;
 
     if (fmq_msg_operation (self->message) == FMQ_MSG_FILE_CREATE) {
