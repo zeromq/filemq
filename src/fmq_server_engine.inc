@@ -225,21 +225,27 @@ engine_broadcast_event (server_t *server, client_t *client, event_t event)
     }
 }
 
-//  Poll socket for activity, invoke handler on any received message.
-//  Handler must be a CZMQ zloop_fn function; receives server as arg.
+//  Poll actor or zsock for activity, invoke handler on any received
+//  message. Handler must be a CZMQ zloop_fn function; receives server
+//  as arg.
 
 static void
-engine_handle_socket (server_t *server, zsock_t *socket, zloop_reader_fn handler)
+engine_handle_socket (server_t *server, void *sock, zloop_reader_fn handler)
 {
     if (server) {
         s_server_t *self = (s_server_t *) server;
+        //  Resolve zactor_t -> zsock_t
+        if (zactor_is (sock))
+            sock = zactor_sock ((zactor_t *) sock);
+        else
+            assert (zsock_is (sock));
         if (handler != NULL) {
-            int rc = zloop_reader (self->loop, socket, handler, self);
+            int rc = zloop_reader (self->loop, (zsock_t *) sock, handler, self);
             assert (rc == 0);
-            zloop_reader_set_tolerant (self->loop, socket);
+            zloop_reader_set_tolerant (self->loop, (zsock_t *) sock);
         }
         else
-            zloop_reader_end (self->loop, socket);
+            zloop_reader_end (self->loop, (zsock_t *) sock);
     }
 }
 
@@ -353,7 +359,7 @@ s_client_new (s_server_t *server, zframe_t *routing_id)
     s_client_t *self = (s_client_t *) zmalloc (sizeof (s_client_t));
     assert (self);
     assert ((s_client_t *) &self->client == self);
-    
+
     self->server = server;
     self->hashkey = zframe_strhex (routing_id);
     self->routing_id = zframe_dup (routing_id);
@@ -787,8 +793,8 @@ static int
 s_client_handle_ticket (zloop_t *loop, int timer_id, void *argument)
 {
     s_client_t *self = (s_client_t *) argument;
-    s_client_execute (self, expired_event);
     self->ticket = NULL;        //  Ticket is now dead
+    s_client_execute (self, expired_event);
     return 0;
 }
 
@@ -809,17 +815,17 @@ static void
 s_server_config_global (s_server_t *self)
 {
     //  Built-in server configuration options
-    //  
+    //
     //  If we didn't already set verbose, check if the config tree wants it
     if (!self->verbose
     && atoi (zconfig_resolve (self->config, "server/verbose", "0")))
         self->verbose = true;
-        
+
     //  Default client timeout is 60 seconds
     self->timeout = atoi (
         zconfig_resolve (self->config, "server/timeout", "60000"));
     zloop_set_ticket_delay (self->loop, self->timeout);
-    
+
     //  Do we want to run server in the background?
     int background = atoi (
         zconfig_resolve (self->config, "server/background", "0"));
@@ -836,6 +842,7 @@ s_server_new (zsock_t *pipe)
 
     self->pipe = pipe;
     self->router = zsock_new (ZMQ_ROUTER);
+    assert (self->router);
     //  By default the socket will discard outgoing messages above the
     //  HWM of 1,000. This isn't helpful for high-volume streaming. We
     //  will use a unbounded queue here. If applications need to guard
@@ -899,6 +906,7 @@ s_server_config_service (s_server_t *self)
             if (zsock_bind (self->router, "%s", endpoint) == -1)
                 zsys_warning ("could not bind to %s (%s)", endpoint, zmq_strerror (zmq_errno ()));
         }
+#if (ZMQ_VERSION_MAJOR >= 4)
         else
         if (streq (zconfig_name (section), "security")) {
             char *mechanism = zconfig_resolve (section, "mechanism", "null");
@@ -916,6 +924,7 @@ s_server_config_service (s_server_t *self)
             else
                 zsys_warning ("mechanism=%s is not supported", mechanism);
         }
+#endif
         section = zconfig_next (section);
     }
     s_server_config_global (self);
@@ -980,7 +989,7 @@ s_server_handle_pipe (zloop_t *loop, zsock_t *reader, void *argument)
         zconfig_put (self->config, path, value);
         if (streq (path, "server/animate")) {
             zsys_warning ("'%s' is deprecated, use VERBOSE command instead", path);
-            self->verbose = atoi (value);
+            self->verbose = (atoi (value) == 1);
         }
         s_server_config_global (self);
         free (path);
@@ -1014,7 +1023,7 @@ s_server_handle_protocol (zloop_t *loop, zsock_t *reader, void *argument)
     //  of polling and the reactor:
     while (zsock_events (self->router) & ZMQ_POLLIN) {
         if (fmq_msg_recv (self->message, self->router))
-            return -1;              //  Interrupted; exit zloop
+            return -1;      //  Interrupted; exit zloop
 
         //  TODO: use binary hashing on routing_id
         char *hashkey = zframe_strhex (fmq_msg_routing_id (self->message));
@@ -1028,7 +1037,7 @@ s_server_handle_protocol (zloop_t *loop, zsock_t *reader, void *argument)
         //  Any input from client counts as activity
         if (client->ticket)
             zloop_ticket_reset (self->loop, client->ticket);
-        
+
         //  Pass to client state machine
         s_client_execute (client, s_protocol_event (self->message));
     }

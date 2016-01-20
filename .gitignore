@@ -1,36 +1,40 @@
+# Own created files
+src/.cache
+src/filemq.lst
+src/fmq_selftest
+src/fmq_sha.lst
+src/mymusic
+src/testit
+src/track
+   
 # Object files
 *.o
+*.so
 *.ko
-*.obj
-*.elf
-
-# Precompiled Headers
-*.gch
-*.pch
+*.pyc
 
 # Libraries
 *.lib
 *.a
 *.la
-*.lo
 *.pc
+*.dll.a
 
 # Shared objects (inc. Windows DLLs)
 *.dll
-*.so
 *.so.*
 *.dylib
+*.lo
 
 # Executables
-filemq_selftest
-filemq_server
-filemq_client
+src/filemq_selftest
+src/filemq_server
+src/filemq_client
+src/filemq_selftest
 *.exe
 *.out
 *.app
-*.i*86
-*.x86_64
-*.hex
+core
 
 # Man pages
 doc/*.1
@@ -44,6 +48,7 @@ doc/*.7
 *.trs
 Makefile
 Makefile.in
+!builds/openwrt/Makefile
 aclocal.m4
 autom4te.cache/
 config.log
@@ -58,8 +63,16 @@ src/stamp-h1
 src/test-suite.log
 src/.dirstamp
 
-# qt-android build results
-builds/qt-android/prefix
+# CMake cache
+CMakeCache.txt
+CMakeFiles/
+CTestTestfile.cmake
+cmake_install.cmake
+install_manifest.txt
+Testing/
+
+# Android build results
+builds/android/prefix
 
 # Android - generated directories
 src/app/bin/
@@ -68,16 +81,8 @@ src/app/obj/
 src/app/local.properties
 
 # Android -dependencies
-builds/android/libsodium
-builds/android/libzmq
-builds/android/czmq
-builds/android/e2fsprogs
-builds/android/zyre
 src/app/jni/output
 
-# Additionals
+# Temporary files
 *.swp
-*.dirstamp
-*.xml.swp
-*.c.swp
-*.h.swp
+*~

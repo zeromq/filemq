@@ -1,6 +1,6 @@
 /*  =========================================================================
     fmq_msg - The FileMQ Protocol
-    
+
     Codec header for fmq_msg.
 
     ** WARNING *************************************************************
@@ -111,7 +111,8 @@ int
 //  Send the fmq_msg to the output socket, does not destroy it
 int
     fmq_msg_send (fmq_msg_t *self, zsock_t *output);
-    
+
+
 //  Print contents of message to stdout
 void
     fmq_msg_print (fmq_msg_t *self);
@@ -219,7 +220,7 @@ void
     fmq_msg_set_reason (fmq_msg_t *self, const char *value);
 
 //  Self test of this class
-int
+void
     fmq_msg_test (bool verbose);
 //  @end
 

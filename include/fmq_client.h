@@ -58,6 +58,12 @@ zactor_t *
 zsock_t *
     fmq_client_msgpipe (fmq_client_t *self);
 
+//  Return true if client is currently connected, else false. Note that the
+//  client will automatically re-connect if the server dies and restarts after
+//  a successful first connection.
+bool
+    fmq_client_connected (fmq_client_t *self);
+
 //  Connect to server endpoint, with specified timeout in msecs (zero means wait    
 //  forever). Connect succeeds if connection is successful.                         
 //  Returns >= 0 if successful, -1 if interrupted.

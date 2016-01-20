@@ -35,11 +35,11 @@ extern "C" {
 //  Create new fmq_server instance, passing logging prefix:
 //
 //      zactor_t *fmq_server = zactor_new (fmq_server, "myname");
-//  
+//
 //  Destroy fmq_server instance
 //
 //      zactor_destroy (&fmq_server);
-//  
+//
 //  Enable verbose logging of commands and activity:
 //
 //      zstr_send (fmq_server, "VERBOSE");
@@ -65,7 +65,7 @@ extern "C" {
 //  Set configuration path value:
 //
 //      zstr_sendx (fmq_server, "SET", path, value, NULL);
-//    
+//
 //  Save configuration data to config file on disk:
 //
 //      zstr_sendx (fmq_server, "SAVE", filename, NULL);

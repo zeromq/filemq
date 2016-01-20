@@ -16,8 +16,8 @@
     =========================================================================
 */
 
-#ifndef filemq_library_H_INCLUDED
-#define filemq_library_H_INCLUDED
+#ifndef FILEMQ_LIBRARY_H_INCLUDED
+#define FILEMQ_LIBRARY_H_INCLUDED
 
 //  Set up environment for the application
 
@@ -48,18 +48,25 @@
 #endif
 
 //  Opaque class structures to allow forward references
+
+//  Draft APIs, excluded by default in stable releases
+#ifdef WITH_DRAFTS
 typedef struct _fmq_msg_t fmq_msg_t;
 #define FMQ_MSG_T_DEFINED
 typedef struct _fmq_server_t fmq_server_t;
 #define FMQ_SERVER_T_DEFINED
 typedef struct _fmq_client_t fmq_client_t;
 #define FMQ_CLIENT_T_DEFINED
-
+#endif // WITH_DRAFTS
 
 //  Public API classes
+
+//  Draft APIs, excluded by default in stable releases
+#ifdef WITH_DRAFTS
 #include "fmq_msg.h"
 #include "fmq_server.h"
 #include "fmq_client.h"
+#endif // WITH_DRAFTS
 
 #endif
 /*

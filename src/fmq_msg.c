@@ -38,33 +38,21 @@ struct _fmq_msg_t {
     int id;                             //  fmq_msg message ID
     byte *needle;                       //  Read/write pointer for serialization
     byte *ceiling;                      //  Valid upper limit for read pointer
-    /* Full path or path prefix  */
-    char *path;
-    /* Subscription options  */
-    zhash_t *options;
+    char *path;                         //  Full path or path prefix
+    zhash_t *options;                   //  Subscription options
     size_t options_bytes;               //  Size of hash content
-    /* File SHA-1 signatures  */
-    zhash_t *cache;
+    zhash_t *cache;                     //  File SHA-1 signatures
     size_t cache_bytes;                 //  Size of hash content
-    /* Credit, in bytes  */
-    uint64_t credit;
-    /* Chunk sequence, 0 and up  */
-    uint64_t sequence;
-    /* Create=%d1 delete=%d2  */
-    byte operation;
-    /* Relative name of file  */
-    char *filename;
-    /* File offset in bytes  */
-    uint64_t offset;
-    /* Last chunk in file?  */
-    byte eof;
-    /* File properties  */
-    zhash_t *headers;
+    uint64_t credit;                    //  Credit, in bytes
+    uint64_t sequence;                  //  Chunk sequence, 0 and up
+    byte operation;                     //  Create=%d1 delete=%d2
+    char *filename;                     //  Relative name of file
+    uint64_t offset;                    //  File offset in bytes
+    byte eof;                           //  Last chunk in file?
+    zhash_t *headers;                   //  File properties
     size_t headers_bytes;               //  Size of hash content
-    /* Data chunk     */
-    zchunk_t *chunk;
-    /* Printable explanation, 255 characters  */
-    char reason [256];
+    zchunk_t *chunk;                    //  Data chunk
+    char reason [256];                  //  Printable explanation, 255 characters
 };
 
 //  --------------------------------------------------------------------------
@@ -262,7 +250,7 @@ int
 fmq_msg_recv (fmq_msg_t *self, zsock_t *input)
 {
     assert (input);
-    
+
     if (zsock_type (input) == ZMQ_ROUTER) {
         zframe_destroy (&self->routing_id);
         self->routing_id = zframe_recv (input);
@@ -281,7 +269,7 @@ fmq_msg_recv (fmq_msg_t *self, zsock_t *input)
     //  Get and check protocol signature
     self->needle = (byte *) zmq_msg_data (&frame);
     self->ceiling = self->needle + zmq_msg_size (&frame);
-    
+
     uint16_t signature;
     GET_NUMBER2 (signature);
     if (signature != (0xAAA0 | 3)) {
@@ -509,7 +497,7 @@ fmq_msg_send (fmq_msg_t *self, zsock_t *output)
     PUT_NUMBER2 (0xAAA0 | 3);
     PUT_NUMBER1 (self->id);
     size_t nbr_frames = 1;              //  Total number of frames to send
-    
+
     switch (self->id) {
         case FMQ_MSG_OHAI:
             PUT_STRING ("FILEMQ");
@@ -594,7 +582,7 @@ fmq_msg_send (fmq_msg_t *self, zsock_t *output)
     }
     //  Now send the data frame
     zmq_msg_send (&frame, zsock_resolve (output), --nbr_frames? ZMQ_SNDMORE: 0);
-    
+
     return 0;
 }
 
@@ -612,11 +600,11 @@ fmq_msg_print (fmq_msg_t *self)
             zsys_debug ("    protocol=filemq");
             zsys_debug ("    version=fmq_msg_version");
             break;
-            
+
         case FMQ_MSG_OHAI_OK:
             zsys_debug ("FMQ_MSG_OHAI_OK:");
             break;
-            
+
         case FMQ_MSG_ICANHAZ:
             zsys_debug ("FMQ_MSG_ICANHAZ:");
             if (self->path)
@@ -644,17 +632,17 @@ fmq_msg_print (fmq_msg_t *self)
             else
                 zsys_debug ("(NULL)");
             break;
-            
+
         case FMQ_MSG_ICANHAZ_OK:
             zsys_debug ("FMQ_MSG_ICANHAZ_OK:");
             break;
-            
+
         case FMQ_MSG_NOM:
             zsys_debug ("FMQ_MSG_NOM:");
             zsys_debug ("    credit=%ld", (long) self->credit);
             zsys_debug ("    sequence=%ld", (long) self->sequence);
             break;
-            
+
         case FMQ_MSG_CHEEZBURGER:
             zsys_debug ("FMQ_MSG_CHEEZBURGER:");
             zsys_debug ("    sequence=%ld", (long) self->sequence);
@@ -677,35 +665,29 @@ fmq_msg_print (fmq_msg_t *self)
                 zsys_debug ("(NULL)");
             zsys_debug ("    chunk=[ ... ]");
             break;
-            
+
         case FMQ_MSG_HUGZ:
             zsys_debug ("FMQ_MSG_HUGZ:");
             break;
-            
+
         case FMQ_MSG_HUGZ_OK:
             zsys_debug ("FMQ_MSG_HUGZ_OK:");
             break;
-            
+
         case FMQ_MSG_KTHXBAI:
             zsys_debug ("FMQ_MSG_KTHXBAI:");
             break;
-            
+
         case FMQ_MSG_SRSLY:
             zsys_debug ("FMQ_MSG_SRSLY:");
-            if (self->reason)
-                zsys_debug ("    reason='%s'", self->reason);
-            else
-                zsys_debug ("    reason=");
+            zsys_debug ("    reason='%s'", self->reason);
             break;
-            
+
         case FMQ_MSG_RTFM:
             zsys_debug ("FMQ_MSG_RTFM:");
-            if (self->reason)
-                zsys_debug ("    reason='%s'", self->reason);
-            else
-                zsys_debug ("    reason=");
+            zsys_debug ("    reason='%s'", self->reason);
             break;
-            
+
     }
 }
 
@@ -843,7 +825,6 @@ fmq_msg_set_options (fmq_msg_t *self, zhash_t **options_p)
 }
 
 
-
 //  --------------------------------------------------------------------------
 //  Get the cache field without transferring ownership
 
@@ -875,7 +856,6 @@ fmq_msg_set_cache (fmq_msg_t *self, zhash_t **cache_p)
     self->cache = *cache_p;
     *cache_p = NULL;
 }
-
 
 
 //  --------------------------------------------------------------------------
@@ -1021,7 +1001,6 @@ fmq_msg_set_headers (fmq_msg_t *self, zhash_t **headers_p)
 }
 
 
-
 //  --------------------------------------------------------------------------
 //  Get the chunk field without transferring ownership
 
@@ -1081,28 +1060,31 @@ fmq_msg_set_reason (fmq_msg_t *self, const char *value)
 //  --------------------------------------------------------------------------
 //  Selftest
 
-int
+void
 fmq_msg_test (bool verbose)
 {
-    printf (" * fmq_msg: ");
+    printf (" * fmq_msg:");
 
-    //  Silence an "unused" warning by "using" the verbose variable
-    if (verbose) {;}
+    if (verbose)
+        printf ("\n");
 
     //  @selftest
     //  Simple create/destroy test
     fmq_msg_t *self = fmq_msg_new ();
     assert (self);
     fmq_msg_destroy (&self);
-
     //  Create pair of sockets we can send through
-    zsock_t *input = zsock_new (ZMQ_ROUTER);
-    assert (input);
-    zsock_connect (input, "inproc://selftest-fmq_msg");
-
+    //  We must bind before connect if we wish to remain compatible with ZeroMQ < v4
     zsock_t *output = zsock_new (ZMQ_DEALER);
     assert (output);
-    zsock_bind (output, "inproc://selftest-fmq_msg");
+    int rc = zsock_bind (output, "inproc://selftest-fmq_msg");
+    assert (rc == 0);
+
+    zsock_t *input = zsock_new (ZMQ_ROUTER);
+    assert (input);
+    rc = zsock_connect (input, "inproc://selftest-fmq_msg");
+    assert (rc == 0);
+
 
     //  Encode/send/decode and verify each message type
     int instance;
@@ -1130,6 +1112,12 @@ fmq_msg_test (bool verbose)
     fmq_msg_set_id (self, FMQ_MSG_ICANHAZ);
 
     fmq_msg_set_path (self, "Life is short but Now lasts for ever");
+    zhash_t *icanhaz_options = zhash_new ();
+    zhash_insert (icanhaz_options, "Name", "Brutus");
+    fmq_msg_set_options (self, &icanhaz_options);
+    zhash_t *icanhaz_cache = zhash_new ();
+    zhash_insert (icanhaz_cache, "Name", "Brutus");
+    fmq_msg_set_cache (self, &icanhaz_cache);
     //  Send twice
     fmq_msg_send (self, output);
     fmq_msg_send (self, output);
@@ -1138,6 +1126,20 @@ fmq_msg_test (bool verbose)
         fmq_msg_recv (self, input);
         assert (fmq_msg_routing_id (self));
         assert (streq (fmq_msg_path (self), "Life is short but Now lasts for ever"));
+        zhash_t *options = fmq_msg_get_options (self);
+        assert (zhash_size (options) == 2);
+        assert (streq ((char *) zhash_first (options), "Brutus"));
+        assert (streq ((char *) zhash_cursor (options), "Name"));
+        zhash_destroy (&options);
+        if (instance == 1)
+            zhash_destroy (&icanhaz_options);
+        zhash_t *cache = fmq_msg_get_cache (self);
+        assert (zhash_size (cache) == 2);
+        assert (streq ((char *) zhash_first (cache), "Brutus"));
+        assert (streq ((char *) zhash_cursor (cache), "Name"));
+        zhash_destroy (&cache);
+        if (instance == 1)
+            zhash_destroy (&icanhaz_cache);
     }
     fmq_msg_set_id (self, FMQ_MSG_ICANHAZ_OK);
 
@@ -1170,6 +1172,9 @@ fmq_msg_test (bool verbose)
     fmq_msg_set_filename (self, "Life is short but Now lasts for ever");
     fmq_msg_set_offset (self, 123);
     fmq_msg_set_eof (self, 123);
+    zhash_t *cheezburger_headers = zhash_new ();
+    zhash_insert (cheezburger_headers, "Name", "Brutus");
+    fmq_msg_set_headers (self, &cheezburger_headers);
     zchunk_t *cheezburger_chunk = zchunk_new ("Captcha Diem", 12);
     fmq_msg_set_chunk (self, &cheezburger_chunk);
     //  Send twice
@@ -1184,7 +1189,16 @@ fmq_msg_test (bool verbose)
         assert (streq (fmq_msg_filename (self), "Life is short but Now lasts for ever"));
         assert (fmq_msg_offset (self) == 123);
         assert (fmq_msg_eof (self) == 123);
+        zhash_t *headers = fmq_msg_get_headers (self);
+        assert (zhash_size (headers) == 2);
+        assert (streq ((char *) zhash_first (headers), "Brutus"));
+        assert (streq ((char *) zhash_cursor (headers), "Name"));
+        zhash_destroy (&headers);
+        if (instance == 1)
+            zhash_destroy (&cheezburger_headers);
         assert (memcmp (zchunk_data (fmq_msg_chunk (self)), "Captcha Diem", 12) == 0);
+        if (instance == 1)
+            zchunk_destroy (&cheezburger_chunk);
     }
     fmq_msg_set_id (self, FMQ_MSG_HUGZ);
 
@@ -1247,5 +1261,4 @@ fmq_msg_test (bool verbose)
     //  @end
 
     printf ("OK\n");
-    return 0;
 }
