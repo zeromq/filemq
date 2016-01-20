@@ -1,78 +1,21 @@
 <project
     name = "filemq"
-    description = "An updated attempt at FileMQ."
+    description = "A FileMQ server and client"
     script = "zproject.gsl"
-    email = "zeromq-dev@lists.zeromq.org"
     >
-
-    <!--
-        Includes are processed first, so XML in included files will be
-        part of the XML tree
-    -->
     <include filename = "license.xml" />
-
-    <!-- 
-        Current version of your project. 
-        This will be used to package your distribution 
-    -->
     <version major = "2" minor = "0" patch = "0" />
-
-    <!--
-        Specify which other projects this depends on.
-        These projects must be known by zproject, and the list of
-        known projects is maintained in the zproject_known_projects.xml model.
-        You need not specify subdependencies if they are implied.
-    <use project = "zyre" min_major= "1" min_minor = "1" min_patch = "0" />
-    -->
     <use project = "czmq" />
-
-    <!-- Header Files
-         name := The name the header file to include without file ending
-    <header name = "myproject_prelude" />
-    -->
-
-    <!-- 
-        Classes, if the class header or source file doesn't exist this will
-        generate a skeletons for them.
-        use private = "1" for internal classes
-    <class name = "myclass">Public class description</class>
-    <class name = "someother" private = "1">Private class description</class>
-    -->
+    <target name = "*" />
 
     <class name = "fmq_msg">FileMQ Codec</class>
     <class name = "fmq_server">FileMQ Server</class>
     <class name = "fmq_client">FileMQ Client</class>
 
-    <!--
-        Main programs built by the project
-                 use private = "1" for internal tools
-    <main name = "progname">Exported public tool</main>
-    <main name = "progname" private = "1">Internal tool</main>
-    -->
-
     <main name = "filemq_server">Very simple server</main>
     <main name = "filemq_client">Very simple client</main>
-
-    <!-- 
-        Models that we build using GSL. 
-        This will generate a 'make code' target to build the models.
-    <model name = "sockopts" />
-    <model name = "zgossip" />
-    <model name = "zgossip_msg" />
-
-        If a model should be generated using a specific gsl script,
-        this can be set through the script attribute:
-    <model name = "hydra_msg" script = "zproto_codec_java.gsl" />
-
-        Additional parameters to the script can be set via nested
-        param elements:
-    <model name = "hydra_msg" script = "zproto_codec_java.gsl">
-        <param name = "root_path" value = "../main" />
-    </model>
-    -->
 
     <model name = "fmq_msg" script = "zproto_codec_c.gsl" />
     <model name = "fmq_server" script = "zproto_server_c.gsl" />
     <model name = "fmq_client" script = "zproto_client_c.gsl" />
-
 </project>

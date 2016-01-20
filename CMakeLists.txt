@@ -12,21 +12,49 @@ enable_language(C)
 enable_testing()
 
 set(SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
-set(BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}")
 
 ########################################################################
 # determine version
 ########################################################################
 foreach(which MAJOR MINOR PATCH)
-    file(STRINGS "${SOURCE_DIR}/include/filemq_library.h" FILEMQ_VERSION_STRING REGEX "#define FILEMQ_VERSION_${which}")
-    string(REGEX MATCH "#define FILEMQ_VERSION_${which} ([0-9_]+)" FILEMQ_REGEX_MATCH "${FILEMQ_VERSION_STRING}")
+    file(
+        STRINGS
+        "${SOURCE_DIR}/include/filemq_library.h"
+        FILEMQ_VERSION_STRING REGEX
+        "#define FILEMQ_VERSION_${which}"
+    )
+    string(
+        REGEX MATCH
+        "#define FILEMQ_VERSION_${which} ([0-9_]+)"
+        FILEMQ_REGEX_MATCH
+        "${FILEMQ_VERSION_STRING}"
+    )
     if (NOT FILEMQ_REGEX_MATCH)
-        message(FATAL_ERROR "failed to parse FILEMQ_VERSION_${which} from filemq.h")
+        message(
+            FATAL_ERROR
+            "failed to parse FILEMQ_VERSION_${which} from filemq.h"
+        )
     endif()
     set(FILEMQ_${which}_VERSION ${CMAKE_MATCH_1})
 endforeach(which)
 
-set(FILEMQ_VERSION ${FILEMQ_MAJOR_VERSION}.${FILEMQ_MINOR_VERSION}.${FILEMQ_PATCH_VERSION})
+set(
+    FILEMQ_VERSION
+    ${FILEMQ_MAJOR_VERSION}.${FILEMQ_MINOR_VERSION}.${FILEMQ_PATCH_VERSION}
+)
+
+########################################################################
+# options
+########################################################################
+if (EXISTS ".git")
+    OPTION (WITH_DRAFTS "Build and install draft classes and methods" ON)
+else ()
+    OPTION (WITH_DRAFTS "Build and install draft classes and methods" OFF)
+endif ()
+
+IF (WITH_DRAFTS)
+    ADD_DEFINITIONS (-DWITH_DRAFTS)
+ENDIF (WITH_DRAFTS)
 
 ########################################################################
 # platform.h
@@ -45,7 +73,7 @@ if (NOT HAVE_NET_IF_H)
     CHECK_INCLUDE_FILE("net/if.h" HAVE_NET_IF_H)
 endif()
 
-file(WRITE "${BINARY_DIR}/platform.h.in" "
+file(WRITE "${SOURCE_DIR}/src/platform.h.in" "
 #cmakedefine HAVE_LINUX_WIRELESS_H
 #cmakedefine HAVE_NET_IF_H
 #cmakedefine HAVE_NET_IF_MEDIA_H
@@ -53,14 +81,17 @@ file(WRITE "${BINARY_DIR}/platform.h.in" "
 #cmakedefine HAVE_FREEIFADDRS
 ")
 
-configure_file("${BINARY_DIR}/platform.h.in" "${BINARY_DIR}/platform.h")
+configure_file("${SOURCE_DIR}/src/platform.h.in" "${SOURCE_DIR}/src/platform.h")
 
 #The MSVC C compiler is too out of date,
 #so the sources have to be compiled as c++
 if (MSVC)
     enable_language(CXX)
     file(GLOB sources "${SOURCE_DIR}/src/*.c")
-    set_source_files_properties(${sources} PROPERTIES LANGUAGE CXX)
+    set_source_files_properties(
+        ${sources}
+        PROPERTIES LANGUAGE CXX
+    )
     set(MORE_LIBRARIES ws2_32 Rpcrt4 Iphlpapi)
 endif()
 
@@ -75,20 +106,40 @@ if (CYGWIN)
 endif()
 
 list(APPEND CMAKE_MODULE_PATH "${SOURCE_DIR}")
+set(OPTIONAL_LIBRARIES)
 
 ########################################################################
-# ZMQ dependency
+# LIBSODIUM dependency
 ########################################################################
-find_package(ZeroMQ REQUIRED)
-include_directories(${ZEROMQ_INCLUDE_DIRS})
-list(APPEND MORE_LIBRARIES ${ZEROMQ_LIBRARIES})
+find_package(libsodium)
+IF (LIBSODIUM_FOUND)
+    include_directories(${LIBSODIUM_INCLUDE_DIRS})
+    list(APPEND MORE_LIBRARIES ${LIBSODIUM_LIBRARIES})
+    add_definitions(-DHAVE_LIBSODIUM)
+    list(APPEND OPTIONAL_LIBRARIES ${LIBSODIUM_LIBRARIES})
+ENDIF (LIBSODIUM_FOUND)
+
+########################################################################
+# LIBZMQ dependency
+########################################################################
+find_package(libzmq REQUIRED)
+IF (LIBZMQ_FOUND)
+    include_directories(${LIBZMQ_INCLUDE_DIRS})
+    list(APPEND MORE_LIBRARIES ${LIBZMQ_LIBRARIES})
+ELSE (LIBZMQ_FOUND)
+    message( FATAL_ERROR "libzmq not found." )
+ENDIF (LIBZMQ_FOUND)
 
 ########################################################################
 # CZMQ dependency
 ########################################################################
-find_package(CZMQ REQUIRED)
-include_directories(${CZMQ_INCLUDE_DIRS})
-list(APPEND MORE_LIBRARIES ${CZMQ_LIBRARIES})
+find_package(czmq REQUIRED)
+IF (CZMQ_FOUND)
+    include_directories(${CZMQ_INCLUDE_DIRS})
+    list(APPEND MORE_LIBRARIES ${CZMQ_LIBRARIES})
+ELSE (CZMQ_FOUND)
+    message( FATAL_ERROR "czmq not found." )
+ENDIF (CZMQ_FOUND)
 
 ########################################################################
 # includes
@@ -96,29 +147,48 @@ list(APPEND MORE_LIBRARIES ${CZMQ_LIBRARIES})
 set (filemq_headers
     include/filemq_library.h
     include/filemq.h
+)
+
+IF (WITH_DRAFTS)
+list(APPEND filemq_headers
     include/fmq_msg.h
     include/fmq_server.h
     include/fmq_client.h
 )
+ENDIF (WITH_DRAFTS)
+
 source_group ("Header Files" FILES ${filemq_headers})
 install(FILES ${filemq_headers} DESTINATION include)
 
 ########################################################################
 # library
 ########################################################################
-include_directories("${BINARY_DIR}" "${SOURCE_DIR}/include")
+include_directories("${SOURCE_DIR}/src" "${SOURCE_DIR}/include")
 set (filemq_sources
+)
+
+IF (WITH_DRAFTS)
+list(APPEND filemq_sources
     src/fmq_msg.c
     src/fmq_server.c
     src/fmq_client.c
 )
-source_group ("Source Files" FILES ${filemq_sources})
+ENDIF (WITH_DRAFTS)
+
+source_group("Source Files" FILES ${filemq_sources})
 if (NOT DEFINED BUILD_SHARED_LIBS)
     SET(BUILD_SHARED_LIBS ON)
 endif()
 add_library(filemq ${filemq_sources})
-set_target_properties(filemq PROPERTIES DEFINE_SYMBOL "LIBFILEMQ_EXPORTS")
-target_link_libraries(filemq ${ZEROMQ_LIBRARIES} ${MORE_LIBRARIES})
+set_target_properties(filemq
+    PROPERTIES DEFINE_SYMBOL "LIBFILEMQ_EXPORTS"
+)
+set_target_properties(filemq
+    PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${SOURCE_DIR}/src"
+)
+target_link_libraries(filemq
+    ${ZEROMQ_LIBRARIES} ${MORE_LIBRARIES}
+)
 
 install(TARGETS filemq
     LIBRARY DESTINATION "lib${LIB_SUFFIX}" # .so file
@@ -134,22 +204,98 @@ set(prefix "${CMAKE_INSTALL_PREFIX}")
 set(exec_prefix "\${prefix}")
 set(libdir "\${prefix}/lib${LIB_SUFFIX}")
 set(includedir "\${prefix}/include")
+IF (WITH_DRAFTS)
+set(pkg_config_defines "-DWITH_DRAFTS=1")
+ELSE (WITH_DRAFTS)
+set(pkg_config_defines "")
+ENDIF (WITH_DRAFTS)
 configure_file(
     "${SOURCE_DIR}/src/libfilemq.pc.in"
-    "${BINARY_DIR}/libfilemq.pc"
+    "${SOURCE_DIR}/src/libfilemq.pc"
 @ONLY)
 
 install(
-    FILES "${BINARY_DIR}/libfilemq.pc"
+    FILES "${SOURCE_DIR}/src/libfilemq.pc"
     DESTINATION "lib${LIB_SUFFIX}/pkgconfig"
+)
+
+########################################################################
+# executables
+########################################################################
+add_executable(
+    filemq_server
+    "${SOURCE_DIR}/src/filemq_server.c"
+)
+target_link_libraries(
+    filemq_server
+    filemq
+    ${LIBZMQ_LIBRARIES}
+    ${CZMQ_LIBRARIES}
+    ${OPTIONAL_LIBRARIES}
+)
+set_target_properties(
+    filemq_server
+    PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${SOURCE_DIR}/src"
+)
+add_executable(
+    filemq_client
+    "${SOURCE_DIR}/src/filemq_client.c"
+)
+target_link_libraries(
+    filemq_client
+    filemq
+    ${LIBZMQ_LIBRARIES}
+    ${CZMQ_LIBRARIES}
+    ${OPTIONAL_LIBRARIES}
+)
+set_target_properties(
+    filemq_client
+    PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${SOURCE_DIR}/src"
+)
+add_executable(
+    filemq_selftest
+    "${SOURCE_DIR}/src/filemq_selftest.c"
+)
+target_link_libraries(
+    filemq_selftest
+    filemq
+    ${LIBZMQ_LIBRARIES}
+    ${CZMQ_LIBRARIES}
+    ${OPTIONAL_LIBRARIES}
+)
+set_target_properties(
+    filemq_selftest
+    PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${SOURCE_DIR}/src"
 )
 
 ########################################################################
 # tests
 ########################################################################
-add_executable(filemq_selftest "${SOURCE_DIR}/src/filemq_selftest.c")
-target_link_libraries(filemq_selftest filemq ${ZEROMQ_LIBRARIES})
-add_test(filemq_selftest filemq_selftest)
+set(CLASSTEST_TIMEOUT 5 CACHE STRING "Timeout of the selftest of a class")
+set(TOTAL_TIMEOUT 20 CACHE STRING "Timout of the total testsuite")
+
+set(TEST_CLASSES
+)
+
+IF (WITH_DRAFTS)
+list(APPEND TEST_CLASSES
+    fmq_msg
+    fmq_server
+    fmq_client
+)
+ENDIF (WITH_DRAFTS)
+
+foreach(TEST_CLASS ${TEST_CLASSES})
+    add_test(
+        NAME ${TEST_CLASS}
+        COMMAND filemq_selftest --continue --verbose --test ${TEST_CLASS}
+    )
+    set_tests_properties(
+        ${TEST_CLASS}
+        PROPERTIES TIMEOUT ${CLASSTEST_TIMEOUT}
+    )
+endforeach(TEST_CLASS)
+
 
 ########################################################################
 # summary

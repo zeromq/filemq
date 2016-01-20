@@ -1,0 +1,61 @@
+#
+#    filemq - A FileMQ server and client
+#
+#    Copyright (c) the Contributors as noted in the AUTHORS file.       
+#    This file is part of FileMQ, a C implemenation of the protocol:    
+#    https://github.com/danriegsecker/filemq2.                          
+#                                                                       
+#    This Source Code Form is subject to the terms of the Mozilla Public
+#    License, v. 2.0. If a copy of the MPL was not distributed with this
+#    file, You can obtain one at http://mozilla.org/MPL/2.0/.           
+
+Source:         filemq
+Section:        net
+Priority:       optional
+Maintainer:     John Doe <John.Doe@example.com>
+Uploaders:      John Doe <John.Doe@example.com>
+Standards-Version: 3.9.5
+Build-Depends: bison, debhelper (>= 8),
+    pkg-config,
+    automake,
+    autoconf,
+    libtool,
+    libsodium-dev,
+    libzmq4-dev,
+    libczmq-dev,
+    dh-autoreconf,
+    systemd
+
+Package: libfilemq2
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: filemq
+ This package contains shared library for filemq: a filemq server and client
+
+Package: filemq-dev
+Architecture: all
+Section: libdevel
+Depends:
+    libsodium-dev,
+    libzmq4-dev,
+    libczmq-dev,
+    libfilemq2 (= ${binary:Version})
+Description: development files for filemq
+ This package contains development files for filemq: a filemq server and client
+
+Package: filemq
+Architecture: any
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Description: a filemq server and client
+ Main package for filemq: a filemq server and client
+
+Package: filemq-dbg
+Architecture: any
+Section: debug
+Priority: extra
+Depends:
+    filemq (= ${binary:Version}),
+    ${misc:Depends}
+Description: debugging symbols for filemq
+ This package contains the debugging symbols for filemq : a filemq server and client.
+

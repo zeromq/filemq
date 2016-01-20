@@ -11,7 +11,7 @@ AC_PREREQ(2.61)
 # the version.sh script. Hence, it should be updated there.
 # The version in git should reflect the *next* version planned.
 #
-AC_INIT([filemq],[m4_esyscmd([./version.sh filemq])],[zeromq-dev@lists.zeromq.org])
+AC_INIT([filemq],[m4_esyscmd([./version.sh filemq.h])],[email@hostname.com])
 
 AC_CONFIG_AUX_DIR(config)
 AC_CONFIG_MACRO_DIR(config)
@@ -67,27 +67,112 @@ if test "x${FILEMQ_GCOV}" == "xyes"; then
     if test "x${FILEMQ_ORIG_CFLAGS}" != "xnone"; then
         CFLAGS="${CFLAGS} ${FILEMQ_ORIG_CFLAGS}"
     fi
+    AM_CONDITIONAL(WITH_GCOV, true)
+else
+    AM_CONDITIONAL(WITH_GCOV, false)
 fi
 
 PREVIOUS_CFLAGS="${CFLAGS}"
 PREVIOUS_LIBS="${LIBS}"
 
 
-was_zmq_check_lib_detected=no
+was_libsodium_check_lib_detected=no
 
-PKG_CHECK_MODULES([zmq], [libzmq >= 2.2.0],,
-    [AC_MSG_ERROR([Cannot find required package for libzmq. Note, pkg-config is required due to specified version >= 2.2.0])
-  ])
+PKG_CHECK_MODULES([libsodium], [libsodium >= 0.0.0],
+    [
+        AC_DEFINE(HAVE_LIBSODIUM, 1, [The libsodium library is to be used.])
+    ],
+    [
+        AC_ARG_WITH([libsodium],
+            [
+                AS_HELP_STRING([--with-libsodium],
+                [Specify libsodium prefix])
+            ],
+            [search_libsodium="yes"],
+            [])
 
-if test "x$was_zmq_check_lib_detected" = "xno"; then
-    CFLAGS="${zmq_CFLAGS} ${CFLAGS}"
-    LIBS="${zmq_LIBS} ${LIBS}"
+        libsodium_synthetic_cflags=""
+        libsodium_synthetic_libs="-lsodium"
+
+        if test "x$search_libsodium" = "xyes"; then
+            if test -r "${with_libsodium}/include/sodium.h"; then
+                libsodium_synthetic_cflags="-I${with_libsodium}/include"
+                libsodium_synthetic_libs="-L${with_libsodium}/lib -lsodium"
+            else
+                AC_MSG_ERROR([${with_libsodium}/include/sodium.h not found. Please check libsodium prefix])
+            fi
+        fi
+
+        AC_CHECK_LIB([libsodium], [sodium_init],
+            [
+                CFLAGS="${libsodium_synthetic_cflags} ${CFLAGS}"
+                LDFLAGS="${libsodium_synthetic_libs} ${LDFLAGS}"
+                LIBS="${libsodium_synthetic_libs} ${LIBS}"
+
+                AC_SUBST([libsodium_CFLAGS],[${libsodium_synthetic_cflags}])
+                AC_SUBST([libsodium_LIBS],[${libsodium_synthetic_libs}])
+                was_libsodium_check_lib_detected=yes
+                AC_DEFINE(HAVE_LIBSODIUM, 1, [The libsodium library is to be used.])
+            ],
+            [])
+    ])
+
+if test "x$was_libsodium_check_lib_detected" = "xno"; then
+    CFLAGS="${libsodium_CFLAGS} ${CFLAGS}"
+    LIBS="${libsodium_LIBS} ${LIBS}"
+fi
+
+
+was_libzmq_check_lib_detected=no
+
+PKG_CHECK_MODULES([libzmq], [libzmq >= 0.0.0],
+    [
+    ],
+    [
+        AC_ARG_WITH([libzmq],
+            [
+                AS_HELP_STRING([--with-libzmq],
+                [Specify libzmq prefix])
+            ],
+            [search_libzmq="yes"],
+            [])
+
+        libzmq_synthetic_cflags=""
+        libzmq_synthetic_libs="-lzmq"
+
+        if test "x$search_libzmq" = "xyes"; then
+            if test -r "${with_libzmq}/include/zmq.h"; then
+                libzmq_synthetic_cflags="-I${with_libzmq}/include"
+                libzmq_synthetic_libs="-L${with_libzmq}/lib -lzmq"
+            else
+                AC_MSG_ERROR([${with_libzmq}/include/zmq.h not found. Please check libzmq prefix])
+            fi
+        fi
+
+        AC_CHECK_LIB([libzmq], [zmq_init],
+            [
+                CFLAGS="${libzmq_synthetic_cflags} ${CFLAGS}"
+                LDFLAGS="${libzmq_synthetic_libs} ${LDFLAGS}"
+                LIBS="${libzmq_synthetic_libs} ${LIBS}"
+
+                AC_SUBST([libzmq_CFLAGS],[${libzmq_synthetic_cflags}])
+                AC_SUBST([libzmq_LIBS],[${libzmq_synthetic_libs}])
+                was_libzmq_check_lib_detected=yes
+            ],
+            [AC_MSG_ERROR([cannot link with -lzmq, install libzmq.])])
+    ])
+
+if test "x$was_libzmq_check_lib_detected" = "xno"; then
+    CFLAGS="${libzmq_CFLAGS} ${CFLAGS}"
+    LIBS="${libzmq_LIBS} ${LIBS}"
 fi
 
 
 was_czmq_check_lib_detected=no
 
-PKG_CHECK_MODULES([czmq], [libczmq],,
+PKG_CHECK_MODULES([czmq], [libczmq >= 0.0.0],
+    [
+    ],
     [
         AC_ARG_WITH([libczmq],
             [
@@ -109,12 +194,12 @@ PKG_CHECK_MODULES([czmq], [libczmq],,
             fi
         fi
 
-        CFLAGS="${czmq_synthetic_cflags} ${CFLAGS}"
-        LDFLAGS="${czmq_synthetic_libs} ${LDFLAGS}"
-        LIBS="${czmq_synthetic_libs} ${LIBS}"
-
-        AC_CHECK_LIB([czmq], [zctx_test],
+        AC_CHECK_LIB([libczmq], [zctx_test],
             [
+                CFLAGS="${czmq_synthetic_cflags} ${CFLAGS}"
+                LDFLAGS="${czmq_synthetic_libs} ${LDFLAGS}"
+                LIBS="${czmq_synthetic_libs} ${LIBS}"
+
                 AC_SUBST([czmq_CFLAGS],[${czmq_synthetic_cflags}])
                 AC_SUBST([czmq_LIBS],[${czmq_synthetic_libs}])
                 was_czmq_check_lib_detected=yes
@@ -139,20 +224,32 @@ filemq_on_android="no"
 # Host specific checks
 AC_CANONICAL_HOST
 
-# Determine whether or not documentation should be built and installed.
-filemq_build_doc="yes"
-filemq_install_man="yes"
+# Man pages are built/installed if asciidoc and xmlto are present
+#   --with-docs=no overrides this
+AC_ARG_WITH([docs],
+    AS_HELP_STRING([--with-docs],
+        [Build and install man pages [default=yes]]),
+    [with_docs=$withval])
 
-# Check for asciidoc and xmlto and don't build the docs if these are not installed.
-AC_CHECK_PROG(filemq_have_asciidoc, asciidoc, yes, no)
-AC_CHECK_PROG(filemq_have_xmlto, xmlto, yes, no)
-if test "x$filemq_have_asciidoc" = "xno" -o "x$filemq_have_xmlto" = "xno"; then
+if test "x$with_docs" = "xno"; then
     filemq_build_doc="no"
-    # Tarballs built with 'make dist' ship with prebuilt documentation.
-    if ! test -f doc/filemq.7; then
-        filemq_install_man="no"
-        AC_MSG_WARN([You are building an unreleased version of FILEMQ and asciidoc or xmlto are not installed.])
-        AC_MSG_WARN([Documentation will not be built and manual pages will not be installed.])
+    filemq_install_man="no"
+else
+    # Determine whether or not documentation should be built and installed.
+    filemq_build_doc="yes"
+    filemq_install_man="yes"
+
+    # Check for asciidoc and xmlto and don't build the docs if these are not installed.
+    AC_CHECK_PROG(filemq_have_asciidoc, asciidoc, yes, no)
+    AC_CHECK_PROG(filemq_have_xmlto, xmlto, yes, no)
+    if test "x$filemq_have_asciidoc" = "xno" -o "x$filemq_have_xmlto" = "xno"; then
+        filemq_build_doc="no"
+        # Tarballs built with 'make dist' ship with prebuilt documentation.
+        if ! test -f doc/filemq.7; then
+            filemq_install_man="no"
+            AC_MSG_WARN([You are building an unreleased version of FILEMQ and asciidoc or xmlto are not installed.])
+            AC_MSG_WARN([Documentation will not be built and manual pages will not be installed.])
+        fi
     fi
 fi
 AC_MSG_CHECKING([whether to build documentation])
@@ -169,7 +266,7 @@ case "${host_os}" in
         # Define on Linux to enable all library features
         CPPFLAGS="-D_GNU_SOURCE -DLINUX $CPPFLAGS"
         AC_DEFINE(FILEMQ_HAVE_LINUX, 1, [Have Linux OS])
-        
+
         case "${host_os}" in
             *android*)
                 AC_DEFINE(FILEMQ_HAVE_ANDROID, 1, [Have Android OS])
@@ -288,6 +385,16 @@ AC_ARG_WITH([filemq_client],
 AM_CONDITIONAL([WITH_FILEMQ_CLIENT], [test x$with_filemq_client != xno])
 AM_COND_IF([WITH_FILEMQ_CLIENT], [AC_MSG_NOTICE([WITH_FILEMQ_CLIENT defined])])
 
+# Check for filemq_selftest intent
+AC_ARG_WITH([filemq_selftest],
+    AS_HELP_STRING([--with-filemq_selftest],
+        [Compile the filemq_selftest program [default=yes].]),
+    [with_filemq_selftest=$withval],
+    [with_filemq_selftest=yes])
+
+AM_CONDITIONAL([WITH_FILEMQ_SELFTEST], [test x$with_filemq_selftest != xno])
+AM_COND_IF([WITH_FILEMQ_SELFTEST], [AC_MSG_NOTICE([WITH_FILEMQ_SELFTEST defined])])
+
 # Checks for library functions.
 AC_TYPE_SIGNAL
 AC_CHECK_FUNCS(perror gettimeofday memset getifaddrs)
@@ -298,13 +405,55 @@ AC_ARG_WITH([pkgconfigdir], AS_HELP_STRING([--with-pkgconfigdir=PATH],
     [pkgconfigdir="$withval"], [pkgconfigdir='${libdir}/pkgconfig'])
 AC_SUBST([pkgconfigdir])
 
+
+# enable specific system integration features
+AC_ARG_WITH([systemd],
+    AS_HELP_STRING([--with-systemd],
+    [Build and install with systemd integration [default=no].]),
+    [with_systemd=$withval],
+    [with_systemd=no])
+
+AM_CONDITIONAL([WITH_SYSTEMD], [test x$with_systemd != xno])
+
+AM_COND_IF([WITH_SYSTEMD],
+    [PKG_CHECK_MODULES([SYSTEMD], [systemd >= 200], [],
+        [AC_MSG_ERROR([Cannot find required package for systemd. Note, pkg-config is required due to specified version >= 200])])],
+    [])
+
+# enable draft API by default if we're in a git repository
+# else disable it by default; then allow --with-draft=yes/no override
+AC_CHECK_FILE(.git, [gitmaster=yes], [gitmaster=no])
+
+AC_ARG_WITH([drafts],
+    AS_HELP_STRING([--with-drafts],
+        [Build and install draft classes and methods [default=yes.]]),
+    [with_drafts=$withval],
+    [with_drafts=$gitmaster])
+
+AM_CONDITIONAL([WITH_DRAFTS], [test x$with_drafts != xno])
+
+if test "x$with_drafts" = "xyes"; then
+    AC_MSG_NOTICE([building draft, stable, and legacy API])
+    AC_DEFINE(WITH_DRAFTS, 1, [Build and install draft classes and methods.])
+    AC_SUBST(pkg_config_defines, "-DWITH_DRAFTS=1")
+else
+    AC_MSG_NOTICE([building stable and legacy API (no drafts)])
+    AC_SUBST(pkg_config_defines, "")
+fi
+
 # Specify output files
 AC_CONFIG_FILES([Makefile
                  doc/Makefile
                  src/libfilemq.pc
                  ])
-AC_OUTPUT
 
+AM_COND_IF([WITH_SYSTEMD],
+    [AC_CONFIG_FILES([
+    ])],
+    [])
+
+
+AC_OUTPUT
 ################################################################################
 #  THIS FILE IS 100% GENERATED BY ZPROJECT; DO NOT EDIT EXCEPT EXPERIMENTALLY  #
 #  Please refer to the README for information about making permanent changes.  #
