@@ -1,10 +1,11 @@
 <class
     name = "fmq_server"
-    title = "FILEMQ Server"
+    title = "FileMQ Server"
     script = "zproto_server_c"
     protocol_class = "fmq_msg"
     package_dir = "../include"
     source_dir = "."
+    export_macro = "FILEMQ_EXPORT"
     >
 
     FileMQ protocol server

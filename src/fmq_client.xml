@@ -1,10 +1,11 @@
 <class
     name = "fmq_client"
-    title = "FILEMQ Client"
+    title = "FileMQ Client"
     script = "zproto_client_c"
     protocol_class = "fmq_msg"
     package_dir = "../include"
     source_dir = "."
+    export_macro = "FILEMQ_EXPORT"
     >
 
     This is the FILEMQ/2.0 client protocol handler

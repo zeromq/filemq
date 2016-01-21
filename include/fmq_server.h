@@ -1,5 +1,5 @@
 /*  =========================================================================
-    fmq_server - FILEMQ Server
+    fmq_server - FileMQ Server
 
     ** WARNING *************************************************************
     THIS SOURCE FILE IS 100% GENERATED. If you edit this file, you will lose
@@ -80,11 +80,11 @@ extern "C" {
 //
 //  This is the fmq_server constructor as a zactor_fn:
 //
-FMQ_EXPORT void
+FILEMQ_EXPORT void
     fmq_server (zsock_t *pipe, void *args);
 
 //  Self test of this class
-FMQ_EXPORT void
+FILEMQ_EXPORT void
     fmq_server_test (bool verbose);
 //  @end
 
