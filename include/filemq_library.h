@@ -50,6 +50,7 @@
 //  Opaque class structures to allow forward references
 
 //  Draft APIs, excluded by default in stable releases
+#define WITH_DRAFTS
 #ifdef WITH_DRAFTS
 typedef struct _fmq_msg_t fmq_msg_t;
 #define FMQ_MSG_T_DEFINED
@@ -63,6 +64,7 @@ typedef struct _fmq_client_t fmq_client_t;
 
 //  Draft APIs, excluded by default in stable releases
 #ifdef WITH_DRAFTS
+#include "filemq_prelude.h"
 #include "fmq_msg.h"
 #include "fmq_server.h"
 #include "fmq_client.h"

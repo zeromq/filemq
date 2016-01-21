@@ -80,11 +80,11 @@ extern "C" {
 //
 //  This is the fmq_server constructor as a zactor_fn:
 //
-void
+FMQ_EXPORT void
     fmq_server (zsock_t *pipe, void *args);
 
 //  Self test of this class
-void
+FMQ_EXPORT void
     fmq_server_test (bool verbose);
 //  @end
 
