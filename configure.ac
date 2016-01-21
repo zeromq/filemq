@@ -220,6 +220,8 @@ LIBS="${PREVIOUS_LIBS}"
 filemq_on_mingw32="no"
 filemq_on_cygwin="no"
 filemq_on_android="no"
+filemq_on_linux="no"
+filemq_on_gnu="no"
 
 # Host specific checks
 AC_CANONICAL_HOST
@@ -266,6 +268,7 @@ case "${host_os}" in
         # Define on Linux to enable all library features
         CPPFLAGS="-D_GNU_SOURCE -DLINUX $CPPFLAGS"
         AC_DEFINE(FILEMQ_HAVE_LINUX, 1, [Have Linux OS])
+        filemq_on_linux="yes"
 
         case "${host_os}" in
             *android*)
@@ -324,6 +327,14 @@ case "${host_os}" in
         AC_DEFINE(FILEMQ_HAVE_CYGWIN, 1, [Have Cygwin])
         filemq_on_cygwin="yes"
         ;;
+    gnu*)
+        # Define on GNU/Hurd to enable all library features
+        if test "x$GXX" = "xyes"; then
+            CPPFLAGS="-D_GNU_SOURCE $CPPFLAGS"
+        fi
+        AC_DEFINE(FILEMQ_HAVE_GNU, 1, [Have GNU/Hurd OS])
+        filemq_on_gnu="yes"
+        ;;
     *)
         AC_MSG_ERROR([unsupported system: ${host_os}.])
         ;;
@@ -362,6 +373,8 @@ AM_CONDITIONAL(ENABLE_SHARED, test "x$enable_shared" = "xyes")
 AM_CONDITIONAL(ON_MINGW, test "x$filemq_on_mingw32" = "xyes")
 AM_CONDITIONAL(ON_CYGWIN, test "x$filemq_on_cygwin" = "xyes")
 AM_CONDITIONAL(ON_ANDROID, test "x$filemq_on_android" = "xyes")
+AM_CONDITIONAL(ON_LINUX, test "x$filemq_on_linux" = "xyes")
+AM_CONDITIONAL(ON_GNU, test "x$filemq_on_gnu" = "xyes")
 AM_CONDITIONAL(INSTALL_MAN, test "x$filemq_install_man" = "xyes")
 AM_CONDITIONAL(BUILD_DOC, test "x$filemq_build_doc" = "xyes")
 
@@ -420,9 +433,14 @@ AM_COND_IF([WITH_SYSTEMD],
         [AC_MSG_ERROR([Cannot find required package for systemd. Note, pkg-config is required due to specified version >= 200])])],
     [])
 
-# enable draft API by default if we're in a git repository
-# else disable it by default; then allow --with-draft=yes/no override
-AC_CHECK_FILE(.git, [gitmaster=yes], [gitmaster=no])
+if test "x$cross_compiling" = "xyes"; then
+    #   Enable draft by default when cross-compiling
+    gitmaster=yes
+else
+    # enable draft API by default if we're in a git repository
+    # else disable it by default; then allow --with-draft=yes/no override
+    AC_CHECK_FILE(.git, [gitmaster=yes], [gitmaster=no])
+fi
 
 AC_ARG_WITH([drafts],
     AS_HELP_STRING([--with-drafts],

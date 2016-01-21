@@ -1,5 +1,5 @@
 /*  =========================================================================
-    fmq_client_engine - FILEMQ Client engine
+    fmq_client_engine - FileMQ Client engine
 
     ** WARNING *************************************************************
     THIS SOURCE FILE IS 100% GENERATED. If you edit this file, you will lose
@@ -1429,7 +1429,7 @@ struct _fmq_client_t {
 //  ---------------------------------------------------------------------------
 //  Create a new fmq_client
 
-fmq_client_t *
+FILEMQ_EXPORT fmq_client_t *
 fmq_client_new (void)
 {
     fmq_client_t *self = (fmq_client_t *) zmalloc (sizeof (fmq_client_t));

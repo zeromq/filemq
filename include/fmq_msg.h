@@ -83,7 +83,6 @@
 #define FMQ_MSG_RTFM                        129
 
 #include <czmq.h>
-#include <filemq_prelude.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -97,131 +96,131 @@ typedef struct _fmq_msg_t fmq_msg_t;
 
 //  @interface
 //  Create a new empty fmq_msg
-FMQ_EXPORT fmq_msg_t *
+fmq_msg_t *
     fmq_msg_new (void);
 
 //  Destroy a fmq_msg instance
-FMQ_EXPORT void
+void
     fmq_msg_destroy (fmq_msg_t **self_p);
 
 //  Receive a fmq_msg from the socket. Returns 0 if OK, -1 if
 //  there was an error. Blocks if there is no message waiting.
-FMQ_EXPORT int
+int
     fmq_msg_recv (fmq_msg_t *self, zsock_t *input);
 
 //  Send the fmq_msg to the output socket, does not destroy it
-FMQ_EXPORT int
+int
     fmq_msg_send (fmq_msg_t *self, zsock_t *output);
 
 
 //  Print contents of message to stdout
-FMQ_EXPORT void
+void
     fmq_msg_print (fmq_msg_t *self);
 
 //  Get/set the message routing id
-FMQ_EXPORT zframe_t *
+zframe_t *
     fmq_msg_routing_id (fmq_msg_t *self);
-FMQ_EXPORT void
+void
     fmq_msg_set_routing_id (fmq_msg_t *self, zframe_t *routing_id);
 
 //  Get the fmq_msg id and printable command
-FMQ_EXPORT int
+int
     fmq_msg_id (fmq_msg_t *self);
-FMQ_EXPORT void
+void
     fmq_msg_set_id (fmq_msg_t *self, int id);
-FMQ_EXPORT const char *
+const char *
     fmq_msg_command (fmq_msg_t *self);
 
 //  Get/set the path field
-FMQ_EXPORT const char *
+const char *
     fmq_msg_path (fmq_msg_t *self);
-FMQ_EXPORT void
+void
     fmq_msg_set_path (fmq_msg_t *self, const char *value);
 
 //  Get a copy of the options field
-FMQ_EXPORT zhash_t *
+zhash_t *
     fmq_msg_options (fmq_msg_t *self);
 //  Get the options field and transfer ownership to caller
-FMQ_EXPORT zhash_t *
+zhash_t *
     fmq_msg_get_options (fmq_msg_t *self);
 //  Set the options field, transferring ownership from caller
-FMQ_EXPORT void
+void
     fmq_msg_set_options (fmq_msg_t *self, zhash_t **hash_p);
 
 //  Get a copy of the cache field
-FMQ_EXPORT zhash_t *
+zhash_t *
     fmq_msg_cache (fmq_msg_t *self);
 //  Get the cache field and transfer ownership to caller
-FMQ_EXPORT zhash_t *
+zhash_t *
     fmq_msg_get_cache (fmq_msg_t *self);
 //  Set the cache field, transferring ownership from caller
-FMQ_EXPORT void
+void
     fmq_msg_set_cache (fmq_msg_t *self, zhash_t **hash_p);
 
 //  Get/set the credit field
-FMQ_EXPORT uint64_t
+uint64_t
     fmq_msg_credit (fmq_msg_t *self);
-FMQ_EXPORT void
+void
     fmq_msg_set_credit (fmq_msg_t *self, uint64_t credit);
 
 //  Get/set the sequence field
-FMQ_EXPORT uint64_t
+uint64_t
     fmq_msg_sequence (fmq_msg_t *self);
-FMQ_EXPORT void
+void
     fmq_msg_set_sequence (fmq_msg_t *self, uint64_t sequence);
 
 //  Get/set the operation field
-FMQ_EXPORT byte
+byte
     fmq_msg_operation (fmq_msg_t *self);
-FMQ_EXPORT void
+void
     fmq_msg_set_operation (fmq_msg_t *self, byte operation);
 
 //  Get/set the filename field
-FMQ_EXPORT const char *
+const char *
     fmq_msg_filename (fmq_msg_t *self);
-FMQ_EXPORT void
+void
     fmq_msg_set_filename (fmq_msg_t *self, const char *value);
 
 //  Get/set the offset field
-FMQ_EXPORT uint64_t
+uint64_t
     fmq_msg_offset (fmq_msg_t *self);
-FMQ_EXPORT void
+void
     fmq_msg_set_offset (fmq_msg_t *self, uint64_t offset);
 
 //  Get/set the eof field
-FMQ_EXPORT byte
+byte
     fmq_msg_eof (fmq_msg_t *self);
-FMQ_EXPORT void
+void
     fmq_msg_set_eof (fmq_msg_t *self, byte eof);
 
 //  Get a copy of the headers field
-FMQ_EXPORT zhash_t *
+zhash_t *
     fmq_msg_headers (fmq_msg_t *self);
 //  Get the headers field and transfer ownership to caller
-FMQ_EXPORT zhash_t *
+zhash_t *
     fmq_msg_get_headers (fmq_msg_t *self);
 //  Set the headers field, transferring ownership from caller
-FMQ_EXPORT void
+void
     fmq_msg_set_headers (fmq_msg_t *self, zhash_t **hash_p);
 
 //  Get a copy of the chunk field
-FMQ_EXPORT zchunk_t *
+zchunk_t *
     fmq_msg_chunk (fmq_msg_t *self);
 //  Get the chunk field and transfer ownership to caller
-FMQ_EXPORT zchunk_t *
+zchunk_t *
     fmq_msg_get_chunk (fmq_msg_t *self);
 //  Set the chunk field, transferring ownership from caller
-FMQ_EXPORT void
+void
     fmq_msg_set_chunk (fmq_msg_t *self, zchunk_t **chunk_p);
 
 //  Get/set the reason field
-FMQ_EXPORT const char *
+const char *
     fmq_msg_reason (fmq_msg_t *self);
-FMQ_EXPORT void
+void
     fmq_msg_set_reason (fmq_msg_t *self, const char *value);
 
 //  Self test of this class
-FMQ_EXPORT void
+void
     fmq_msg_test (bool verbose);
 //  @end
 
