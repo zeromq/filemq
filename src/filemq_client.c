@@ -3,17 +3,22 @@
 
 int main (int argc, char *argv [])
 {
+	fmq_client_t *client;
+	int rc;
+	zsock_t *msgpipe;
+	zpoller_t *poller;
+
     if (argc < 2) {
         puts ("usage: filemq_client inbox-dir");
         return 0;
     }
 
     //  Create the client
-    fmq_client_t *client = fmq_client_new ();
+    client = fmq_client_new ();
     assert (client);
     fmq_client_verbose = 1;
 
-    int rc = fmq_client_connect (client, "tcp://localhost:5670", 1000);
+    rc = fmq_client_connect (client, "tcp://localhost:5670", 1000);
     assert (rc == 0);
 
     //  Set the clients storage location
@@ -25,11 +30,11 @@ int main (int argc, char *argv [])
     assert (rc >= 0);
 
     //  Get a reference to the msgpipe
-    zsock_t *msgpipe = fmq_client_msgpipe (client);
+    msgpipe = fmq_client_msgpipe (client);
     assert (msgpipe);
 
     //  Setup a poller
-    zpoller_t *poller = zpoller_new ( (void *) msgpipe, NULL);
+    poller = zpoller_new ( (void *) msgpipe, NULL);
     assert (poller);
 
     while (!zsys_interrupted) {
