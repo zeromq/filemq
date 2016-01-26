@@ -3,11 +3,12 @@
 
 int main (int argc, char *argv [])
 {
+	zactor_t *server;
     if (argc < 2) {
         puts ("usage: filemq_server publish-from");
         return 0;
     }
-    zactor_t *server = zactor_new (fmq_server, "filemq_server");
+    server = zactor_new (fmq_server, "filemq_server");
 
     //zstr_send (server, "VERBOSE");
     zstr_sendx (server, "PUBLISH", argv [1], "/", NULL);
