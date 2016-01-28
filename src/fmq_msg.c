@@ -1127,14 +1127,14 @@ fmq_msg_test (bool verbose)
         assert (fmq_msg_routing_id (self));
         assert (streq (fmq_msg_path (self), "Life is short but Now lasts for ever"));
         zhash_t *options = fmq_msg_get_options (self);
-        assert (zhash_size (options) == 2);
+        assert (zhash_size (options) == 1);
         assert (streq ((char *) zhash_first (options), "Brutus"));
         assert (streq ((char *) zhash_cursor (options), "Name"));
         zhash_destroy (&options);
         if (instance == 1)
             zhash_destroy (&icanhaz_options);
         zhash_t *cache = fmq_msg_get_cache (self);
-        assert (zhash_size (cache) == 2);
+        assert (zhash_size (cache) == 1);
         assert (streq ((char *) zhash_first (cache), "Brutus"));
         assert (streq ((char *) zhash_cursor (cache), "Name"));
         zhash_destroy (&cache);
@@ -1190,7 +1190,7 @@ fmq_msg_test (bool verbose)
         assert (fmq_msg_offset (self) == 123);
         assert (fmq_msg_eof (self) == 123);
         zhash_t *headers = fmq_msg_get_headers (self);
-        assert (zhash_size (headers) == 2);
+        assert (zhash_size (headers) == 1);
         assert (streq ((char *) zhash_first (headers), "Brutus"));
         assert (streq ((char *) zhash_cursor (headers), "Name"));
         zhash_destroy (&headers);
