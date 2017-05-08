@@ -52,7 +52,7 @@ Contribution process:
 
 ## Internals
 
-I originally designed FileMQ as a training tool for Chapter 6 of the 0MQ Guide (soon in dead tree format from O'Reilly!) and sort of a reusable stack for your own experiments in protocol development. Many concepts in FileMQ are borrowed from other protocols, such as the original AMQP (which, you may not know, had a file transfer class before that was taken out to a dark alley and beaten to death by two red-hatted goons from a firm who shall remain nameless). Of course AMQP borowed much from other protocols, like its SASL authentication dialog, which came from BEEP, and which I happily used in FILEMQ as well.
+I originally designed FileMQ as a training tool for Chapter 6 of the 0MQ Guide (soon in dead tree format from O'Reilly!) and sort of a reusable stack for your own experiments in protocol development. Many concepts in FileMQ are borrowed from other protocols, such as the original AMQP (which, you may not know, had a file transfer class before that was taken out to a dark alley and beaten to death by two red-hatted goons from a firm who shall remain nameless). Of course AMQP borrowed much from other protocols, like its SASL authentication dialog, which came from BEEP, and which I happily used in FILEMQ as well.
 
 SASL is the simple authentication and security layer, and a neat way to make secure protocols over 0MQ. It works for the specific case where peer A talks to peer B over a bidirectional connection. That is any classic client-server model, which is what FILEMQ (the protocol, in upper case), gives us.
 
