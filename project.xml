@@ -2,6 +2,8 @@
     name = "filemq"
     description = "A FileMQ server and client"
     script = "zproject.gsl"
+    url = "https://github.com/zeromq/filemq"
+    repository = "https://github.com/zeromq/filemq"
     >
     <include filename = "license.xml" />
     <version major = "2" minor = "0" patch = "0" />
