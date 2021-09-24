@@ -64,7 +64,7 @@ The whole thing is written in C, but using my special sauce of class-orientation
 
 So there's a client class, and a server class, and then a bunch of utility classes, some of which are more or less reusable for other applications. There's a neat configuration file parser and the SASL class (which is still empty but will hopefully grow). The directory and file management classes may be a little specific to FileMQ's use case.
 
-The real magic sauce in FileMQ is in the model directory, which you can safely ignore until you feel confident enough to go take a look. As a first start, check out the zeromq/zproto project, and fmq_msg.xml. You will need to grab gsl from https://github.com/imatix/gsl if you want to generate the code. Check the generate script to see how we run gsl.
+The real magic sauce in FileMQ is in the model directory, which you can safely ignore until you feel confident enough to go take a look. As a first start, check out the zeromq/zproto project, and fmq_msg.xml. You will need to grab gsl from https://github.com/zeromq/gsl if you want to generate the code. Check the generate script to see how we run gsl.
 
 So that's code generation. You can, if you absolutely hate the gsl tool (and people do), you can get the same results with 10x more work using XSTL. There are other ways; in some languages you can parse the XML at runtime. That is, BTW, a rather stupid idea since it means anyone running the code needs the protocol spec at hand.
 
